@@ -19,8 +19,11 @@ It is recommended to allign the camera via the live preview mode directly within
 ## Cost estimation (excluding the microscope)
 
 35$ - [Raspberry Pi](https://www.adafruit.com/product/3775)
+
 30$ - [Raspberry Pi Camera](https://www.adafruit.com/product/3099)
+
 3$ - [Camera Flex Cable](https://www.adafruit.com/product/1731)
+
 80$ - [7'' Touchscreen Display](https://www.adafruit.com/product/2718)
 
 Total. 148$
