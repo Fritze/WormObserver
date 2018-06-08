@@ -3,13 +3,12 @@
 ![Sketch](https://github.com/Fritze/WormObserver/blob/master/Images/WormObserver_sketch.png)
 
 # A lightweight solution for adding a Raspberry Pi Camera to a stereoscopic microscope
-*(e.g. to track worms on a agar plate)*
 
 ## General
 
 ![Parts](https://github.com/Fritze/WormObserver/blob/master/Images/Overview_WormObserver.jpg)
 
-This is an adapted version of an adapter allowing coupling of a standard Raspberry Pi camera to a **model** Zeiss microscope. However, by changing the inner diameter of the eyepiece sleeve accordingly, the design can easily adjusted to any other microscope.
+This is an adapted version of an adapter allowing coupling of a standard Raspberry Pi camera to a Zeiss Stereo Discover V8 microscope. However, by changing the inner diameter of the eyepiece sleeve accordingly, the design can easily adjusted to any other microscope.
 The design is inspired by [this](https://www.thingiverse.com/thing:2007339) design, previously published on the open source thingiverse platform.
 The Raspberry Pi camera can be either glued directly to the printed holder or fixed with screws through the dedicated holes on the camera chip.
 
