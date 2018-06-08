@@ -1,4 +1,7 @@
 # The WormObserver
+
+![Sketch](https://github.com/Fritze/WormObserver/blob/master/Images/WormObserver_sketch.png)
+
 # A lightweight solution for adding a Raspberry Pi Camera to a stereoscopic microscope
 *(e.g. to track worms on a agar plate)*
 
