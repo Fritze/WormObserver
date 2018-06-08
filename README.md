@@ -7,8 +7,12 @@
 
 ## General
 
+![Parts](https://github.com/Fritze/WormObserver/blob/master/Images/Overview_WormObserver.jpg)
+
 This is an adapted version of an adapter allowing coupling of a standard Raspberry Pi camera to a **model** Zeiss microscope.
 The Raspberry Pi camera can be either glued directly to the printed holder or fixed with screws through the dedicated holes on the camera chip.
+
+![Set-up](https://github.com/Fritze/WormObserver/blob/master/Images/Microscope_WormObserver.jpg)
 
 ## Attaching the camera to the Raspberry Pi
 
