@@ -1,5 +1,8 @@
 # The WormObserver
 
+For any question, please drop me a line at:
+Friedrich.Preusser[at]mdc-berlin.de
+
 ![Sketch](https://github.com/Fritze/WormObserver/blob/master/Images/WormObserver_sketch.png)
 
 # A lightweight solution for adding a Raspberry Pi Camera to a stereoscopic microscope
