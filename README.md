@@ -7,7 +7,7 @@ Friedrich.Preusser[at]mdc-berlin.de
 
 # A lightweight solution for adding a Raspberry Pi Camera to a stereoscopic microscope
 
-## General
+## The set-up
 
 ![Parts](https://github.com/Fritze/WormObserver/blob/master/Images/Overview_WormObserver.jpg)
 
@@ -17,16 +17,16 @@ The Raspberry Pi camera can be either glued directly to the printed holder or fi
 
 ![Set-up](https://github.com/Fritze/WormObserver/blob/master/Images/Microscope_WormObserver.jpg)
 
-## Attaching the camera to the Raspberry Pi
+### Attaching the camera to the Raspberry Pi
 
 To allow convenient allignment of the camera with respect to the focal plane of the objective, it is recommended to use [the longer connection cable](https://www.adafruit.com/product/1731) when connecting the camera to the Raspberry Pi. 
 
-## Alligning the camera
+### Alligning the camera
 
 It is recommended to allign the camera via the live preview mode directly within the Raspberry Pi GUI. To allow a maximum of flexibility, the Rasperry Pi can be directly coupled to a 7'' Touchscreen Display and a keyboard. To protect the display from the potential hazardous environment of a typical benchspace a custom [3D-printable case is available on thingiverse](https://www.thingiverse.com/thing:1585924).
 
 
-## Cost estimation (excluding the microscope)
+### Cost estimation (excluding the microscope)
 
 35$ - [Raspberry Pi](https://www.adafruit.com/product/3775)
 
@@ -37,3 +37,6 @@ It is recommended to allign the camera via the live preview mode directly within
 80$ - [7'' Touchscreen Display](https://www.adafruit.com/product/2718)
 
 Total. 148$
+
+## Image analysis pipeline
+
