@@ -43,3 +43,5 @@ Total. 148$
 ![workflow](https://github.com/Fritze/WormObserver/blob/master/Images/WormObserver_workflow_sketch.png)
 
 ![KNIME](https://github.com/Fritze/WormObserver/blob/master/Images/WormObserver_screen.png)
+
+![analysis](https://github.com/Fritze/WormObserver/blob/master/Images/WormObserver_screen.png)
