@@ -40,3 +40,6 @@ Total. 148$
 
 ## Image analysis pipeline
 
+![workflow](https://github.com/Fritze/WormObserver/blob/master/Images/WormObserver_workflow_sketch.png)
+
+![KNIME](https://github.com/Fritze/WormObserver/blob/master/Images/WormObserver_screen.png)
