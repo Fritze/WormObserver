@@ -1,4 +1,4 @@
-rm(list = ls())
+#rm(list = ls())
 
 #load plyr before dplyr otherwise there will be an issue with the summarise function in dplyr
 library("plyr")
