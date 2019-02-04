@@ -45,3 +45,4 @@ Total. 148$
 ![KNIME](https://github.com/Fritze/WormObserver/blob/master/Images/WormObserver_screen.png)
 
 ![analysis](https://github.com/Fritze/WormObserver/blob/master/Images/analysis_overview.png)
+A line that I write to test my awesome git skills
