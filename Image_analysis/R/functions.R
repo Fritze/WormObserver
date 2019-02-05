@@ -1,3 +1,21 @@
+library("plyr")
+library("dplyr")
+library("ggplot2")
+library("rmarkdown")
+library("knitr")
+library("lubridate")
+library("wesanderson")
+library("readr")
+library("purrr")
+library("viridis")
+library("png")
+library("grid")
+library("ggpubr")
+library("RColorBrewer")
+library("shiny")
+library("shinyWidgets")
+
+
 #functions
 
 import <- function (file){
@@ -139,6 +157,51 @@ calculate_overview_statistics <- function(offset,max_number_gaps,duration) {
     mutate(mean_angle = mean(angle), na.rm=TRUE) %>%
     group_by(TrackID, tp, minutes, dataset_ID,file_name,Duration_of_track) %>%
     summarise(mean_angle=mean(angle), mean_velocity=mean(Mean_velocity),mean_displacement=mean(Track_displacement))
-  mutate(ang_velocity=mean_angle/Duration_of_track)
+  
+}
+
+
+theme_black = function(base_size = 12, base_family = "") {
+  
+  theme_classic(base_size = base_size, base_family = base_family) %+replace%
+    
+    theme(
+      # Specify axis options
+      axis.line = element_line(colour = "white"),  
+      axis.text.x = element_text(size = base_size, color = "white", lineheight = 0.9),  
+      axis.text.y = element_text(size = base_size, color = "white", lineheight = 0.9),  
+      axis.ticks = element_line(color = "white", size  =  0.2),  
+      axis.title.x = element_text(size = base_size, color = "white", margin = margin(0, 10, 0, 0)),  
+      axis.title.y = element_text(size = base_size, color = "white", angle = 90, margin = margin(0, 10, 0, 0)),  
+      axis.ticks.length = unit(0.3, "lines"),   
+      # Specify legend options
+      legend.background = element_rect(color = NA, fill = "black"),  
+      legend.key = element_rect(color = "white",  fill = "black"),  
+      legend.key.size = unit(1.2, "lines"),  
+      legend.key.height = NULL,  
+      legend.key.width = NULL,      
+      legend.text = element_text(size = base_size*0.8, color = "white"),  
+      legend.title = element_text(size = base_size*0.8, face = "bold", hjust = 0, color = "white"),  
+      legend.position = "right",  
+      legend.text.align = NULL,  
+      legend.title.align = NULL,  
+      legend.direction = "vertical",  
+      legend.box = NULL, 
+      # Specify panel options
+      panel.background = element_rect(fill = "black", color  =  NA),  
+      panel.border = element_blank(),  
+      panel.grid.major = element_blank(),  
+      panel.grid.minor = element_blank(),  
+      panel.spacing = unit(0.5, "lines"),   
+      # Specify facetting options
+      strip.background = element_blank(), #(fill = "grey30", color = "grey10"),  
+      strip.text.x = element_text(size = base_size*0.8, color = "white", face = "italic"),  
+      strip.text.y = element_text(size = base_size*0.8, color = "white",angle = -90),  
+      # Specify plot options
+      plot.background = element_rect(color = "black", fill = "black"),  
+      plot.title = element_text(size = base_size*1.2, color = "white"),  
+      plot.margin = unit(rep(1, 4), "lines")
+      
+    )
   
 }
