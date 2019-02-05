@@ -1,6 +1,6 @@
 
 
-target_folder_general <- c("/media/ella/raid5/timelapses/2019-01-22_15-48-35")
+target_folder_general <- c("/media/ella/raid5/timelapses/2019-01-22_15-48-35", "/media/ella/raid5/timelapses/2019-01-23_16-07-02")
 target_folder_analysis <- file.path(target_folder_general, "analysis")
 target_folder_analysis_csvs <- list.files(target_folder_analysis,pattern=".+\\.csv", full.names = TRUE)
 

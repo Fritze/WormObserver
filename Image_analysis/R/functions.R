@@ -151,12 +151,14 @@ calculate_overview_statistics <- function(offset,max_number_gaps,duration) {
     filter(Number_of_gaps < max_number_gaps) %>%
     filter(Duration_of_track>duration) %>%
     group_by(grouping) %>%
+    mutate(x_lag=location_x - lag(location_x,n=offset), y_lag = location_y -lag(location_y, n=offset)) %>%
+    mutate(x_lead=lead(location_x, n=offset)-location_x, y_lead=lead(location_y, n=offset)-location_y) %>%
     mutate(angle=180-suppressWarnings(as.numeric(mapply(angle,x_lag,y_lag,x_lead,y_lead)))*180/pi) %>%
     group_by(grouping) %>%
     na.omit() %>%
     mutate(mean_angle = mean(angle), na.rm=TRUE) %>%
     group_by(TrackID, tp, minutes, dataset_ID,file_name,Duration_of_track) %>%
-    summarise(mean_angle=mean(angle), mean_velocity=mean(Mean_velocity),mean_displacement=mean(Track_displacement))
+    summarise(mean_size=mean(Size), mean_eccentricity=mean(Eccentricity),mean_angle=mean(angle), sd_velocity=mean(Velocity_standard_deviation),mean_velocity=mean(Mean_velocity),mean_displacement=mean(Track_displacement))
   
 }
 
