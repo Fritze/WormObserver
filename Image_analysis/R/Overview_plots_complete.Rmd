@@ -1,3 +1,9 @@
+---
+title: "WormObserver_analysis_complete"
+output: html_document
+---
+#functions
+```{r setup, echo=FALSE}
 library("plyr")
 library("dplyr")
 library("ggplot2")
@@ -14,7 +20,8 @@ library("ggpubr")
 library("RColorBrewer")
 library("shiny")
 library("shinyWidgets")
-
+library("plotly")
+library("ggridges")
 
 #functions
 
@@ -147,17 +154,18 @@ plot_image_with_path <- function(offset,selected_minute,which_dataset,max_number
 
 calculate_overview_statistics <- function(offset,max_number_gaps,duration) {
   dfp <<- data %>%
+    mutate(grouping = paste0(dataset_ID, "_",TrackID, "_", tp)) %>%
     filter(Number_of_gaps < max_number_gaps) %>%
     filter(Duration_of_track>duration) %>%
-    group_by(TrackID, tp, dataset_ID) %>%
+    group_by(grouping) %>%
     mutate(x_lag=location_x - lag(location_x,n=offset), y_lag = location_y -lag(location_y, n=offset)) %>%
     mutate(x_lead=lead(location_x, n=offset)-location_x, y_lead=lead(location_y, n=offset)-location_y) %>%
     mutate(angle=180-suppressWarnings(as.numeric(mapply(angle,x_lag,y_lag,x_lead,y_lead)))*180/pi) %>%
-    group_by(TrackID, tp, dataset_ID) %>%
+    group_by(grouping) %>%
     na.omit() %>%
     mutate(mean_angle = mean(angle), na.rm=TRUE) %>%
     group_by(TrackID, tp, minutes, dataset_ID,file_name,Duration_of_track) %>%
-    summarise(mean_angle=mean(angle), mean_sd_velocity=mean(Velocity_standard_deviation),mean_velocity=mean(Mean_velocity),mean_displacement=mean(Track_displacement), mean_ang_velocity=mean(angle)/mean(Mean_velocity))
+    summarise(mean_size=mean(Size), mean_eccentricity=mean(Eccentricity),mean_angle=mean(angle), sd_velocity=mean(Velocity_standard_deviation),mean_velocity=mean(Mean_velocity),mean_displacement=mean(Track_displacement))
   
 }
 
@@ -206,3 +214,158 @@ theme_black = function(base_size = 12, base_family = "") {
     )
   
 }
+```
+
+
+#load data and metadata
+```{r, include=FALSE}
+target_folder_general <- c("/media/ella/raid5/timelapses/2019-01-22_15-48-35", "/media/ella/raid5/timelapses/2019-01-23_16-07-02", "/media/ella/raid5/timelapses/2019-01-24_16-24-21","/media/ella/raid5/timelapses/2019-02-06_09-38-04")
+
+```
+
+
+```{r, echo=FALSE}
+target_folder_analysis <- file.path(target_folder_general, "analysis")
+target_folder_analysis_csvs <- list.files(target_folder_analysis,pattern=".+\\.csv", full.names = TRUE)
+
+
+#### This is the for loop that pastes all .csv files together
+##### _Additionally, time differences are calculated and transformed to minutes
+#load metadata
+metadata_file <- list.files(target_folder_general,pattern=".+\\_metadata.txt", full.names = TRUE)
+metadata <- data.frame(sapply(metadata_file, function (x) readLines(x, warn=FALSE)), stringsAsFactors = FALSE)
+colnames(metadata) <- as.character(gsub(".+\\/([0-9]+\\-[0-9]+\\-[0-9]+\\_[0-9]+\\-[0-9]+\\-[0-9]+)\\/.+", "\\1",target_folder_analysis))
+
+time_elapsed <- apply(metadata,2, function(x) as.numeric(gsub(".+\\s([0-9]+).*", "\\1",x[grepl("Time elapsed.+\\:\\s(.+)",x)])))
+time_elapsed <- as.data.frame(time_elapsed)
+time_elapsed$dataset <- gsub(".+\\/([0-9]+\\-[0-9]+\\-[0-9]+\\_[0-9]+\\-[0-9]+\\-[0-9]+)\\/.+", "\\1",rownames(time_elapsed))
+
+
+#timepoint length, in minutes
+#attention to divide everything by 60, because this value is entered in seconds
+timepoint_length <- apply(metadata,2, function(x) as.numeric(gsub(".+\\:\\s(.+)", "\\1",x[grepl("Timepoint length\\:\\s(.+)\\.",x)])))/60
+timepoint_length <- as.data.frame(timepoint_length)
+timepoint_length$dataset <- gsub(".+\\/([0-9]+\\-[0-9]+\\-[0-9]+\\_[0-9]+\\-[0-9]+\\-[0-9]+)\\/.+", "\\1",rownames(timepoint_length))
+
+#timestep, in minutes
+timestep_length <- apply(metadata,2, function(x) as.numeric(gsub(".+every(.+)minutes\\.", "\\1",x[grepl(".+every(.+)minutes\\.",x)])))
+timestep_length <- as.data.frame(timestep_length)
+timestep_length$dataset <- gsub(".+\\/([0-9]+\\-[0-9]+\\-[0-9]+\\_[0-9]+\\-[0-9]+\\-[0-9]+)\\/.+", "\\1",rownames(timestep_length))
+
+
+#apply the import function defined above to all csv files (from all timelapses)
+data <- ldply(.data=target_folder_analysis_csvs, .fun=import) %>%
+  #replace all whitespaces in column names with "_"
+  rename_all(funs(gsub("\\s", "_",.))) %>%
+  inner_join(., time_elapsed,by = c("dataset_ID" = "dataset")) %>%
+  inner_join(., timepoint_length,by = c("dataset_ID" = "dataset")) %>%
+  inner_join(., timestep_length,by = c("dataset_ID" = "dataset")) %>%
+  mutate(minutes = time_elapsed + ((tp-1)*timepoint_length+(tp-1)*timestep_length))
+
+
+```
+
+##overview plots
+```{r, include=FALSE}
+#calculate_overview_statistics(offset,max_number_gaps,duration)
+#angle between 1s, only minimum 10s tracked
+calculate_overview_statistics(5,5,50)
+```
+
+##Plots1
+
+```{r, echo=FALSE}
+dfp %>%
+  select(minutes, dataset_ID, TrackID) %>%
+  group_by(minutes, dataset_ID) %>%
+  summarise(.,n = n_distinct(TrackID)) %>%
+  ggplot(.,aes(x=minutes,y=n,fill=dataset_ID,colour=dataset_ID))+
+  scale_colour_manual(values = wes_palette("Darjeeling1"))+
+  geom_line()+
+  geom_smooth(method="loess")+
+  ylab("Number of tracked worms")+
+  theme_classic()
+
+data %>%
+  select(minutes,dataset_ID, TrackID, Duration_of_track) %>%
+  group_by(minutes, dataset_ID) %>%
+  summarise(., mean_duration =mean(Duration_of_track)/25) %>%
+  ggplot(.,aes(x=minutes,y=mean_duration,fill=dataset_ID,colour=dataset_ID))+
+  scale_colour_manual(values = wes_palette("Darjeeling1"))+
+  geom_line()+
+  geom_smooth(method="loess")+
+  geom_hline(yintercept=15,color="red")+
+  ylab("Mean duration of tracks (seconds)")+
+  theme_black()
+
+
+```
+
+```{r, echo=TRUE}
+dfp2 <-  dfp %>%
+  group_by(minutes,dataset_ID)%>%
+  summarise(size_median_per_minute=median(mean_size),eccentricity_median_per_minute=median(mean_eccentricity),angle_median_per_minute=median(mean_angle),velocity_median_per_minute=median(mean_velocity), sd_velocity_median_per_minute=median(sd_velocity),displacement_median_per_minute=median(mean_displacement))
+
+params <- c("size_median_per_minute","eccentricity_median_per_minute","angle_median_per_minute", "velocity_median_per_minute", "sd_velocity_median_per_minute", "displacement_median_per_minute")
+for (i in params){
+print(ggplot(dfp2, aes_string(x="minutes",y=i))+
+      #geom_ribbon(aes(ymin =  median_angle_per_minute - iqr_angle_per_minute, ymax = median_angle_per_minute + iqr_angle_per_minute))+
+      geom_line(size=1)+
+      ggtitle(i)+
+      # ylim(c(0,180))+
+      theme_classic()+
+      facet_wrap(~dataset_ID)
+)
+}
+
+```
+
+
+```{r, echo=TRUE}
+datasets <- unique(dfp$dataset_ID)
+for (i in datasets){
+  dfp2 <- dfp %>%
+    filter(dataset_ID == i)
+  print(ggplot(dfp2,aes(x = mean_angle, y = mean_velocity))+
+    stat_density2d(geom="raster", aes(fill = ..density..),contour = FALSE)+
+    scale_fill_viridis(option = "inferno")+
+    scale_x_reverse(limits=c(180,0), breaks = seq(180, 0, by = -36))+
+    scale_y_continuous(limits=c(0,15), breaks = seq(0,15, by = 5))+
+    theme_classic2()+
+    ggtitle(i)
+  )
+}
+
+
+```
+
+
+```{r, echo=TRUE}
+test <- MASS::geyser
+
+data <- data.frame(dfp2$mean_angle,dfp2$mean_velocity)
+colnames(data) <- c("mean_angle","mean_velocity")
+data
+kd <- with(data, MASS::kde2d(mean_angle,mean_velocity, n = 50))
+p <- plot_ly(x = kd$x, y = kd$y, z = kd$z) %>% add_surface()
+p
+chart_link = api_create(p, filename="surface-2")
+chart_link
+
+```
+
+```{r, echo=TRUE}
+
+params <- c("mean_angle", "mean_velocity", "mean_displacement", "mean_size")
+for (i in params){
+print(ggplot(dfp,aes_string(x = i, y = "minutes",group="minutes",height="..density..")) +
+    geom_density_ridges_gradient(aes(fill = ..x..), scale = 5, size = 0.3) +
+    scale_fill_gradientn(
+      colours = c("#0D0887FF", "#CC4678FF", "#F0F921FF"),
+      name = i)+
+    theme_classic()+
+    facet_wrap(~dataset_ID)
+  )
+}
+
+```
