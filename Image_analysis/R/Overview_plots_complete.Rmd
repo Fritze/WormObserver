@@ -164,7 +164,7 @@ calculate_overview_statistics <- function(offset,max_number_gaps,duration) {
     group_by(grouping) %>%
     na.omit() %>%
     mutate(mean_angle = mean(angle), na.rm=TRUE) %>%
-    group_by(TrackID, tp, minutes, dataset_ID,file_name,Duration_of_track) %>%
+    group_by(TrackID, tp, minutes, dataset_ID,file_name,plate_type,Duration_of_track) %>%
     summarise(mean_size=mean(Size), mean_eccentricity=mean(Eccentricity),mean_angle=mean(angle), sd_velocity=mean(Velocity_standard_deviation),mean_velocity=mean(Mean_velocity),mean_displacement=mean(Track_displacement))
   
 }
@@ -247,10 +247,16 @@ timepoint_length <- apply(metadata,2, function(x) as.numeric(gsub(".+\\:\\s(.+)"
 timepoint_length <- as.data.frame(timepoint_length)
 timepoint_length$dataset <- gsub(".+\\/([0-9]+\\-[0-9]+\\-[0-9]+\\_[0-9]+\\-[0-9]+\\-[0-9]+)\\/.+", "\\1",rownames(timepoint_length))
 
+
 #timestep, in minutes
 timestep_length <- apply(metadata,2, function(x) as.numeric(gsub(".+every(.+)minutes\\.", "\\1",x[grepl(".+every(.+)minutes\\.",x)])))
 timestep_length <- as.data.frame(timestep_length)
 timestep_length$dataset <- gsub(".+\\/([0-9]+\\-[0-9]+\\-[0-9]+\\_[0-9]+\\-[0-9]+\\-[0-9]+)\\/.+", "\\1",rownames(timestep_length))
+
+#plate type
+plate_type <- apply(metadata,2, function(x) gsub(".+\\,(.+)\\,.+", "\\1",x[grepl("Timelapse plate type\\:",x)]))
+plate_type <- as.data.frame(plate_type)
+plate_type$dataset <- gsub(".+\\/([0-9]+\\-[0-9]+\\-[0-9]+\\_[0-9]+\\-[0-9]+\\-[0-9]+)\\/.+", "\\1",rownames(plate_type))
 
 
 #apply the import function defined above to all csv files (from all timelapses)
@@ -260,8 +266,8 @@ data <- ldply(.data=target_folder_analysis_csvs, .fun=import) %>%
   inner_join(., time_elapsed,by = c("dataset_ID" = "dataset")) %>%
   inner_join(., timepoint_length,by = c("dataset_ID" = "dataset")) %>%
   inner_join(., timestep_length,by = c("dataset_ID" = "dataset")) %>%
+  inner_join(., plate_type, by = c("dataset_ID" = "dataset")) %>%
   mutate(minutes = time_elapsed + ((tp-1)*timepoint_length+(tp-1)*timestep_length))
-
 
 ```
 
@@ -302,9 +308,12 @@ data %>%
 ```
 
 ```{r, echo=TRUE}
-dfp2 <-  dfp %>%
-  group_by(minutes,dataset_ID)%>%
+dfp2 <- dfp %>%
+  group_by(minutes,dataset_ID,plate_type)%>%
+  unite("experiment", c("dataset_ID","plate_type"), sep= " ")%>%
+  group_by(experiment,minutes)%>%
   summarise(size_median_per_minute=median(mean_size),eccentricity_median_per_minute=median(mean_eccentricity),angle_median_per_minute=median(mean_angle),velocity_median_per_minute=median(mean_velocity), sd_velocity_median_per_minute=median(sd_velocity),displacement_median_per_minute=median(mean_displacement))
+
 
 params <- c("size_median_per_minute","eccentricity_median_per_minute","angle_median_per_minute", "velocity_median_per_minute", "sd_velocity_median_per_minute", "displacement_median_per_minute")
 for (i in params){
@@ -314,28 +323,27 @@ print(ggplot(dfp2, aes_string(x="minutes",y=i))+
       ggtitle(i)+
       # ylim(c(0,180))+
       theme_classic()+
-      facet_wrap(~dataset_ID)
+      facet_wrap(~experiment)
 )
 }
-
+?unite
 ```
 
 
-```{r, echo=TRUE}
-datasets <- unique(dfp$dataset_ID)
-for (i in datasets){
-  dfp2 <- dfp %>%
-    filter(dataset_ID == i)
-  print(ggplot(dfp2,aes(x = mean_angle, y = mean_velocity))+
-    stat_density2d(geom="raster", aes(fill = ..density..),contour = FALSE)+
-    scale_fill_viridis(option = "inferno")+
-    scale_x_reverse(limits=c(180,0), breaks = seq(180, 0, by = -36))+
-    scale_y_continuous(limits=c(0,15), breaks = seq(0,15, by = 5))+
-    theme_classic2()+
-    ggtitle(i)
-  )
-}
 
+```{r, echo=TRUE}
+dfp2 <- dfp %>%
+  group_by(minutes,dataset_ID,plate_type)%>%
+  unite("experiment", c("dataset_ID","plate_type"), sep= " ")
+
+ggplot(dfp2,aes(x = mean_angle, y = mean_velocity))+
+  stat_density2d(geom="raster", aes(fill = ..density..),contour = FALSE)+
+  scale_fill_viridis(option = "inferno")+
+  scale_x_reverse(limits=c(180,0), breaks = seq(180, 0, by = -36))+
+  scale_y_continuous(limits=c(0,15), breaks = seq(0,15, by = 5))+
+  theme_classic2()+
+  ggtitle("2D density velocity against angle velocity")+
+  facet_wrap(~experiment)
 
 ```
 
