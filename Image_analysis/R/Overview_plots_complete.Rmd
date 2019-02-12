@@ -6,6 +6,7 @@ output: html_document
 ```{r setup, echo=FALSE}
 library("plyr")
 library("dplyr")
+library("tidyr")
 library("ggplot2")
 library("rmarkdown")
 library("knitr")
@@ -22,6 +23,7 @@ library("shiny")
 library("shinyWidgets")
 library("plotly")
 library("ggridges")
+library("gganimate")
 
 #functions
 
@@ -60,14 +62,18 @@ distance <- function(x1, y1, x2, y2) {
 }
 
 
-plot_image_with_path <- function(offset,selected_minute,which_dataset,max_number_gaps,duration,which_frame,color_path,with_image) {
+plot_image_with_path <- function(offset,time_input_type,time_input,which_dataset,max_number_gaps,duration,which_frame,color_path,with_image) {
   
   myPalette <- colorRampPalette(rev(brewer.pal(11, "Spectral")))
   sc <- scale_colour_gradientn(colours = myPalette(100), limits=c(0, 180)) 
   data.sub <- data %>% filter(dataset_ID == which_dataset)
+  if(time_input_type == "minutes"){
   all_tps_in_minutes <- unique(data.sub$minutes)
-  corresponding_minute <- all_tps_in_minutes[which(abs(all_tps_in_minutes-selected_minute)==min(abs(all_tps_in_minutes-selected_minute)))]
+  corresponding_minute <- all_tps_in_minutes[which(abs(all_tps_in_minutes-time_input)==min(abs(all_tps_in_minutes-time_input)))]
   selected_tp <- unique(data[data$minutes == corresponding_minute,"tp"])
+  }else{
+    selected_tp <- time_input
+  }
   data_for_plotting <<- data %>%
     filter(tp == selected_tp, dataset_ID == which_dataset) %>%
     filter(Number_of_gaps < max_number_gaps) %>%
@@ -86,8 +92,8 @@ plot_image_with_path <- function(offset,selected_minute,which_dataset,max_number
     theme(aspect.ratio = 1024/1024)+
     coord_cartesian(ylim=c(0, 1023))+
     scale_x_continuous(expand = c(0, 0), limits= c(0,1023)) + scale_y_continuous(expand = c(0, 0),trans="reverse")+
-    theme_void()+
-    ggtitle(paste0("tp_",selected_tp))
+    theme_void()
+    #ggtitle(paste0("tp_",selected_tp))
   if(with_image == "with_image"){
     tp <- paste0("tp_",selected_tp)
     frame_png <- paste0(sprintf("%03d", which_frame),".png")
@@ -326,10 +332,87 @@ print(ggplot(dfp2, aes_string(x="minutes",y=i))+
       facet_wrap(~experiment)
 )
 }
-?unite
 ```
+##Plot gifs of parameters
+```{r, echo=TRUE, out.width = '4%'}
 
 
+chosen_dataset <- "2019-01-23_16-07-02"
+dfp2 <- dfp %>%
+  group_by(minutes,dataset_ID,plate_type,tp)%>%
+  filter(mean_displacement > 100)%>%
+  summarise(size_median_per_minute=median(mean_size),eccentricity_median_per_minute=median(mean_eccentricity),angle_median_per_minute=median(mean_angle),velocity_median_per_minute=median(mean_velocity), sd_velocity_median_per_minute=median(sd_velocity),displacement_median_per_minute=median(mean_displacement))%>%
+  filter(dataset_ID == chosen_dataset)
+
+for (i in dfp2$tp){
+  
+dfp3 <- dfp2 %>%
+    filter(tp <= i)
+  
+  p1 <- ggplot(dfp3,aes_string(x="minutes",y="angle_median_per_minute"))+
+      geom_line(size=1,color="white")+
+      scale_x_continuous(limits=c(0, max(dfp2$minutes)))+
+      scale_y_continuous(limits=c(0, max(dfp2$angle_median_per_minute)))+
+      xlab("")+
+      ylab("median\nangle")+
+      theme_black()+
+      theme(axis.title.x = element_text(size = rel(1.5)),
+            axis.title.y = element_text(size = rel(1.5)))       
+  
+#plot_image_with_path(offset,selected_minute,which_dataset,max_number_gaps,duration,which_frame,color_path,with_image) 
+  p2 <- plot_image_with_path(5,"tp",i,chosen_dataset,5,100,1,"mean_angle","no")+theme_black()+xlab("")+ylab("")+
+      theme(axis.title=element_blank(),
+        axis.text=element_blank(),
+        axis.ticks=element_blank(),
+        legend.key.height=unit(0.5,"line"))
+
+
+  p3 <- ggplot(dfp3,aes_string(x="minutes",y="velocity_median_per_minute"))+
+      geom_line(size=1,color="white")+
+      scale_x_continuous(limits=c(0, max(dfp2$minutes)))+
+      scale_y_continuous(limits=c(0, max(dfp2$velocity_median_per_minute)))+
+      xlab("")+
+      ylab("median\nvelocity")+
+      theme_black()+
+      theme(axis.title.x = element_text(size = rel(1.5)),
+            axis.title.y = element_text(size = rel(1.5)))  
+
+  p4 <- plot_image_with_path(5,"tp",i,chosen_dataset,5,100,1,"velocity","no")+theme_black()+xlab("")+ylab("")+
+      theme(axis.title=element_blank(),
+        axis.text=element_blank(),
+        axis.ticks=element_blank(),
+        legend.key.height=unit(0.5,"line"))
+
+  
+  p5 <- ggplot(dfp3,aes_string(x="minutes",y="displacement_median_per_minute"))+
+      geom_line(size=1,color="white")+
+      scale_x_continuous(limits=c(0, max(dfp2$minutes)))+
+      scale_y_continuous(limits=c(0, max(dfp2$displacement_median_per_minute)))+
+      xlab("minutes")+
+      ylab("median\ndisplacement")+
+      theme_black()+
+      theme(axis.title.x = element_text(size = rel(1.5)),
+            axis.title.y = element_text(size = rel(1.5)))  
+  
+  p6 <- plot_image_with_path(5,"tp",i,chosen_dataset,5,100,1,"displacement","no")+theme_black()+xlab("")+ylab("")+
+      theme(axis.title=element_blank(),
+        axis.text=element_blank(),
+        axis.ticks=element_blank(),
+        legend.key.height=unit(0.5,"line"))
+
+  
+ p_all <- plot_grid(p1, p2, p3,p4,p5,p6,
+          ncol = 2, nrow = 3,
+          rel_widths = c(1,1))
+
+ p_all
+ save_plot(paste0("plots/",chosen_dataset,"_",round(i,3),".png"), p_all, base_height=10,base_aspect_ratio = 1.1)
+ print(paste0("Saved plot Nr.",round(i,3)))
+ 
+}
+
+
+```
 
 ```{r, echo=TRUE}
 dfp2 <- dfp %>%
