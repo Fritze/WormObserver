@@ -33,12 +33,14 @@ ui <- fixedPage(
                           "Mean angle" = "mean_angle",
                           "SD angle" = "sd_local_angle",
                           "Local angle" = "angle",
+                          "Eccentricity" = "eccentricity",
                           "Mean velocity" = "velocity",
                           "SD velocity" = "sd_local_velocity",
                           "Local velocity" = "local_velocity",
                           "Track displacement" = "displacement",
                           "Track length (s)" = "length",
-                          "Frame"= "frame"
+                          "Frame"= "frame",
+                          "Turns" = "turns"
                         ))
     ),
     column(6,
@@ -87,7 +89,7 @@ server <- function(input, output,session) {
     selected_frame <-input$selected_frame
     selected_offset <- input$selected_offset
     selected_duration <- input$selected_duration
-    plot_image_with_path(selected_offset,selected_minute,selected_dataset,max_number_gaps, selected_duration,selected_frame,path_color,"with_image")
+    plot_image_with_path(selected_offset,"minutes",selected_minute,selected_dataset,max_number_gaps, selected_duration,selected_frame,path_color,"with_image")
   },height = 800, width = 800)
   
   #output$click_info <- renderPrint({

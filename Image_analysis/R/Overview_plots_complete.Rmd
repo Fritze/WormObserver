@@ -24,11 +24,12 @@ library("shinyWidgets")
 library("plotly")
 library("ggridges")
 library("gganimate")
+library("cowplot")
 
 #functions
 
 import <- function (file){
-  ds <- read_csv(file,col_types = cols(.default = col_double(),TrackID = col_character(),frame = col_integer(),tp = col_integer()))
+  ds <- read_csv(file,col_types = cols())
   #append column with file name
   ds$file_name <- file
   #extract the timelapse name from the folder structure
@@ -61,10 +62,9 @@ distance <- function(x1, y1, x2, y2) {
   }
 }
 
+  myPalette <- colorRampPalette(rev(brewer.pal(11, "Spectral")))
 
 plot_image_with_path <- function(offset,time_input_type,time_input,which_dataset,max_number_gaps,duration,which_frame,color_path,with_image) {
-  
-  myPalette <- colorRampPalette(rev(brewer.pal(11, "Spectral")))
   sc <- scale_colour_gradientn(colours = myPalette(100), limits=c(0, 180)) 
   data.sub <- data %>% filter(dataset_ID == which_dataset)
   if(time_input_type == "minutes"){
@@ -75,6 +75,7 @@ plot_image_with_path <- function(offset,time_input_type,time_input,which_dataset
     selected_tp <- time_input
   }
   data_for_plotting <<- data %>%
+    select_if(function(x){!all(is.na(x))}) %>%
     filter(tp == selected_tp, dataset_ID == which_dataset) %>%
     filter(Number_of_gaps < max_number_gaps) %>%
     mutate(grouping = paste0(dataset_ID, "_",TrackID, "_", tp)) %>%
@@ -84,9 +85,10 @@ plot_image_with_path <- function(offset,time_input_type,time_input,which_dataset
     mutate(x_lead=lead(location_x, n=offset)-location_x, y_lead=lead(location_y, n=offset)-location_y) %>%
     mutate(angle=180-suppressWarnings(as.numeric(mapply(angle,x_lag,y_lag,x_lead,y_lead)))*180/pi) %>%
     mutate(local_velocity=suppressWarnings(as.numeric(mapply(distance,x_lag,y_lag,x_lead,y_lead)))) %>%
+    mutate(turn = ifelse(Eccentricity < 0.8 | angle < 50,"YES","NO")) %>%
     group_by(TrackID) %>%
     na.omit() %>%
-    mutate(mean_angle = mean(angle),sd_local_angle=sd(angle),displacement=mean(Track_displacement),mean_velocity=Mean_velocity,track_length_secs=mean(Duration_of_track/downsampled_to),local_velocity=local_velocity,sd_local_velocity=sd(local_velocity))
+    mutate(mean_angle = mean(angle),sd_local_angle=sd(angle),displacement=mean(Track_displacement),mean_velocity=Mean_velocity,track_length_secs=mean(Duration_of_track/downsampled_to),local_velocity=local_velocity,sd_local_velocity=sd(local_velocity), turns=turn,eccentricity=Eccentricity)
   
   p <- ggplot(data_for_plotting)+
     theme(aspect.ratio = 1024/1024)+
@@ -148,6 +150,15 @@ plot_image_with_path <- function(offset,time_input_type,time_input,which_dataset
     p <- p +
       sc +
       geom_path(aes(x=location_x, y=location_y,col=sd_local_angle, group=grouping),size=0.8, alpha=0.75)
+  }else if(color_path == "eccentricity"){
+    sc <- scale_colour_gradientn(colours = myPalette(100), limits=c(0, max(0.9)))
+    p <- p +
+      sc +
+      geom_path(aes(x=location_x, y=location_y,col=eccentricity, group=grouping),size=0.8, alpha=0.75)
+  }else if(color_path == "turns"){
+    p <- p +
+      scale_colour_hue() +
+      geom_path(aes(x=location_x, y=location_y,col=turns, group=grouping),size=0.8, alpha=0.75)
   }else{
     sc <- scale_colour_gradientn(colours = myPalette(100), limits=c(0, 180))
     p <- p +
@@ -160,6 +171,7 @@ plot_image_with_path <- function(offset,time_input_type,time_input,which_dataset
 
 calculate_overview_statistics <- function(offset,max_number_gaps,duration) {
   dfp <<- data %>%
+    select_if(function(x){!all(is.na(x))}) %>%
     mutate(grouping = paste0(dataset_ID, "_",TrackID, "_", tp)) %>%
     filter(Number_of_gaps < max_number_gaps) %>%
     filter(Duration_of_track>duration) %>%
@@ -167,12 +179,28 @@ calculate_overview_statistics <- function(offset,max_number_gaps,duration) {
     mutate(x_lag=location_x - lag(location_x,n=offset), y_lag = location_y -lag(location_y, n=offset)) %>%
     mutate(x_lead=lead(location_x, n=offset)-location_x, y_lead=lead(location_y, n=offset)-location_y) %>%
     mutate(angle=180-suppressWarnings(as.numeric(mapply(angle,x_lag,y_lag,x_lead,y_lead)))*180/pi) %>%
-    group_by(grouping) %>%
+    mutate(turn = ifelse(Eccentricity < 0.9 | angle < 50,"YES","NO")) %>%
+    group_by(TrackID, tp, minutes, hours,dataset_ID,file_name,plate_type,Duration_of_track) %>%
     na.omit() %>%
-    mutate(mean_angle = mean(angle), na.rm=TRUE) %>%
-    group_by(TrackID, tp, minutes, dataset_ID,file_name,plate_type,Duration_of_track) %>%
-    summarise(mean_size=mean(Size), mean_eccentricity=mean(Eccentricity),mean_angle=mean(angle), sd_velocity=mean(Velocity_standard_deviation),mean_velocity=mean(Mean_velocity),mean_displacement=mean(Track_displacement))
+    summarise(mean_size=mean(Size), mean_eccentricity=mean(Eccentricity),mean_angle=mean(angle), sd_velocity=mean(Velocity_standard_deviation),mean_velocity=mean(Mean_velocity),mean_displacement=mean(Track_displacement),turns=sum(turn == "YES")
+    )
   
+}
+
+calculate_centered <- function(offset,max_number_gaps,duration) {
+  dfp_centered <<- data %>%
+    select_if(function(x){!all(is.na(x))}) %>%
+    mutate(grouping = paste0(dataset_ID, "_",TrackID, "_", tp)) %>%
+    filter(Number_of_gaps < max_number_gaps) %>%
+    filter(Duration_of_track>duration) %>%
+    group_by(grouping) %>%
+    mutate(x_lag=location_x - lag(location_x,n=offset), y_lag = location_y -lag(location_y, n=offset)) %>%
+    mutate(x_lead=lead(location_x, n=offset)-location_x, y_lead=lead(location_y, n=offset)-location_y) %>%
+    mutate(angle=180-suppressWarnings(as.numeric(mapply(angle,x_lag,y_lag,x_lead,y_lead)))*180/pi) %>%
+    mutate(first_x = first(location_x),first_y = first(location_y))%>%
+    mutate(x_centered=location_x - first_x, y_centered=location_y - first_y)%>%
+    mutate(turn = ifelse(Eccentricity < 0.9 | angle < 50,"YES","NO"))%>%
+    na.omit()
 }
 
 
@@ -225,12 +253,11 @@ theme_black = function(base_size = 12, base_family = "") {
 
 #load data and metadata
 ```{r, include=FALSE}
-target_folder_general <- c("/media/ella/raid5/timelapses/2019-01-22_15-48-35", "/media/ella/raid5/timelapses/2019-01-23_16-07-02", "/media/ella/raid5/timelapses/2019-01-24_16-24-21","/media/ella/raid5/timelapses/2019-02-06_09-38-04")
-
+target_folder_general <- c("/media/ella/raid5/timelapses/2019-03-11_17-54-09")
 ```
 
 
-```{r, echo=FALSE}
+```{r, echo=FALSE, messages=FALSE}
 target_folder_analysis <- file.path(target_folder_general, "analysis")
 target_folder_analysis_csvs <- list.files(target_folder_analysis,pattern=".+\\.csv", full.names = TRUE)
 
@@ -273,25 +300,36 @@ data <- ldply(.data=target_folder_analysis_csvs, .fun=import) %>%
   inner_join(., timepoint_length,by = c("dataset_ID" = "dataset")) %>%
   inner_join(., timestep_length,by = c("dataset_ID" = "dataset")) %>%
   inner_join(., plate_type, by = c("dataset_ID" = "dataset")) %>%
-  mutate(minutes = time_elapsed + ((tp-1)*timepoint_length+(tp-1)*timestep_length))
+  mutate(minutes = time_elapsed + ((tp-1)*timepoint_length+(tp-1)*timestep_length)) %>%
+  mutate(hours= minutes/60)
 
 ```
 
 ##overview plots
 ```{r, include=FALSE}
 #calculate_overview_statistics(offset,max_number_gaps,duration)
-#angle between 1s, only minimum 10s tracked
-calculate_overview_statistics(5,5,50)
+secs_angle_offset = 1
+max_gaps = 3 
+secs_min_tracked = 30
+downsampled_fps <- unique(na.omit(data$downsampled_to))
+
+
+
+calculate_overview_statistics(secs_angle_offset*downsampled_fps,5,secs_min_tracked*downsampled_fps)
+
+
 ```
 
 ##Plots1
 
 ```{r, echo=FALSE}
+
+
 dfp %>%
-  select(minutes, dataset_ID, TrackID) %>%
-  group_by(minutes, dataset_ID) %>%
+  select(hours, dataset_ID, TrackID) %>%
+  group_by(hours, dataset_ID) %>%
   summarise(.,n = n_distinct(TrackID)) %>%
-  ggplot(.,aes(x=minutes,y=n,fill=dataset_ID,colour=dataset_ID))+
+  ggplot(.,aes(x=hours,y=n,fill=dataset_ID,colour=dataset_ID))+
   scale_colour_manual(values = wes_palette("Darjeeling1"))+
   geom_line()+
   geom_smooth(method="loess")+
@@ -299,31 +337,34 @@ dfp %>%
   theme_classic()
 
 data %>%
-  select(minutes,dataset_ID, TrackID, Duration_of_track) %>%
-  group_by(minutes, dataset_ID) %>%
-  summarise(., mean_duration =mean(Duration_of_track)/25) %>%
-  ggplot(.,aes(x=minutes,y=mean_duration,fill=dataset_ID,colour=dataset_ID))+
+  select(hours,dataset_ID, TrackID, Duration_of_track) %>%
+  group_by(hours, dataset_ID) %>%
+  summarise(., mean_duration =mean(Duration_of_track)/downsampled_fps) %>%
+  ggplot(.,aes(x=hours,y=mean_duration,fill=dataset_ID,colour=dataset_ID))+
   scale_colour_manual(values = wes_palette("Darjeeling1"))+
   geom_line()+
   geom_smooth(method="loess")+
-  geom_hline(yintercept=15,color="red")+
+  geom_hline(yintercept=secs_min_tracked,color="red")+
   ylab("Mean duration of tracks (seconds)")+
   theme_black()
 
 
 ```
 
+
+##Plot grouped images for standard parameters
 ```{r, echo=TRUE}
+
 dfp2 <- dfp %>%
-  group_by(minutes,dataset_ID,plate_type)%>%
+  group_by(hours,dataset_ID,plate_type)%>%
   unite("experiment", c("dataset_ID","plate_type"), sep= " ")%>%
-  group_by(experiment,minutes)%>%
-  summarise(size_median_per_minute=median(mean_size),eccentricity_median_per_minute=median(mean_eccentricity),angle_median_per_minute=median(mean_angle),velocity_median_per_minute=median(mean_velocity), sd_velocity_median_per_minute=median(sd_velocity),displacement_median_per_minute=median(mean_displacement))
+  group_by(experiment,hours)%>%
+  summarise(turns_median_per_minute = median(turns), size_median_per_minute=median(mean_size),eccentricity_median_per_minute=median(mean_eccentricity),angle_median_per_minute=median(mean_angle),velocity_median_per_minute=median(mean_velocity), sd_velocity_median_per_minute=median(sd_velocity),displacement_median_per_minute=median(mean_displacement))
 
 
-params <- c("size_median_per_minute","eccentricity_median_per_minute","angle_median_per_minute", "velocity_median_per_minute", "sd_velocity_median_per_minute", "displacement_median_per_minute")
+params <- c("turns_median_per_minute","size_median_per_minute","eccentricity_median_per_minute","angle_median_per_minute", "velocity_median_per_minute", "sd_velocity_median_per_minute", "displacement_median_per_minute")
 for (i in params){
-print(ggplot(dfp2, aes_string(x="minutes",y=i))+
+print(ggplot(dfp2, aes_string(x="hours",y=i))+
       #geom_ribbon(aes(ymin =  median_angle_per_minute - iqr_angle_per_minute, ymax = median_angle_per_minute + iqr_angle_per_minute))+
       geom_line(size=1)+
       ggtitle(i)+
@@ -333,6 +374,18 @@ print(ggplot(dfp2, aes_string(x="minutes",y=i))+
 )
 }
 ```
+
+##Plot grouped images for standard parameters
+```{r, echo=TRUE}
+
+glimpse(dfp)
+
+  
+
+
+```
+
+
 ##Plot gifs of parameters
 ```{r, echo=TRUE, out.width = '4%'}
 
@@ -413,6 +466,43 @@ dfp3 <- dfp2 %>%
 
 
 ```
+
+
+```{r, echo=TRUE}
+calculate_centered(secs_angle_offset*downsampled_fps,5,secs_min_tracked*downsampled_fps)
+
+
+p <- ggplot(dfp_centered)+
+    theme(aspect.ratio = 1024/1024)+
+    scale_x_continuous(limits= c(-1024,1024)) +
+    scale_y_continuous(limits= c(-1024,1024))+
+    geom_path(aes(x=x_centered, y=y_centered,col=minutes,group=grouping),size=0.8, alpha=0.3)+
+    scale_colour_gradientn(colours = myPalette(100), limits=c(0, max(data$minutes)))+
+    theme_void()
+
+p
+
+for (i in sort(unique(dfp_centered$tp))){
+  
+  dfp3 <- dfp_centered %>%
+    filter(tp == i)
+  
+  p_tp <- ggplot(dfp3)+
+    theme(aspect.ratio = 1024/1024)+
+    scale_x_continuous(limits= c(-1024,1024)) +
+    scale_y_continuous(limits= c(-1024,1024))+
+    geom_path(aes(x=x_centered, y=y_centered,col=TrackID,group=grouping),size=1)+
+    theme_void()+
+    theme(legend.position = "none")
+  p_tp
+  save_plot(paste0("plots/","centered_",round(i,3),".png"),p_tp,base_height=10,base_aspect_ratio = 1.1)
+  print(paste0("Saved plot Nr.",round(i,3)))
+}
+
+
+```
+
+
 
 ```{r, echo=TRUE}
 dfp2 <- dfp %>%
