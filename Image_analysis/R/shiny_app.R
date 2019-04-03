@@ -35,24 +35,20 @@ ui <- fixedPage(
                           "Local angle" = "angle",
                           "Eccentricity" = "eccentricity",
                           "Mean velocity" = "velocity",
-                          "SD velocity" = "sd_local_velocity",
-                          "Local velocity" = "local_velocity",
+                          "SD velocity" = "sd_local_velocity","Local velocity" = "local_velocity",
                           "Track displacement" = "displacement",
                           "Track length (s)" = "length",
                           "Frame"= "frame",
-                          "Turns" = "turns"
+                          "Turns" = "turns",
+                          "Turns ML" = "turns_ml"
                         ))
     ),
     column(6,
            helpText("Select the frame number."),
            br(),
            br(),
-           sliderInput(inputId = "selected_frame",
-                       label = "Frames",
-                       min = 1,
-                       max = max(data$frame),
-                       value = 10,
-                       ticks=FALSE),
+           uiOutput("frame_slider"),
+
            helpText("Chose the minimal duration for paths to be shown (frames)."),
            numericInput(inputId = "selected_duration",
                         label = "Duration",
@@ -64,11 +60,21 @@ ui <- fixedPage(
                         label="Max. gaps in track",
                         min=0,
                         max=10,
-                        value=5)
+                        value=5),
+           br(),
+           radioButtons("which_tracks", "Which tracks are shown?",
+                        c("Tracks in current frame" = "current_frame",
+                          "All tracks" = "all_frames"))
     )
   )
 )
 
+which_frame = 900
+
+d <- data %>%
+  group_by(minutes,TrackID) %>%
+  filter(any(frame==which_frame)) %>%
+  summarise(framemax = max(frame))
 
 
 server <- function(input, output,session) {
@@ -81,15 +87,28 @@ server <- function(input, output,session) {
                     choices= sort(unique(data.sub$minutes))
     )
   })
+  
+  #same for frame slider
+  output$frame_slider <- renderUI({
+  data.sub <- data %>% filter(dataset_ID == input$selected_dataset) 
+  sliderInput(inputId = "selected_frame",
+              label = "Frames",
+              min = 1,
+              max = max(data.sub$frame),
+              value = 10,
+              ticks=FALSE)
+  })
+  
   output$pathPlot <- renderPlot({
     selected_dataset <- input$selected_dataset
+    which_tracks <- input$which_tracks
     max_number_gaps <- input$max_number_gaps
     path_color <- input$path_color
     selected_minute <- input$selected_minute
     selected_frame <-input$selected_frame
     selected_offset <- input$selected_offset
     selected_duration <- input$selected_duration
-    plot_image_with_path(selected_offset,"minutes",selected_minute,selected_dataset,max_number_gaps, selected_duration,selected_frame,path_color,"with_image")
+    plot_image_with_path(which_tracks,selected_offset,"minutes",selected_minute,selected_dataset,max_number_gaps, selected_duration,selected_frame,path_color,"with_image")
   },height = 800, width = 800)
   
   #output$click_info <- renderPrint({
