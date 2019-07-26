@@ -25,18 +25,24 @@ library("plotly")
 library("ggridges")
 library("gganimate")
 library("cowplot")
+library("here")
+library("ggbeeswarm")
+library("ggsci")
 
 #functions
 
+
 import <- function (file){
-  ds <- read_csv(file,
-  col_types=cols(),
-  col_names=TRUE)
-  #append column with file name
-  ds$file_name <- file
-  #extract the timelapse name from the folder structure
-  ds$dataset_ID <- gsub(".+\\/([0-9]+\\-[0-9]+\\-[0-9]+\\_[0-9]+\\-[0-9]+\\-[0-9]+)\\/.+", "\\1",ds$file_name)
-  return(ds)
+  if (length(count.fields(file)) > 1){
+    ds <- read_csv(file,
+      col_types=cols(),
+      col_names=TRUE)
+    #append column with file name
+    ds$file_name <- file
+    #extract the timelapse name from the folder structure
+    ds$dataset_ID <- gsub(".+\\/([0-9]+\\-[0-9]+\\-[0-9]+\\_[0-9]+\\-[0-9]+\\-[0-9]+)\\/.+", "\\1",ds$file_name)
+    return(ds)
+  }
 }
 
 angle <- function(x1, y1, x2, y2) {
@@ -64,156 +70,327 @@ distance <- function(x1, y1, x2, y2) {
   }
 }
 
-  myPalette <- colorRampPalette(rev(brewer.pal(11, "Spectral")))
+myPalette <- colorRampPalette(rev(brewer.pal(11, "Spectral")))
 
-plot_image_with_path <- function(show_tracks,offset,time_input_type,time_input,which_dataset,max_number_gaps,duration,which_frame,color_path,with_image) {
-  sc <- scale_colour_gradientn(colours = myPalette(100), limits=c(0, 180)) 
-  data.sub <- data %>% filter(dataset_ID == which_dataset)
-  if(time_input_type == "minutes"){
-  all_tps_in_minutes <- unique(data.sub$minutes)
-  corresponding_minute <- all_tps_in_minutes[which(abs(all_tps_in_minutes-time_input)==min(abs(all_tps_in_minutes-time_input)))]
-  selected_tp <- unique(data.sub[data.sub$minutes == corresponding_minute,"tp"])
-  }else{
-    selected_tp <- time_input
-  }
-  data_for_plotting <<- data %>%
-    select_if(function(x){!all(is.na(x))}) %>%
-    filter(tp == selected_tp, dataset_ID == which_dataset) %>%
-    filter(Number_of_gaps < max_number_gaps) %>%
-    mutate(grouping = paste0(dataset_ID, "_",TrackID, "_", tp)) %>%
-    filter(Duration_of_track>duration) %>%
-    group_by(TrackID, tp, dataset_ID) %>%
-    #{ ifelse(Y ,add(.,1), . ) }
-    { ifelse(show_tracks == "current_frame" ,filter(.,any(frame==which_frame)), . ) } %>%
+
+
+data_filtering<- function(data_input,conversion_factor, offset,binning_factor, max_gaps, duration){
+    data_input %>%
+    mutate(grouping = paste0(dataset_ID, "_", tp, "_", TrackID)) %>%
+    filter(Number_of_gaps <= max_gaps) %>%
+    filter(Duration_of_track >= duration) %>%
+    group_by(grouping) %>%
+    mutate(Track_displacement=Track_displacement * conversion_factor) %>%
+    mutate(seconds=frame / downsampled_to) %>%
     mutate(x_lag=location_x - lag(location_x,n=offset), y_lag = location_y -lag(location_y, n=offset)) %>%
     mutate(x_lead=lead(location_x, n=offset)-location_x, y_lead=lead(location_y, n=offset)-location_y) %>%
-    mutate(angle=180-suppressWarnings(as.numeric(mapply(angle,x_lag,y_lag,x_lead,y_lead)))*180/pi) %>%
-    mutate(local_velocity=suppressWarnings(as.numeric(mapply(distance,x_lag,y_lag,x_lead,y_lead)))) %>%
-    mutate(turn = ifelse(Eccentricity < 0.9 & angle < 70,"YES","NO")) %>%
-    group_by(TrackID) %>%
+    mutate(location_x_norm = (location_x/1024)) %>%
+    mutate(location_y_norm = (location_y/1024)) %>%
+    mutate(angle=suppressWarnings(as.numeric(mapply(angle,x_lag,y_lag,x_lead,y_lead)))*180/pi) %>%
+    mutate(local_distance=suppressWarnings(as.numeric(mapply(distance,x_lag,y_lag,x_lead,y_lead)))) %>%
+    # mutate(local_distance = local_distance * conversion_factor) %>%
+    mutate(aspect_ratio=Minor/Major) %>%
     na.omit() %>%
-    mutate(mean_angle = mean(angle),sd_local_angle=sd(angle),displacement=mean(Track_displacement),mean_velocity=Mean_velocity,track_length_secs=mean(Duration_of_track/downsampled_to),local_velocity=local_velocity,sd_local_velocity=sd(local_velocity), turns=turn,turns_ml=Prediction,eccentricity=Eccentricity)
-  
+    mutate(mean_local_distance=mean(local_distance)) %>%
+    mutate(state= if_else(local_distance < 2.5,"pause","straight")) %>%
+    mutate(state= if_else(mean_local_distance < 2.5,"pause",state)) %>%
+    mutate(omega_turn_parameter_based = if_else(angle > 120,"turn","no")) %>%
+    mutate(state=if_else((omega_turn_parameter_based == "turn" & state != "pause"), "turn",state)) %>%
+    mutate(binning=rep(0:n(),each=binning_factor,length.out=n())) %>%
+    ungroup() %>%
+    group_by(grouping,binning) %>%
+    mutate(state_binned = names(table(state))[which.max(table(state))]) %>%
+    mutate(state_binned=if_else((state == "turn" & Circularity > 0.4), "omega_turn",state)) %>%
+    ungroup()
+}
+params_statistics <- function(input_data,how_to){
+  if (how_to == "mutate"){
+  input_data %>%
+  na.omit() %>%
+  #this will be computed on a "per track basis"
+  mutate(p_mean_angle = mean(angle),
+         p_sd_local_angle = sd(angle),
+         p_displacement = first(Track_displacement*conversion_factor),
+         p_displacement_distance_ratio = mean(Track_displacement) / sum(local_distance),
+         p_mean_velocity = mean(Mean_velocity*conversion_factor/downsampled_to),
+         p_track_length_secs = mean(Duration_of_track/downsampled_to),
+         p_sum_turns = sum(omega_turn_parameter_based == "turn"),
+         p_sum_turns_ml = sum(Prediction == "turn"),
+         p_turns_per_s = p_sum_turns / p_track_length_secs,
+         p_turns_ml_per_s = p_sum_turns_ml / p_track_length_secs,
+         p_eccentricity = mean(Eccentricity),
+         p_size = mean(Size),
+         p_length=mean(Major*conversion_factor),
+         p_major_minor_ratio = mean(Major)/mean(Minor))
+  } else if (how_to == "summarise"){
+  input_data %>%
+  na.omit() %>%
+  summarise(p_mean_angle = mean(angle),
+         p_sd_local_angle=sd(angle),
+         p_displacement=first(Track_displacement*conversion_factor),
+         p_displacement_distance_ratio= mean(Track_displacement) / sum(local_distance),
+         p_mean_velocity=mean(Mean_velocity*conversion_factor/downsampled_to),
+         p_track_length_secs = mean(Duration_of_track/downsampled_to),
+         p_sum_turns = sum(omega_turn_parameter_based == "turn"),
+         p_sum_turns_ml = sum(Prediction == "turn"),
+         p_turns_per_s = p_sum_turns / p_track_length_secs,
+         p_turns_ml_per_s = p_sum_turns_ml / p_track_length_secs,
+         p_eccentricity = mean(Eccentricity),
+         p_size = mean(Size),
+         p_length=mean(Major*conversion_factor),
+         p_major_minor_ratio = mean(Major)/mean(Minor),
+         perc_turn = sum(state_binned == "turn")/n(),
+         perc_omega_turn = sum(state_binned == "omega_turn")/n(),
+         perc_straight = sum(state_binned == "straight")/n(),
+         perc_pause = sum(state_binned == "pause")/n())
+  }
+}
+
+minutes_to_corresponding_tp <- function(input_data,time_input_type,time_input){
+  if(time_input_type == "minutes"){
+    all_tps_in_minutes <- unique(input_data$minutes)
+    corresponding_minute <- all_tps_in_minutes[which(abs(all_tps_in_minutes-time_input)==min(abs(all_tps_in_minutes-time_input)))]
+    selected_tp <<- unique(input_data[input_data$minutes == corresponding_minute,"tp"])
+  }else{
+    selected_tp <<- time_input
+  }
+}
+
+plot_paths <- function(selected_tp,selected_frame,which_dataset,color_path,image){  
   p <- ggplot(data_for_plotting)+
     theme(aspect.ratio = 1024/1024)+
     coord_cartesian(ylim=c(0, 1023))+
     scale_x_continuous(expand = c(0, 0), limits= c(0,1023)) + scale_y_continuous(expand = c(0, 0),trans="reverse")+
-    theme_void()+
     ggtitle(paste0("tp_",selected_tp))
   
-  if(with_image == "with_image"){
+  if(image == "with_image"){
     tp <- paste0("tp_",selected_tp)
-    frame_png <- paste0(sprintf("%03d", which_frame),".png")
+    frame_png <- paste0(sprintf("%03d", selected_frame),".png")
     location_dataset <- target_folder_general[grep(which_dataset, target_folder_general)]
-    img <- readPNG(file.path(location_dataset,tp,frame_png))
-    p <- p + background_image(img)
+    img <- readPNG(file.path(target_folder_base,location_dataset,tp,frame_png))
+    p <- p + background_image(img) + theme_black() + theme(axis.title=element_blank(), axis.text=element_blank(), axis.ticks=element_blank(), plot.background = element_rect(fill = "black"),legend.direction="vertical")
   }else{
-    p
+    p <- p  + theme_black() + theme(legend.direction="vertical") + theme(axis.title=element_blank(), axis.text=element_blank(), axis.ticks=element_blank(), plot.background = element_rect(fill = "black"))
   }
   if(color_path == "mean_angle"){
     sc <- scale_colour_gradientn(colours = myPalette(100), limits=c(0, 180))
     p <- p +
       sc + 
-      geom_path(aes(x=location_x, y=location_y,col=mean_angle, group=grouping),size=0.8, alpha=0.75)
+      geom_path(aes(x=location_x, y=location_y,col=p_mean_angle, group=grouping,size=path_size), alpha=0.75)
   }else if(color_path == "ID"){
     p <- p +
-      geom_path(aes(x=location_x, y=location_y,col=TrackID, group=grouping),size=0.8, alpha=0.75)+
+      geom_path(aes(x=location_x, y=location_y,col=TrackID, group=grouping,size=path_size), alpha=0.75)+
       theme(
         legend.position = "none")
   }else if(color_path == "frame"){
-    sc <- scale_colour_gradientn(colours = myPalette(100), limits=c(0, max(data$frame)))
+    sc <- scale_colour_gradientn(colours = myPalette(100), limits=c(0, 960))
     p <- p +
       sc +
-      geom_path(aes(x=location_x, y=location_y,col=frame, group=grouping),size=0.8, alpha=0.75)
+      geom_path(aes(x=location_x, y=location_y,col=frame, group=grouping,sizepath_size), alpha=0.75)
   }else if(color_path == "displacement"){
-    sc <- scale_colour_gradientn(colours = myPalette(100), limits=c(0, max(data$Track_displacement)))
+    sc <- scale_colour_gradientn(colours = myPalette(100), limits=c(0, 6300))
     p <- p +
       sc +
-      geom_path(aes(x=location_x, y=location_y,col=displacement, group=grouping),size=0.8, alpha=0.75)
+      geom_path(aes(x=location_x, y=location_y,col=p_displacement, group=grouping,size=path_size), alpha=0.75)
   }else if(color_path == "velocity"){
-    sc <- scale_colour_gradientn(colours = myPalette(100), limits=c(0, max(data$Mean_velocity)))
+    sc <- scale_colour_gradientn(colours = myPalette(100), limits=c(0, 50))
     p <- p +
       sc +
-      geom_path(aes(x=location_x, y=location_y,col=mean_velocity, group=grouping),size=0.8, alpha=0.75)
+      geom_path(aes(x=location_x, y=location_y,col=p_mean_velocity, group=grouping,size=path_size), alpha=0.75)
   }else if(color_path == "length"){
-    sc <- scale_colour_gradientn(colours = myPalette(100), limits=c(0, max(data$Duration_of_track)/downsampled_to))
+    sc <- scale_colour_gradientn(colours = myPalette(100), limits=c(0, 480))
     p <- p +
       sc +
-      geom_path(aes(x=location_x, y=location_y,col=length, group=grouping),size=0.8, alpha=0.75)
-  }else if(color_path == "local_velocity"){
-    sc <- scale_colour_gradientn(colours = myPalette(100), limits=c(0, max(data_for_plotting$local_velocity)))
+      geom_path(aes(x=location_x, y=location_y,col=p_track_length_secs, group=grouping,size=path_size), alpha=0.75)
+  }else if(color_path == "displacement_distance_ratio"){
+    sc <- scale_colour_gradientn(colours = myPalette(100), limits=c(0, 1))
     p <- p +
       sc +
-      geom_path(aes(x=location_x, y=location_y,col=local_velocity, group=grouping),size=0.8, alpha=0.75)
-  }else if(color_path == "sd_local_velocity"){
-    sc <- scale_colour_gradientn(colours = myPalette(100), limits=c(0, max(data_for_plotting$sd_local_velocity)))
-    p <- p +
-      sc +
-      geom_path(aes(x=location_x, y=location_y,col=sd_local_velocity, group=grouping),size=0.8, alpha=0.75)
+      geom_path(aes(x=location_x, y=location_y,col=p_displacement_distance_ratio, group=grouping,size=0.6), alpha=0.5)
   }else if(color_path == "sd_local_angle"){
-    sc <- scale_colour_gradientn(colours = myPalette(100), limits=c(0, max(data_for_plotting$sd_local_angle)))
+    sc <- scale_colour_gradientn(colours = myPalette(100), limits=c(0, 75))
     p <- p +
       sc +
-      geom_path(aes(x=location_x, y=location_y,col=sd_local_angle, group=grouping),size=0.8, alpha=0.75)
+      geom_path(aes(x=location_x, y=location_y,col=p_sd_local_angle, group=grouping,size=path_size), alpha=0.75)
   }else if(color_path == "eccentricity"){
     sc <- scale_colour_gradientn(colours = myPalette(100), limits=c(0, max(0.9)))
     p <- p +
       sc +
-      geom_path(aes(x=location_x, y=location_y,col=eccentricity, group=grouping),size=0.8, alpha=0.75)
+      geom_path(aes(x=location_x, y=location_y,col=p_eccentricity, group=grouping,size=path_size), alpha=0.75)
+  }else if(color_path == "local_velocity"){
+    sc <- scale_colour_gradientn(colours = myPalette(100), limits=c(0, 150))
+    p <- p +
+      sc +
+      geom_path(aes(x=location_x, y=location_y,col=local_distance, group=grouping,size=path_size), alpha=0.75)
   }else if(color_path == "turns"){
     p <- p +
       scale_colour_hue() +
-      geom_path(aes(x=location_x, y=location_y,col=turns, group=grouping),size=0.8, alpha=0.75)
+      geom_path(aes(x=location_x, y=location_y,col= omega_turn_parameter_based, group=grouping,size=path_size), alpha=0.75)
   }else if(color_path == "turns_ml"){
     p <- p +
       scale_colour_hue() +
-      geom_path(aes(x=location_x, y=location_y,col=turns_ml, group=grouping),size=0.8, alpha=0.75)
+      geom_path(aes(x=location_x, y=location_y,col=Prediction, group=grouping,size=path_size), alpha=0.75)
+  }else if(color_path == "path_class_binned"){
+    p <- p +
+      scale_colour_brewer(palette="Set1")+
+      geom_path(aes(x=location_x, y=location_y,col=state_binned, group=grouping),size=1, alpha=0.4)
   }else{
     sc <- scale_colour_gradientn(colours = myPalette(100), limits=c(0, 180))
     p <- p +
       sc+
-      geom_path(aes(x=location_x, y=location_y,col=angle, group=grouping),size=0.8, alpha=0.75)
+      geom_path(aes(x=location_x, y=location_y,col=angle, group=grouping,size=path_size), alpha=0.75)
   }
-  p
 }
 
-calculate_overview_statistics <- function(offset,max_number_gaps,duration) {
-  dfp <<- data %>%
-    select_if(function(x){!all(is.na(x))}) %>%
-    mutate(grouping = paste0(dataset_ID, "_",TrackID, "_", tp)) %>%
-    filter(Number_of_gaps < max_number_gaps) %>%
-    filter(Duration_of_track>duration) %>%
-    group_by(grouping) %>%
-    mutate(x_lag=location_x - lag(location_x,n=offset), y_lag = location_y -lag(location_y, n=offset)) %>%
-    mutate(x_lead=lead(location_x, n=offset)-location_x, y_lead=lead(location_y, n=offset)-location_y) %>%
-    mutate(angle=180-suppressWarnings(as.numeric(mapply(angle,x_lag,y_lag,x_lead,y_lead)))*180/pi) %>%
-    mutate(turn = ifelse(Eccentricity < 0.9 & angle < 70,"YES","NO")) %>%
-    group_by(TrackID, tp, minutes, hours,dataset_ID,file_name,plate_type,Duration_of_track) %>%
+
+plot_image_with_path <- function(which_tracks,which_track,offset,binning_factor,conversion_factor,time_input_type,time_input,which_dataset,max_number_gaps,duration,selected_frame,color_path,image) {
+  sc <- scale_colour_gradientn(colours = myPalette(100), limits=c(0, 180))
+  data_sub_dataset <- data %>%
+    filter(dataset_ID == which_dataset)
+  minutes_to_corresponding_tp(data_sub_dataset,time_input_type,time_input)
+  if(which_tracks == "current_frame"){
+    data_sub_dataset_tp <- data_sub_dataset %>%
+    filter(tp == selected_tp) %>%
+    group_by(TrackID) %>%
+    filter(any(frame == selected_frame))
+  }else if(which_tracks == "until_this_frame"){
+    data_sub_dataset_tp <- data_sub_dataset %>%
+    filter(tp == selected_tp) %>%
+    filter(frame <= selected_frame)
+  }else if(which_tracks == "until_and_current"){
+    data_sub_dataset_tp <- data_sub_dataset %>%
+    filter(tp == selected_tp) %>%
+    group_by(TrackID) %>%
+    filter(any(frame == selected_frame+10)) %>%
+    ungroup() %>%
+    filter(frame <= selected_frame+10)
+  }else{
+    data_sub_dataset_tp <- data_sub_dataset %>%
+    filter(tp == selected_tp)
+  }
+  data_for_plotting <<- data_filtering(data_sub_dataset_tp,conversion_factor, offset,binning_factor, max_number_gaps,duration) %>%
+    group_by(TrackID) %>%
+    params_statistics(., "mutate") %>%
+    mutate(path_size=if_else(TrackID == which_track, "selected", "not_selected"))
+  
+  print(plot_paths(selected_tp,selected_frame,which_dataset,color_path,image)+scale_size_discrete(range = c(1, 2)))
+}
+
+
+save_plot_image_with_path <- function(which_tracks,which_track,offset,binning_factor,conversion_factor,time_input_type,time_input,which_dataset,max_number_gaps,duration,selected_frame,color_path,image) {
+  for(i in seq(1, selected_frame)){
+    selected_frame <- i
+    path <- here("Image_analysis/R/plots", which_dataset,time_input,color_path)
+    dir.create(path,recursive = TRUE,showWarnings=FALSE)
+    #png(file=file.path(path,paste0("tp_",selected_tp,"_",round(selected_frame,3),".png")))
+    plot_image_with_path(which_tracks,which_track,offset,binning_factor,conversion_factor,time_input_type,time_input,which_dataset,max_number_gaps,duration,selected_frame,color_path,image)+
+      ggsave(file=file.path(path,paste0("tp_",selected_tp,"_",sprintf("%03d",selected_frame),".png")),height = 200, width = 200,units="mm")
+
+    #dev.off()
+  }
+}
+
+plot_image_with_path_centered <- function(which_tracks,offset,binning_factor,conversion_factor,time_input_type,time_input,which_dataset,max_gaps,duration,selected_frame,color_path,image) {
+  sc <- scale_colour_gradientn(colours = myPalette(100), limits=c(0, 180))
+  data_sub_dataset <- data %>% filter(dataset_ID == which_dataset)
+  minutes_to_corresponding_tp(data_sub_dataset, time_input_type, time_input)
+  if(which_tracks == "all_frames"){
+    data_sub_dataset_tp <- data_sub_dataset %>%
+    filter(tp == selected_tp)
+  }else{
+    data_sub_dataset_tp <- data_sub_dataset %>%
+    filter(tp == selected_tp) %>%
+    filter(frame == selected_frame)
+  }
+
+  
+  data_for_plotting <<- data_filtering(data_sub_dataset_tp, conversion_factor, offset, binning_factor, max_gaps, duration) %>%
+    group_by(TrackID) %>%
     na.omit() %>%
-    summarise(mean_size=mean(Size), mean_eccentricity=mean(Eccentricity),mean_angle=mean(angle), sd_velocity=mean(Velocity_standard_deviation),mean_velocity=mean(Mean_velocity),mean_displacement=mean(Track_displacement),turns_per_minute=sum(turn == "YES")/(first(Duration_of_track)/first(downsampled_to)/60),turns_per_minute_ml=sum(Prediction =="turn")/(first(Duration_of_track)/first(downsampled_to)/60))
+    params_statistics(., "mutate") %>%
+    mutate(first_x = first(location_x),first_y = first(location_y)) %>%
+    mutate(location_x = location_x - first_x, location_y=location_y - first_y)
+  
+  pc <<- plot_paths(selected_tp,selected_frame,which_dataset,color_path,image)+
+    coord_cartesian(ylim=NULL,xlim=NULL)+
+    scale_x_continuous(limits= c(-1024,1024)) +
+    scale_y_continuous(limits= c(-1024,1024))
+  print(pc)
+
+}
+
+plot_single_path_states <-  function(which_track,conversion_factor,binning_factor,offset,time_input_type,time_input,selected_frame,which_dataset,max_gaps,duration,color_path,image){
+  data_sub_dataset <- data %>% filter(dataset_ID == which_dataset)
+  minutes_to_corresponding_tp(data_sub_dataset, time_input_type, time_input)
+  data_sub_dataset_tp <- data_sub_dataset %>%
+    filter(tp == selected_tp)
+  data_for_plotting <<- data_filtering(data_sub_dataset_tp, conversion_factor, offset, binning_factor,max_gaps, duration) %>%
+    filter(TrackID == which_track) %>%
+    na.omit() %>%
+    mutate(first_x = first(location_x),first_y = first(location_y)) %>%
+    mutate(location_x = location_x - first_x, location_y=location_y - first_y) %>%
+    mutate(location_x = location_x * conversion_factor, location_y=location_y * conversion_factor)%>%
+    mutate(path_size=0.1)
+  #fix colors
+  myColors <-  brewer.pal(4,"Set1")
+  names(myColors) <- c("pause","straight","turn","omega_turn")
+  colScale <- scale_colour_manual(name = "state_binned",values = myColors)
+  p1 <- ggplot(data_for_plotting,aes(x=seconds,y=angle,xend=lead(seconds),yend=lead(angle),color=state_binned)) +
+    geom_segment()+
+    colScale+
+    scale_y_continuous(limits=c(0,180))+
+    theme_black()+
+    theme(legend.position = "top",
+          legend.title = element_blank(),
+          legend.text = element_text(size=12),
+          axis.title.x=element_blank(),
+          axis.text.x=element_blank())
+    # geom_vline(xintercept=selected_frame/2, linetype="dashed", color = "white")
+   
+  p2 <- ggplot(data_for_plotting,aes(x=seconds, y=local_distance,xend=lead(seconds),yend=lead(local_distance),color=state_binned))+
+    geom_segment()+
+    colScale+
+    scale_y_continuous(limits=c(0,200))+
+    theme_black()+
+    theme(legend.position = "none",
+          axis.text.x=element_blank(),
+          axis.title.x=element_blank())
+  p3 <- ggplot(data_for_plotting,aes(x=seconds, y=Circularity,xend=lead(seconds),yend=lead(Circularity),color=state_binned))+
+    geom_segment()+
+    colScale+
+    scale_y_continuous(limits=c(0,0.8))+
+    theme_black()+
+    theme(legend.position = "none")
+  pz <- plot_paths(selected_tp,selected_frame,which_dataset,color_path,image)+
+    colScale+
+    theme(legend.position = "none",
+          axis.text=element_text(size=0.05),
+          axis.ticks=element_line(color="white",size=0.5),
+          axis.title=element_text(size=0.2))+
+    coord_cartesian(ylim=NULL,xlim=NULL)+
+    scale_x_continuous(limits= c(min(data_for_plotting$location_x),max(data_for_plotting$location_x))) +
+    scale_y_continuous(limits= c(min(data_for_plotting$location_y),max(data_for_plotting$location_y))) +
+    labs(x = "x (microns)", y= "y (microns)")
+  
+  left_column <- plot_grid(p1,p2,p3,align = 'hv',axis='l',nrow = 3,rel_heights = c(1,1,1))
+  plot_grid(left_column, pz,rel_heights=c(1,20),ncol=2)
+
+  
+  }
+
+# new.pos <- c(0.43,0.53)
+# pos <- data.frame(data_for_plotting$location_x_norm,data_for_plotting$location_y_norm)
+# nearest_idx <- which.min(colSums((t(pos) - new.pos)^2))
+# data_for_plotting[nearest_idx, "TrackID"]
+
+calculate_overview_statistics <- function(conversion_factor,offset,binning_factor,max_gaps,duration) {
+  dfp <<- data_filtering(data, conversion_factor, offset, binning_factor, max_gaps,duration) %>%
+    group_by(TrackID, tp, minutes, hours,dataset_ID,file_name,worm_type,plate_type,Duration_of_track) %>%
+    na.omit() %>%
+    params_statistics(., "summarise")
     
   
 }
-
-calculate_centered <- function(offset,max_number_gaps,duration) {
-  dfp_centered <<- data %>%
-    select_if(function(x){!all(is.na(x))}) %>%
-    mutate(grouping = paste0(dataset_ID, "_",TrackID, "_", tp)) %>%
-    filter(Number_of_gaps < max_number_gaps) %>%
-    filter(Duration_of_track>duration) %>%
-    group_by(grouping) %>%
-    mutate(x_lag=location_x - lag(location_x,n=offset), y_lag = location_y -lag(location_y, n=offset)) %>%
-    mutate(x_lead=lead(location_x, n=offset)-location_x, y_lead=lead(location_y, n=offset)-location_y) %>%
-    mutate(angle=180-suppressWarnings(as.numeric(mapply(angle,x_lag,y_lag,x_lead,y_lead)))*180/pi) %>%
-    na.omit() %>%
-    mutate(mean_angle = mean(angle)) %>%
-    mutate(first_x = first(location_x),first_y = first(location_y)) %>%
-    mutate(x_centered = location_x - first_x, y_centered=location_y - first_y) %>%
-    mutate(turn = ifelse(Eccentricity < 0.9 & angle < 70,"YES","NO"))
-
-}
-
-
 
 theme_black = function(base_size = 12, base_family = "") {
   
@@ -230,7 +407,7 @@ theme_black = function(base_size = 12, base_family = "") {
       axis.ticks.length = unit(0.3, "lines"),   
       # Specify legend options
       legend.background = element_rect(color = NA, fill = "black"),  
-      legend.key = element_rect(color = "white",  fill = "black"),  
+      legend.key = element_rect(color = NA,  fill = "black"),  
       legend.key.size = unit(1.2, "lines"),  
       legend.key.height = NULL,  
       legend.key.width = NULL,      
@@ -239,7 +416,7 @@ theme_black = function(base_size = 12, base_family = "") {
       legend.position = "right",  
       legend.text.align = NULL,  
       legend.title.align = NULL,  
-      legend.direction = "vertical",  
+      legend.direction = "horizontal",  
       legend.box = NULL, 
       # Specify panel options
       panel.background = element_rect(fill = "black", color  =  NA),  
@@ -262,21 +439,68 @@ theme_black = function(base_size = 12, base_family = "") {
 ```
 
 
+
+
 #load data and metadata
 ```{r, include=FALSE}
-target_folder_general <- c("/media/ella/raid5/timelapses/2019-03-25_18-10-06","/media/ella/raid5/timelapses/2019-03-27_18-24-47")
+target_folder_base <- ("/media/ella/raid5/timelapses/")
+target_folder_general <- c("2019-03-06_17-56-39")
+                           # "2019-03-07_17-28-51",
+                           # "2019-03-11_17-54-09",
+                           # "2019-03-18_18-01-40",
+                           # "2019-03-19_17-40-32",
+                           # "2019-03-25_18-10-06",#no food
+                           # "2019-03-27_18-24-47",
+                           # "2019-03-26_19-27-16",
+                           # "2019-04-15_17-32-23",
+                           # "2019-04-23_17-46-08",#daf2
+                           # "2019-04-30_14-15-44",#L2
+                           # "2019-05-04_15-36-42",#L2
+                           # "2019-05-07_12-15-40",#daf2
+                           # "2019-05-08_14-11-15"#daf2
+                           # )
+
 ```
 
+```{r, include=FALSE}
+
+ds <- read.csv("/media/ella/raid5/example.csv")
+
+ds_test <- ds %>%
+  filter(TrackID == "track_10")
+
+
+i <- 2
+dim_X <- ds_test$bitmask_dim_X[i]
+dim_Y <- ds_test$bitmask_dim_Y[i]
+matrix <- as.integer(gsub(".*(\\d+)\\..+","\\1",unlist(strsplit(as.character(ds_test$bitmask[i]), ",")))) %>%
+  matrix(.,nrow=dim_Y, byrow=TRUE) %>%
+  melt(.) %>%
+  rename(Y = 1, X = 2,value = 3)%>%
+  filter(value == 1) %>%
+  mutate(dx = X - lag(X)) %>%
+  mutate(dy = Y - lag(Y)) %>%
+  mutate(distance = sqrt(dy^2 + dx^2), angle = atan2(dy, dx)) %>%
+  mutate(angle = angle*180/pi)
+
+pal <- wes_palette(name = "Zissou1", type = "continuous")
+ggplot(matrix, aes(x=X,y=Y,fill=angle))+
+  coord_equal() + 
+  geom_raster()+
+  scale_x_continuous(expand = c(0, 0), limits= c(0,dim_X)) +
+  scale_y_continuous(expand = c(0, 0),trans="reverse") +
+  theme_void() +
+  scale_fill_gradientn(colours = pal)
+
+```
 
 ```{r, echo=FALSE}
-target_folder_analysis <- file.path(target_folder_general, "analysis")
+target_folder_analysis <- file.path(target_folder_base,target_folder_general, "analysis")
 target_folder_analysis_csvs <- list.files(target_folder_analysis,pattern=".+\\.csv", full.names = TRUE)
 
 
-#### This is the for loop that pastes all .csv files together
-##### _Additionally, time differences are calculated and transformed to minutes
 #load metadata
-metadata_file <- list.files(target_folder_general,pattern=".+\\_metadata.txt", full.names = TRUE)
+metadata_file <- list.files(file.path(target_folder_base,target_folder_general),pattern=".+\\_metadata.txt$", full.names = TRUE)
 metadata <- data.frame(sapply(metadata_file, function (x) read.delim(x,header=FALSE,check.names = FALSE)))
 colnames(metadata) <- metadata_file
 colnames(metadata) <- as.character(gsub(".+\\/", "",colnames(metadata)))
@@ -297,6 +521,7 @@ timepoint_length$dataset <- gsub(".+\\/([0-9]+\\-[0-9]+\\-[0-9]+\\_[0-9]+\\-[0-9
 
 #timestep, in minutes
 timestep_length <- apply(metadata,2, function(x) as.numeric(gsub(".+every(.+)minutes\\.", "\\1",x[grepl(".+every(.+)minutes\\.",x)])))
+timestep_length
 timestep_length <- as.data.frame(timestep_length)
 timestep_length$dataset <- gsub(".+\\/([0-9]+\\-[0-9]+\\-[0-9]+\\_[0-9]+\\-[0-9]+\\-[0-9]+)\\/.+", "\\1",rownames(timestep_length))
 
@@ -304,6 +529,11 @@ timestep_length$dataset <- gsub(".+\\/([0-9]+\\-[0-9]+\\-[0-9]+\\_[0-9]+\\-[0-9]
 plate_type <- apply(metadata,2, function(x) gsub(".+\\,(.+)\\,.+", "\\1",x[grepl("Timelapse plate type\\:",x)]))
 plate_type <- as.data.frame(plate_type)
 plate_type$dataset <- gsub(".+\\/([0-9]+\\-[0-9]+\\-[0-9]+\\_[0-9]+\\-[0-9]+\\-[0-9]+)\\/.+", "\\1",rownames(plate_type))
+
+#worm type
+worm_type <- apply(metadata,2, function(x) gsub(".+\\:\\s(.+)", "\\1",x[grepl("Used line\\:",x)]))
+worm_type <- as.data.frame(worm_type)
+worm_type$dataset <- gsub(".+\\/([0-9]+\\-[0-9]+\\-[0-9]+\\_[0-9]+\\-[0-9]+\\-[0-9]+)\\/.+", "\\1",rownames(worm_type))
 
 
 #apply the import function defined above to all csv files (from all timelapses)
@@ -314,30 +544,71 @@ data <- ldply(.data=target_folder_analysis_csvs, .fun=import) %>%
   inner_join(., timepoint_length,by = c("dataset_ID" = "dataset")) %>%
   inner_join(., timestep_length,by = c("dataset_ID" = "dataset")) %>%
   inner_join(., plate_type, by = c("dataset_ID" = "dataset")) %>%
+  inner_join(., worm_type, by = c("dataset_ID" = "dataset")) %>%
   mutate(timestep_length = ifelse(timepoint_length > timestep_length, 0,timestep_length-timepoint_length)) %>%
   mutate(minutes = time_elapsed + ((tp-1)*timepoint_length+(tp-1)*timestep_length)) %>%
   mutate(hours= minutes/60) %>%
   na.omit()
 
 
+#downsampled to for conversion
+downsampled_fps <- unique(na.omit(data$downsampled_to))
+
 ```
 
-##overview plots
+##set parameters here
 ```{r, include=FALSE}
-
-data$frame <- as.integer(data$frame)
+#pixel to mm conversion
+conversion_factor <- 6.25
 
 #calculate_overview_statistics(offset,max_number_gaps,duration)
-secs_angle_offset = 1
-max_gaps = 3 
-secs_min_tracked = 30
-downsampled_fps <- unique(na.omit(data$downsampled_to))
+offset =8 #== 4 seconds
+max_gaps = 0 
+duration = 60 #==30 seconds
+binning_factor = 10 #==5 seconds
+
+```
+
+
+```{r, include=FALSE}
+#which_tracks,which_track,offset,binning_factor,conversion_factor,time_input_type,time_input,which_dataset,max_number_gaps,duration,selected_frame,color_path,image
+plot_image_with_path("current_frame","track_3",8,binning_factor,conversion_factor,"minutes",18,"2019-03-06_17-56-39",0,30*2,10,"ID","no_image")
+#plot_image_with_path_centered("all_frames",4*2,conversion_factor,"minutes",18,"2019-03-06_17-56-39",0,50,30*2,10,"ID","no_image")
+
+plot_single_path_states("track_2",conversion_factor,offset,binning_factor,"minutes",700,100,"2019-03-06_17-56-39",max_gaps,duration,"path_class_binned","no_image")+
+  ggsave("Path_4.png")
+plot_single_path_states("track_1",conversion_factor,offset,binning_factor,"minutes",1,100,"2019-03-06_17-56-39",max_gaps,duration,"path_class_binned","no_image")
+
+
+p2 <- ggplot(data_for_plotting,aes(x=frame, y=local_distance,xend=lead(frame),yend=lead(local_distance),color=state_binned))+
+  geom_segment()+
+  # scale_color_manual(values=rev(wes_palette(n=3, name="BottleRocket2",type="discrete")))
+  scale_colour_brewer(palette="Set1")
+p2
+
+
+# which_dataset <- "2019-03-06_17-56-39"
+# time_input <- "278"
+# color_path <- "mean_angle"
+# here("Image_analysis/R/plots", which_dataset,time_input,color_path)
+# path <- here("Image_analysis/R/plots", which_dataset,time_input,color_path)
+# dir.create(path,recursive = TRUE)
+# selected_frame <- 2
+# file.path(path,paste0("tp_",selected_tp,"_",round(selected_frame,3),".png"))
+# 
+# 
+# plot_image_with_path("current_frame",4*2,conversion_factor,"minutes",18,"2019-03-06_17-56-39",0,50,30*2,10,"ID","with_image")
+#   
+
 ```
 
 ```{r, include=FALSE}
-calculate_overview_statistics(secs_angle_offset*downsampled_fps,5,secs_min_tracked*downsampled_fps)
+calculate_overview_statistics(conversion_factor,offset,binning_factor,max_gaps,duration)
+
 
 ```
+
+
 
 ##Plots1
 
@@ -349,8 +620,8 @@ dfp %>%
   group_by(hours, dataset_ID) %>%
   summarise(.,n = n_distinct(TrackID)) %>%
   ggplot(.,aes(x=hours,y=n,fill=dataset_ID,colour=dataset_ID))+
-  scale_colour_manual(values = wes_palette("Darjeeling1"))+
-  geom_line()+
+  #scale_colour_manual(values = wes_palette("BottleRocket2"))+
+  #geom_line()+
   geom_smooth(method="loess")+
   ylab("Number of tracked worms")+
   theme_classic()
@@ -360,65 +631,286 @@ data %>%
   group_by(hours, dataset_ID) %>%
   summarise(., mean_duration =mean(Duration_of_track)/downsampled_fps) %>%
   ggplot(.,aes(x=hours,y=mean_duration,fill=dataset_ID,colour=dataset_ID))+
-  scale_colour_manual(values = wes_palette("Darjeeling1"))+
-  geom_line()+
+  #scale_colour_manual(values = wes_palette("BottleRocket2"))+
+  #geom_line()+
   geom_smooth(method="loess")+
   geom_hline(yintercept=secs_min_tracked,color="red")+
   ylab("Mean duration of tracks (seconds)")+
-  theme_black()
+  theme_classic()
+
 
 
 ```
 
 
-##Plot grouped images for standard parameters
+## Plot grouped images for standard parameters
 ```{r, echo=TRUE}
 
-glimpse(dfp)
-
+params <- grep("p\\_.+",colnames(dfp),value = TRUE)
 dfp2 <- dfp %>%
+  # filter(!dataset_ID %in% exps_out) %>%
   group_by(hours,dataset_ID,plate_type)%>%
-  unite("experiment", c("dataset_ID","plate_type"), sep= " ")%>%
+  unite("experiment", c("dataset_ID","worm_type", "plate_type"), sep= " ")%>%
   group_by(experiment,hours,minutes)%>%
-  summarise(turns_mean_per_minute = mean(turns_per_minute), turns_mean_per_minute_ml=mean(turns_per_minute_ml), size_median_per_minute=median(mean_size),eccentricity_median_per_minute=median(mean_eccentricity),angle_median_per_minute=median(mean_angle),velocity_median_per_minute=median(mean_velocity), sd_velocity_median_per_minute=median(sd_velocity),displacement_median_per_minute=median(mean_displacement))
+   summarise_at(.vars = params,
+               .funs = c(mean_per_minute="mean"))
 
 
-params <- c("turns_mean_per_minute","turns_mean_per_minute_ml","size_median_per_minute","eccentricity_median_per_minute","angle_median_per_minute", "velocity_median_per_minute", "sd_velocity_median_per_minute", "displacement_median_per_minute")
+# dfp2 <- dfp %>%
+#   group_by(hours,dataset_ID,plate_type)%>%
+#   unite("experiment", c("dataset_ID","worm_type", "plate_type"), sep= " ")%>%
+#   group_by(experiment,hours,minutes)%>%
+#   summarise(turns_mean_per_minute = mean(turns_per_minute),
+#             turns_mean_per_minute_ml=mean(turns_per_minute_ml),
+#             size_mean_per_minute=mean(mean_size),
+#             eccentricity_mean_per_minute=mean(mean_eccentricity),
+#             angle_mean_per_minute=mean(mean_angle),
+#             velocity_mean_per_minute=mean(mean_velocity),
+#             sd_velocity_mean_per_minute=mean(sd_velocity),
+#             displacement_mean_per_minute=mean(mean_displacement),
+#             displacement_distance_ratio_per_minute=mean(displacement_distance_ratio))
+
+params <- grep("p\\_.+",colnames(dfp2),value = TRUE)
 for (i in params){
 print(ggplot(dfp2, aes_string(x="hours",y=i))+
       #geom_ribbon(aes(ymin =  median_angle_per_minute - iqr_angle_per_minute, ymax = median_angle_per_minute + iqr_angle_per_minute))+
-      geom_line(size=1)+
+      geom_line(size=0.5)+
       ggtitle(i)+
-      # ylim(c(0,180))+
       theme_classic()+
-      facet_wrap(~experiment)
-      #ggsave(paste0(i,".png"))
+      scale_x_continuous(breaks = seq(0, max(dfp2$hours), 1))+
+      facet_wrap(~experiment)+
+      ggsave(paste0(i,".png"))
 )
+}
+
+# 
+# dfp$angle_mean_mmed <- mmed(dfp$mean_angle)
+# 
+# dfp2 <- dfp %>%
+#   group_by(hours,dataset_ID,plate_type)%>%
+#   unite("experiment", c("dataset_ID","worm_type", "plate_type"), sep= " ")%>%
+#   group_by(experiment,hours,minutes)%>%
+#   summarise(turns_mean_per_minute = mean(turns_per_minute), turns_mean_per_minute_ml=mean(turns_per_minute_ml), size_mean_per_minute=mean(mean_size),eccentricity_mean_per_minute=mean(mean_eccentricity),angle_mean_per_minute=mean(mean_angle),angle_mmed_mean_per_minute=mean(angle_mean_mmed),velocity_mean_per_minute=mean(mean_velocity), sd_velocity_mean_per_minute=mean(sd_velocity),displacement_mean_per_minute=mean(mean_displacement))
+# 
+# params <- c(params, "angle_mmed_mean_per_minute")
+# for (i in params){
+# print(ggplot(dfp2, aes_string(x="hours",y=i))+
+#       #geom_ribbon(aes(ymin =  median_angle_per_minute - iqr_angle_per_minute, ymax = median_angle_per_minute + iqr_angle_per_minute))+
+#       geom_line(size=0.5)+
+#       ggtitle(i)+
+#       theme_classic()+
+#       scale_x_continuous(breaks = seq(0, max(dfp2$hours), 1))+
+#       facet_wrap(~experiment)+
+#       ggsave(paste0(i,".png"))
+# )
+# }
+
+```
+
+##Plot grouped images for standard parameters
+```{r, echo=TRUE}
+chosen_exps_1 <- c("2019-03-06_17-56-39",
+                 "2019-03-11_17-54-09",
+                 "2019-03-18_18-01-40",
+                 "2019-03-19_17-40-32",
+                 "2019-03-26_19-27-16",
+                 "2019-03-27_18-24-47")
+
+chosen_exps_2 <- c("2019-05-07_12-15-40", #daf2 dauer
+                   "2019-04-23_17-46-08")
+                   
+
+chosen_exps_3 <- c("2019-03-25_18-10-06") #no food
+
+
+chosen_exps_4 <- c("2019-05-04_15-36-42","2019-04-30_14-15-44") #L2
+
+params <- grep("p\\_.+",colnames(dfp),value = TRUE)
+sem <- function(x) sd(x)/sqrt(length(x))
+for (i in params){
+  dfp2 <<- dfp %>%
+  filter(dataset_ID %in% chosen_exps_1 | dataset_ID %in% chosen_exps_2 | dataset_ID %in% chosen_exps_3 | dataset_ID %in% chosen_exps_4) %>%
+  mutate(annotation = ifelse(dataset_ID %in% chosen_exps_1, "N2 dauers",NA)) %>%
+  mutate(annotation = ifelse(dataset_ID %in% chosen_exps_2, "daf2 dauers",annotation)) %>%
+  mutate(annotation = ifelse(dataset_ID %in% chosen_exps_3, "N2 dauers no food",annotation)) %>%
+  mutate(annotation = ifelse(dataset_ID %in% chosen_exps_4, "L2",annotation))%>%
+  #round per hour
+  #mutate(hours_rounded= ceiling(hours)) %>%
+  mutate(hours_rounded= ceiling(hours* 2) / 2) %>%
+  group_by(annotation, hours_rounded) %>%
+  summarise(parameter_mean_per_minute = mean(!!sym(i)),
+            parameter_sem_per_minute = sem(!!sym(i)))
+
+  print(ggplot(dfp2,aes(x=hours_rounded,y=parameter_mean_per_minute,color=annotation,group=annotation,palette = "jco"))+
+        geom_line(size=0.75)+
+        geom_point()+
+        #geom_errorbar(width=.1, aes(ymin=parameter_mean_per_minute-parameter_sd_per_minute, ymax=parameter_mean_per_minute+parameter_sd_per_minute))+
+        geom_ribbon(aes(ymin=parameter_mean_per_minute-parameter_sem_per_minute, ymax=parameter_mean_per_minute+parameter_sem_per_minute), fill="white",linetype = 0, alpha=0.2)+
+        ggtitle(paste0(i," n=",length(c(chosen_exps_1,chosen_exps_2,chosen_exps_3))," with standard error of the mean"))+
+        scale_x_continuous(breaks = seq(0, max(dfp$hours), 1))+
+        xlim(0,15)+
+        xlab("hours") + ylab(i)+
+        theme_black()+
+        scale_color_jco()+
+        theme(legend.direction="vertical")+
+        #theme(axis.title=element_blank(), axis.text=element_blank(), axis.ticks=element_blank(), plot.background = element_rect(fill = "black"))
+        ggsave(paste0(i,"_grouped",".png"))
+  )
+}
+
+```
+
+```{r, include=FALSE}
+
+perc <- grep("perc\\_.+",colnames(dfp),value = TRUE)
+sem <- function(x) sd(x)/sqrt(length(x))
+for (i in perc){
+  dfp2 <<- dfp %>%
+    filter(dataset_ID %in% chosen_exps_1 | dataset_ID %in% chosen_exps_2 | dataset_ID %in% chosen_exps_3 | dataset_ID %in% chosen_exps_4) %>%
+    mutate(annotation = ifelse(dataset_ID %in% chosen_exps_1, paste0("\nN2 dauers\n",length(chosen_exps_1)," experiment(s)\n"),NA)) %>%
+    mutate(annotation = ifelse(dataset_ID %in% chosen_exps_2,paste0("\ndaf2 dauers\n",length(chosen_exps_2)," experiment(s)\n"),annotation)) %>%
+    mutate(annotation = ifelse(dataset_ID %in% chosen_exps_3, paste0("\nN2 dauers no food\n",length(chosen_exps_3)," experiment(s)\n"),annotation)) %>%
+    mutate(annotation = ifelse(dataset_ID %in% chosen_exps_4, paste0("\nL2\n",length(chosen_exps_4)," experiment(s)"),annotation)) %>%
+    na.omit() %>%
+    mutate(hours_rounded= ceiling(hours* 2) / 2) %>%
+    group_by(annotation, hours_rounded) %>%
+    summarise(perc_mean_per_minute = mean(!!sym(i)),
+              perc_sem_per_minute = sem(!!sym(i)))
+  
+  print(ggplot(dfp2,aes(x=hours_rounded,y=perc_mean_per_minute,color=annotation))+
+          geom_line(size=0.75)+
+          geom_point()+
+          #geom_errorbar(width=.1, aes(ymin=parameter_mean_per_minute-parameter_sd_per_minute, ymax=parameter_mean_per_minute+parameter_sd_per_minute))+
+          geom_ribbon(aes(ymin=perc_mean_per_minute-perc_sem_per_minute, ymax=perc_mean_per_minute+perc_sem_per_minute), fill="white",linetype = 0, alpha=0.2)+
+          ggtitle(paste0(i," with standard error of the mean"))+
+          scale_x_continuous(breaks = seq(0, max(dfp$hours), 1))+
+          xlim(0,15)+
+          xlab("hours") + ylab(i)+
+          theme_black()+
+          theme(legend.direction="vertical")+
+          scale_color_jco()+
+          ggsave(paste0(i,"_grouped_binned_states",".png"))
+  )
+
+}
+
+
+
+```
+
+
+```{r, echo=TRUE}
+for (i in params){
+  dfp2 <<- dfp %>%
+  filter(dataset_ID %in% chosen_exps_1 | dataset_ID %in% chosen_exps_2 | dataset_ID %in% chosen_exps_3) %>%
+  mutate(annotation = ifelse(dataset_ID %in% chosen_exps_1, "N2 dauers",NA)) %>%
+  mutate(annotation = ifelse(dataset_ID %in% chosen_exps_2, "daf2 dauers",annotation)) %>%
+  mutate(annotation = ifelse(dataset_ID %in% chosen_exps_3, "N2 dauers no food",annotation)) %>%
+  mutate(time_annotation = ifelse(hours >= 0 & hours <= 2.5, "0-2.5h",NA)) %>%
+  mutate(time_annotation = ifelse(hours > 2.5 & hours <= 5, "2.5-5h",time_annotation)) %>%
+  mutate(time_annotation = ifelse(hours > 5 & hours <= 7.5, "5-7.5h",time_annotation)) %>%
+  mutate(time_annotation = ifelse(hours > 7.5 & hours <= 10, "7.5-10h",time_annotation)) %>%
+  mutate(time_annotation = ifelse(hours > 10 & hours <= 12.5, "10-12.5h",time_annotation)) %>%
+  mutate(time_annotation = ifelse(hours > 12.5 & hours <= 15, "12.5-15h",time_annotation))
+  
+  
+  print(ggboxplot(dfp2, x = "time_annotation", y = i,
+          color = "annotation", palette = "jco"))
+    # ggsave(paste0("p_displacement_distance_ratio","_boxplot_",".png"))
+
+  
+  
+   
+} 
+    
+```
+
+
+```{r, echo=TRUE}
+
+dfp$hours_shuffled <- sample(dfp$hours, replace = FALSE)
+
+for (i in params){
+  dfp2 <- dfp %>%
+  filter(dataset_ID %in% chosen_exps) %>%
+  mutate(hours_rounded= ceiling(hours_shuffled* 2) / 2) %>%
+  group_by(hours_rounded)%>%
+  summarise(parameter_mean_per_minute = mean(!!sym(i)),
+            parameter_sd_per_minute = sem(!!sym(i)))
+  
+  print(ggplot(dfp2,aes(x=hours_rounded,y=parameter_mean_per_minute))+
+        geom_line(size=0.5,color="blue")+
+        #geom_errorbar(width=.1, aes(ymin=parameter_mean_per_minute-parameter_sd_per_minute, ymax=parameter_mean_per_minute+parameter_sd_per_minute))+
+        geom_ribbon(aes(ymin=parameter_mean_per_minute-parameter_sd_per_minute, ymax=parameter_mean_per_minute+parameter_sd_per_minute), alpha=0.3)+
+        ggtitle(paste0(i," n=",length(chosen_exps)," with standard error of the mean"))+
+        theme_classic()+
+        scale_x_continuous(breaks = seq(0, max(dfp$hours), 1))+
+        xlab("hours") + ylab(i)
+        #ggsave(paste0(i,".png"))
+  )
+}       
+
+
+```
+
+## Cumulative distributions over time average over all datasets
+
+```{r, echo=TRUE}
+
+
+for (i in params){
+  dfp2 <- dfp %>%
+    filter(dataset_ID %in% chosen_exps_1 | dataset_ID %in% chosen_exps_2 | dataset_ID %in% chosen_exps_3 | dataset_ID %in% chosen_exps_4) %>%
+    mutate(hours_rounded= ceiling(hours* 2) / 2) %>%
+    group_by(worm_type) %>%
+    mutate(N=paste0(worm_type, " N= ",n_distinct(dataset_ID), " datasets"))
+  
+  for(w in unique(dfp2$worm_type)){
+    dfp3 <- dfp2 %>%
+      filter(worm_type == w) %>%
+      group_by(hours_rounded) %>%
+      mutate(N_worms= n()) %>%
+      ungroup() %>%
+      mutate(sd_N_worms=sd(N_worms))%>%
+      mutate(mean_N_worms=mean(N_worms))
+  
+    print(ggplot(dfp3,aes_string(x = i, y = "hours_rounded",group="hours_rounded",height="..density.."))+
+      geom_density_ridges_gradient(aes(fill = ..x..), scale = 5, size = 0.3) +
+      scale_fill_gradientn(colours = c("#0D0887FF", "#CC4678FF", "#F0F921FF"))+
+      scale_x_continuous(limits = c(0, NA)) +
+      theme_black()+
+      theme(legend.position = "none")+
+      ggtitle(paste0(gsub("p\\_(.+)","\\1",i)," ",w, " ", round(dfp3$mean_N_worms,0), "+-", round(dfp3$sd_N_worms,0)))+
+      ggsave(paste0(i,"_",w,"_distribution",".png")))
+  }
+
 }
 
 
 ```
 
-##Plot grouped images for standard parameters
-```{r, echo=TRUE}
-
-dfp2 <- dfp %>%
-  group_by(hours,dataset_ID,plate_type)%>%
-  unite("experiment", c("dataset_ID","plate_type"), sep= " ")%>%
-  group_by(experiment,hours,minutes)%>%
-  summarise(turns_mean_per_minute = mean(turns_per_minute), size_median_per_minute=median(mean_size),eccentricity_median_per_minute=median(mean_eccentricity),angle_median_per_minute=median(mean_angle),velocity_median_per_minute=median(mean_velocity), sd_velocity_median_per_minute=median(sd_velocity),displacement_median_per_minute=median(mean_displacement))
-
-
-  
-
-
-```
-
-
-##Plot gifs of parameters
+## Plot gifs of parameters
 ```{r, echo=TRUE, out.width = '4%'}
 
-
+for (i in params){
+  dfp2 <- dfp %>%
+  filter(dataset_ID %in% chosen_exps) %>%
+  mutate(hours_rounded= ceiling(hours* 2) / 2) %>%
+  group_by(hours_rounded)%>%
+  summarise(parameter_mean_per_minute = mean(!!sym(i)),
+            parameter_sd_per_minute = sem(!!sym(i)))
+  
+  print(ggplot(dfp2,aes(x=hours_rounded,y=parameter_mean_per_minute))+
+        geom_line(size=0.5,color="blue")+
+        #geom_errorbar(width=.1, aes(ymin=parameter_mean_per_minute-parameter_sd_per_minute, ymax=parameter_mean_per_minute+parameter_sd_per_minute))+
+        geom_ribbon(aes(ymin=parameter_mean_per_minute-parameter_sd_per_minute, ymax=parameter_mean_per_minute+parameter_sd_per_minute), alpha=0.3)+
+        ggtitle(paste0(i," n=",length(chosen_exps)," with standard error of the mean"))+
+        theme_classic()+
+        scale_x_continuous(breaks = seq(0, max(dfp$hours), 1))+
+        xlab("hours") + ylab(i)
+        #ggsave(paste0(i,".png"))
+  )
+}           
 chosen_dataset <- "2019-01-23_16-07-02"
 dfp2 <- dfp %>%
   group_by(minutes,dataset_ID,plate_type,tp)%>%
@@ -498,50 +990,27 @@ dfp3 <- dfp2 %>%
 
 
 ```{r, echo=TRUE}
-calculate_centered(secs_angle_offset*downsampled_fps,5,secs_min_tracked*downsampled_fps)
+###check if this function is up to date
+#plot_image_with_path_centered(which_tracks,offset,conversion_factor,time_input_type,time_input,which_dataset,max_number_gaps,duration,selected_frame,color_path,image)
+plot_image_with_path_centered("all_frames",secs_angle_offset*downsampled_fps,conversion_factor,"minutes",129,"2019-03-06_17-56-39",max_gaps,secs_min_tracked*downsampled_fps,10, "mean_angle","no_image")
 
+minutes <- dfp %>%
+  filter(dataset_ID == "2019-03-06_17-56-39")
 
-p <- ggplot(dfp_centered)+
-    theme(aspect.ratio = 1024/1024)+
-    scale_x_continuous(limits= c(-1024,1024)) +
-    scale_y_continuous(limits= c(-1024,1024))+
-    geom_path(aes(x=x_centered, y=y_centered,col=minutes,group=grouping),size=0.8, alpha=0.05)+
-    scale_colour_gradientn(colours = myPalette(100), limits=c(0, max(data$minutes)))+
-    theme_void()
-
-p
-
+minutes_unique <- unique(minutes$minutes)
+minutes_unique
+minutes_length <- length(minutes_unique)
+minutes_length
 ```
 
 
 ```{r, echo=TRUE}
 
-min <- dfp_centered %>%
-  group_by(tp) %>%
-  summarise(number_of_tracks=n_distinct(TrackID))%>%
-  summarise(min=min(number_of_tracks)) %>%
-  pull()
-
-
-for (i in sort(unique(dfp_centered$tp))){
-  
-  dfp3 <- dfp_centered %>%
-    filter(tp == i)
-  list <- sample(unique(dfp3$TrackID),min)
-  dfp4 <- filter(dfp3,TrackID %in% list)
-  p_tp <- ggplot(dfp4)+
-    theme(aspect.ratio = 1024/1024)+
-    scale_x_continuous(limits= c(-1024,1024)) +
-    scale_y_continuous(limits= c(-1024,1024))+
-    geom_path(aes(x=x_centered, y=y_centered,col=mean_angle,group=grouping),size=1)+
-    scale_colour_gradientn(colours = myPalette(100), limits=c(0, max(dfp_centered$angle)))+
-    theme_void()+
-    ggtitle("Minute: ", dfp4$minutes)
-  p_tp
-  save_plot(paste0("plots/","centered_",round(i,3),".png"),p_tp,base_height=10,base_aspect_ratio = 1.1)
-  print(paste0("Saved plot Nr.",round(i,3)))
+for (i in (minutes_unique)){
+  plot_image_with_path_centered("all_frames",secs_angle_offset*downsampled_fps,conversion_factor,"minutes",i,"2019-03-06_17-56-39",max_gaps,secs_min_tracked*downsampled_fps,10, "mean_angle","no_image")
+  save_plot(paste0("plots/","centered_",sprintf("%03d", i),".png"),pc,base_height=10,base_aspect_ratio = 1.1)
+  print(paste0("Saved plot for minute ",sprintf("%03d", i)))
 }
-
 
 ```
 
@@ -578,18 +1047,4 @@ chart_link
 
 ```
 
-```{r, echo=TRUE}
 
-params <- c("mean_angle", "mean_velocity", "mean_displacement", "mean_size")
-for (i in params){
-print(ggplot(dfp,aes_string(x = i, y = "minutes",group="minutes",height="..density..")) +
-    geom_density_ridges_gradient(aes(fill = ..x..), scale = 5, size = 0.3) +
-    scale_fill_gradientn(
-      colours = c("#0D0887FF", "#CC4678FF", "#F0F921FF"),
-      name = i)+
-    theme_classic()+
-    facet_wrap(~dataset_ID)
-  )
-}
-
-```
