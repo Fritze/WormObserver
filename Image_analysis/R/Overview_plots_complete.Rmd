@@ -49,6 +49,11 @@ angle <- function(x1, y1, x2, y2) {
   }
 }
 
+angle2 <- function(x1, y1, x2, y2) {
+  atan2(y2,x2) - atan2(y1,x1) 
+}
+
+
 distance <- function(x1, y1, x2, y2) {
   values <- list(x1, y1, x2, y2)
   if(anyNA(values)) {
@@ -374,10 +379,7 @@ plot_single_path_states <-  function(which_track,conversion_factor,binning_facto
   
   }
 
-# new.pos <- c(0.43,0.53)
-# pos <- data.frame(data_for_plotting$location_x_norm,data_for_plotting$location_y_norm)
-# nearest_idx <- which.min(colSums((t(pos) - new.pos)^2))
-# data_for_plotting[nearest_idx, "TrackID"]
+
 
 calculate_overview_statistics <- function(conversion_factor,offset,binning_factor,max_gaps,duration) {
   dfp <<- data_filtering(data, conversion_factor, offset, binning_factor, max_gaps,duration) %>%
@@ -439,7 +441,7 @@ theme_black = function(base_size = 12, base_family = "") {
 
 #define data paths
 ```{r, include=FALSE}
-target_folder_base <- ("/Users/fpreuss/Desktop/tracking_demo")
+target_folder_base <- ("/media/ella/raid5/timelapses")
 target_folder_general <- c("2019-03-26_19-27-16")
                            # "2019-03-07_17-28-51",
                            # "2019-03-11_17-54-09",
@@ -502,9 +504,8 @@ worm_type$dataset <- gsub(".+\\/([0-9]+\\-[0-9]+\\-[0-9]+\\_[0-9]+\\-[0-9]+\\-[0
 
 #import timelapse data
 ```{r, include=FALSE}
-#list zip file in target_folder_analysis (there should be only one...)
-zip_files <- list.files(target_folder_analysis)
-
+#list zip files in target_folder_analysis
+zip_files <- list.files(target_folder_analysis,pattern=".zip")
 
 import_data <- function(zip_files){
   ds_all_tps <- NULL
@@ -593,19 +594,19 @@ skeleton <- function(datasetIDs, TrackIDs, selected_timepoints,frames){
               data_imported <- cbind(data_imported,rep(0, nrow(data_imported)))
               
               #if dimension X is bigger than Y (== landscape), make it portrait
-              if(dim_X > dim_Y){
-                #swap dimension
-                #add two to get the new dimensions right
-                dim_Y <- as.numeric(filter(ds_tp_track,frame == f) %>% select(bitmask_dim_X))+2
-                dim_X <- as.numeric(filter(ds_tp_track,frame == f) %>% select(bitmask_dim_Y))+2
-                #here is where the transformation around 90° happens
-                data_imported <- t(data_imported) %>%
-                  melt(.) %>%
-                  rename(Y = 1, X = 2,value = 3) %>%
-                  mutate(next_px_1_x = 0, next_px_1_y = 0,
-                         next_px_2_x = 0, next_px_2_y = 0)
-                
-              } else {
+              # if(dim_X > dim_Y){
+              #   #swap dimension
+              #   #add two to get the new dimensions right
+              #   dim_Y <- as.numeric(filter(ds_tp_track,frame == f) %>% select(bitmask_dim_X))+2
+              #   dim_X <- as.numeric(filter(ds_tp_track,frame == f) %>% select(bitmask_dim_Y))+2
+              #   #here is where the transformation around 90° happens
+              #   data_imported <- t(data_imported) %>%
+              #     melt(.) %>%
+              #     rename(Y = 1, X = 2,value = 3) %>%
+              #     mutate(next_px_1_x = 0, next_px_1_y = 0,
+              #            next_px_2_x = 0, next_px_2_y = 0)
+              #   
+              # } else {
                 #add two to get the new dimensions right
                 dim_X <- as.numeric(filter(ds_tp_track,frame == f) %>% select(bitmask_dim_X))+2
                 dim_Y <- as.numeric(filter(ds_tp_track,frame == f) %>% select(bitmask_dim_Y))+2
@@ -614,8 +615,8 @@ skeleton <- function(datasetIDs, TrackIDs, selected_timepoints,frames){
                   melt(.) %>%
                   rename(Y = 1, X = 2,value = 3) %>%
                   mutate(next_px_1_x = 0, next_px_1_y = 0,
-                         next_px_2_x = 0, next_px_2_y = 0)
-              }
+                          next_px_2_x = 0, next_px_2_y = 0)
+              # }
               
             
               #this is a ggplot to check if the skeleton was imported right
@@ -626,7 +627,7 @@ skeleton <- function(datasetIDs, TrackIDs, selected_timepoints,frames){
               #     scale_y_continuous(expand = c(0, 0),trans="reverse") +
               #     # theme_void()+
               #     theme(legend.position="none")
-  
+
               #create an empty list
               #here for each pixel we will find the surounding pixels (max. 8) that are having value "1"
               pixel_list <- vector(mode="list",length=0)
@@ -665,9 +666,12 @@ skeleton <- function(datasetIDs, TrackIDs, selected_timepoints,frames){
                   data_imported[i,"is_end"] <- "NO"
                   pixel_list <- vector(mode="list",length=0)
                 }
-              }       
+              }
               
-              
+              #if there is no pixel found with any neighbours set all pixels to is_end == "NO"
+              if (is.null(data_imported$is_end)){
+                data_imported$is_end <- "NO"
+              }
               
               data_w_angles <<- data_imported %>%
                 #only pixels that have value 1 (== no background)
@@ -745,7 +749,7 @@ skeleton <- function(datasetIDs, TrackIDs, selected_timepoints,frames){
                       filter(NA) %>%
                       add_row() %>%
                       select(-c(pos,value,next_pos_1,next_pos_2)) %>%
-                      mutate(index=NA, angle_1 = NA, dim_X = dim_X, dim_Y = dim_Y,next_px_x = NA, next_px_y = NA, diff_x = NA, diff_y = NA, is_head = NA, is_tail = NA, dataset_ID = timelapse, tp = timepoint, frame = f, TrackID = t,TrackCheck = NA)
+                      mutate(index=NA, angle_1 = NA, dim_X = dim_X, dim_Y = dim_Y, prev_px_x = NA, prev_px_y = NA,next_px_x = NA, next_px_y = NA, diff_next_px_x = NA, diff_next_px_y = NA, diff_prev_px_x = NA, diff_prev_px_y = NA, is_head = NA, is_tail = NA, dataset_ID = timelapse, tp = timepoint, frame = f, TrackID = t,TrackCheck = NA)
         
                     skeleton_data_all <<- rbind(skeleton_data_all,data_dummy)
                     
@@ -765,11 +769,10 @@ skeleton <- function(datasetIDs, TrackIDs, selected_timepoints,frames){
                       rename("X" = 1, "Y" = 2) %>%
                       mutate(index = row_number()) %>%
                       mutate(next_px_x = lead(X,n=1), next_px_y = lead(Y,n=1)) %>%
-                      mutate(diff_x = X - next_px_x, diff_y = Y - next_px_y) %>%
-                      #in degrees
-                      #mutate(angle_1 = atan2(diff_1_x,diff_1_y)*180/pi) %>%
-                      #in rad
-                      mutate(angle_1 = atan2(abs(diff_x),abs(diff_y))) %>%
+                      mutate(prev_px_x = lag(X,n=1),prev_px_y = lag(Y,n=1)) %>%
+                      mutate(diff_prev_px_x =  X - prev_px_x, diff_prev_px_y = Y - prev_px_y) %>%
+                      mutate(diff_next_px_x = next_px_x - X, diff_next_px_y = next_px_y - Y) %>%
+                      mutate(angle_1=suppressWarnings(as.numeric(mapply(angle2,diff_prev_px_x,diff_prev_px_y,diff_next_px_x,diff_next_px_y))))%>%
                       mutate(dataset_ID = timelapse) %>%
                       mutate(tp = timepoint) %>%
                       mutate(frame = f, dim_X = dim_X, dim_Y = dim_Y) %>%
@@ -807,6 +810,11 @@ skeleton <- function(datasetIDs, TrackIDs, selected_timepoints,frames){
                               mutate(is_head = NA) %>%
                               mutate(is_head = ifelse(X == min(worm_ends$X) & Y == max(worm_ends$Y)  & is_end == "YES","YES", NA))
                           }
+                        
+                        if(!is.na(data_ordered_for_plotting[nrow(data_ordered_for_plotting),"is_head"])){
+                          data_ordered_for_plotting$index <- nrow(data_ordered_for_plotting):1
+                        }
+                        
                         print(paste0(timelapse,"_","tp_",timepoint,"_",t,"_","frame","_",f," ","head found"))
                         #add data for this frame to global list
                         skeleton_data_all <<- rbind(skeleton_data_all, data_ordered_for_plotting)
@@ -828,8 +836,14 @@ skeleton <- function(datasetIDs, TrackIDs, selected_timepoints,frames){
                               filter(is_end == "YES") %>%
                               mutate(is_head = ifelse(distance_to_latest_head == min(distance_to_latest_head),"YES",NA)) %>%
                               filter(is_head == "YES")
+                              
                             
                             data_ordered_for_plotting$is_head[closest$index] <- "YES"
+
+                           if(!is.na(data_ordered_for_plotting[nrow(data_ordered_for_plotting),"is_head"])){
+                             data_ordered_for_plotting$index <- nrow(data_ordered_for_plotting):1
+                            }
+                            
                             print(paste0(timelapse,"_","tp_",timepoint,"_",t,"_","frame","_",f," ","no direction, head estimated from previous frame"))
                             skeleton_data_all <<- rbind(skeleton_data_all, data_ordered_for_plotting)
                             
@@ -851,7 +865,7 @@ skeleton <- function(datasetIDs, TrackIDs, selected_timepoints,frames){
                     filter(NA) %>%
                     add_row() %>%
                     select(-c(pos,value,next_pos_1,next_pos_2)) %>%
-                    mutate(index=NA, angle_1 = NA, dim_X = dim_X, dim_Y = dim_Y,next_px_x = NA, next_px_y = NA, diff_x = NA, diff_y = NA, is_head = NA, is_tail = NA, dataset_ID = timelapse, tp = timepoint, frame = f, TrackID = t,TrackCheck = NA)
+                    mutate(index=NA, angle_1 = NA, dim_X = dim_X, dim_Y = dim_Y, prev_px_x = NA, prev_px_y = NA,next_px_x = NA, next_px_y = NA, diff_next_px_x = NA, diff_next_px_y = NA,diff_prev_px_x = NA, diff_prev_px_y = NA, is_head = NA, is_tail = NA, dataset_ID = timelapse, tp = timepoint, frame = f, TrackID = t,TrackCheck = NA)
     
                   skeleton_data_all <<- rbind(skeleton_data_all,data_dummy)
                 }
@@ -862,7 +876,7 @@ skeleton <- function(datasetIDs, TrackIDs, selected_timepoints,frames){
                   filter(NA) %>%
                   add_row() %>%
                   select(-c(pos,value,next_pos_1,next_pos_2)) %>%
-                  mutate(index=NA, angle_1 = NA, dim_X = dim_X, dim_Y = dim_Y,next_px_x = NA, next_px_y = NA, diff_x = NA, diff_y = NA, is_head = NA, is_tail = NA, dataset_ID = timelapse, tp = timepoint, frame = f, TrackID = t,TrackCheck = NA)
+                  mutate(index=NA, angle_1 = NA, dim_X = dim_X, dim_Y = dim_Y, prev_px_x = NA, prev_px_y = NA, next_px_x = NA, next_px_y = NA, diff_next_px_x = NA, diff_next_px_y = NA, diff_prev_px_x = NA, diff_prev_px_y = NA, is_head = NA, is_tail = NA, dataset_ID = timelapse, tp = timepoint, frame = f, TrackID = t,TrackCheck = NA)
     
                 skeleton_data_all <<- rbind(skeleton_data_all,data_dummy)
               }
@@ -887,10 +901,10 @@ skeleton <- function(datasetIDs, TrackIDs, selected_timepoints,frames){
   }
 }
 # timelapse <- "2019-03-26_19-27-16"
-# t <- "track_3"
-# timepoint <- 10
-# f <- 50
-# frames <- 50
+# t <- "track_2"
+# timepoint <- 35
+# f <- 84
+# frames <- 84
 ```
 
 ```{r message=FALSE, include=FALSE}
@@ -899,14 +913,12 @@ skeleton <- function(datasetIDs, TrackIDs, selected_timepoints,frames){
 #function(datasetIDs, TrackIDs, tp,frames)
 TrackIDs <- unique(data$TrackID)
 # TrackIDs <- c("track_0","track_1","track_2","track_3","track_4","track_5","track_6","track_7","track_8","track_9","track_10")
-tps <- c(1,5,10,15,20,25,30,35,40,45,50,55,60,65,70,75,80,85,90,95)
+tps <- c(1,5,10,15,20,25,30,35,40,45,50,55,60,65,70,75,80,85,90,95,100,105,110)
+# tps <- unique(data$tp)
 
+skeleton("2019-03-26_19-27-16",TrackIDs,tps,0:450)
 
-skeleton("2019-03-26_19-27-16",TrackIDs,tps,0:200)
-
-
-
-# ssave(skeleton_data_all,file="/Users/fpreuss/Desktop/tracking_demo/2019-03-26_19-27-16_allTracks_0-450.Rdata")
+save(skeleton_data_all, file = paste0("2019-03-26_19-27-16","_","23tps","_","0-450",".RData"))
 
 ```
 
@@ -915,35 +927,39 @@ skeleton("2019-03-26_19-27-16",TrackIDs,tps,0:200)
 ```{r, include=FALSE}
 
 
-skeleton_data_all$TrackCheck_cleaned <- replace_f(skeleton_data_all$TrackCheck, 24*20)
-skeleton_data_all <- skeleton_data_all %>%
-  mutate(X = ifelse(is.na(TrackCheck_cleaned), NA, X)) %>%
-  mutate(Y = ifelse(is.na(TrackCheck_cleaned), NA, Y)) %>%
+# skeleton_data_all$TrackCheck_cleaned <- replace_f(skeleton_data_all$TrackCheck, 24*10)
+# skeleton_data_all_cleaned <- skeleton_data_all %>%
+#   mutate(X = ifelse(is.na(TrackCheck_cleaned), NA, X)) %>%
+#   mutate(Y = ifelse(is.na(TrackCheck_cleaned), NA, Y)) %>%
+#   mutate(grouping = paste0(dataset_ID, ",",tp,",",TrackID))
+
+
+skeleton_data_all_cleaned <- skeleton_data_all %>%
   mutate(grouping = paste0(dataset_ID, ",",tp,",",TrackID))
 
-for (f in unique(skeleton_data_all$frame)){
-    data_plot <<- skeleton_data_all %>%
+for (f in unique(skeleton_data_all_cleaned$frame)){
+    data_plot <<- skeleton_data_all_cleaned %>%
       filter(frame == f)
-    
+   
     #tracknames <- paste(data_plot$dataset_ID,data_plot$tp,sep="\n")
     tracknames <- paste0("tp: ", data_plot$tp,"\n",data_plot$TrackID)
+    data_plot$grouping <- factor(data_plot$grouping, levels=unique(data_plot$grouping))
     names(tracknames) <- data_plot$grouping
-    
+  
     p <- ggplot(data_plot, aes(x=X,y=Y,colour=angle_1))+
-      geom_point(size=0.025) +
+      geom_point(size=0.25) +
       geom_path(size=0.025) +
       # geom_point(aes(fill=angle_1)) +
       # transition_states(frame,transition_length = 0.1,state_length = 0.2) +
       # ease_aes('linear') + 
       #geom_text(aes(label=round(angle_1,3)),color="white",size=3,hjust=2, vjust=1)+
-      geom_point(data=data_plot[which(data_plot$is_head == "YES"), ], aes(x=X, y=Y), shape=19, colour = "cornflowerblue", size=1.5, alpha=0.8) +
+      geom_point(data=data_plot[which(data_plot$is_head == "YES"), ], aes(x=X, y=Y), shape=19, colour = "gold", size=1.5, alpha=0.8) +
       scale_x_continuous(limits=c(-10,50)) +
       scale_y_continuous(expan = c(0, 0),limits=c(70,-10),trans="reverse") +
-      facet_wrap(~ grouping,nrow=30,ncol=20, labeller = labeller(grouping=tracknames))+
+      facet_wrap(~ grouping,nrow=25,ncol=35, labeller = labeller(grouping=tracknames))+
       theme_black()+
-      scale_color_gradient2(low = "red", mid = "white",
-                            high = "red",midpoint=0,limits=c(-2,2))+
-      #scale_colour_gradientn(values=c(0,50,100), colours=c("red","yellow","blue")) + 
+      scale_color_gradient2(low = "cornflowerblue", mid = "white",
+                         high = "red",midpoint=0,limits=c(-0.7,0.7)) +
       coord_equal() +
       theme(legend.position = "none",
             axis.title=element_blank(),
@@ -952,12 +968,91 @@ for (f in unique(skeleton_data_all$frame)){
             axis.line=element_blank(),
             strip.text.x = element_text(colour = 'white',size=5))
     #print(p)
-    ggsave(paste0("/Users/fpreuss/Desktop/ggplots/",f,".png"),height = 20,width= 20,units = "cm",bg="black")
+    ggsave(paste0(file.path(target_folder_analysis,"ggplots"),"/",f,".png"),height = 60,width= 60,units = "cm",bg="black",dpi=150)
 }
 
 
 
 ```
+
+
+```{r, include=FALSE}
+
+skeleton_m <- skeleton_data_all %>%
+  # filter(TrackID == "track_12") %>%
+  group_by(frame) %>% 
+  filter(any(is_head=="YES")) %>%
+  mutate(X=frame, Y=index) %>%
+  mutate(grouping  = paste(tp, TrackID, sep="_"))
+
+
+
+ggplot(skeleton_m, aes(x=X,y=Y,fill=angle_1))+
+  geom_raster(na.rm=TRUE) +
+  scale_x_continuous(limits=c(0,200)) +
+  facet_wrap(~grouping) +
+  scale_fill_gradient2(low = "cornflowerblue",mid = "white",high = "brown2",midpoint=0,limits=c(-0.7,0.7)) +
+  theme_void()+
+  theme(strip.text.x = element_text(size = 3))
+
+
+
+ ggsave(paste0(file.path(target_folder_analysis,"ggplots"),"/","test_waves",".png"),height = 60,width= 60,units = "cm",bg="black",dpi=150)
+
+```
+
+```{r, include=FALSE}
+
+
+expca <- skeleton_data_all %>%
+  # filter(TrackID == "track_12") %>%
+  filter(tp == 35) %>%
+  select(angle_1,index, frame,TrackCheck)
+
+expca$TrackCheck_cleaned <- replace_f(expca$TrackCheck, 24*120)
+
+expca <- expca %>% 
+  na.omit() %>%
+  select(-c(TrackCheck,TrackCheck_cleaned)) %>%
+  mutate(time = 1:n())
+
+expca_t <- dcast(expca, index~time,value.var = "angle_1")
+
+
+expca_t <- reshape(expca, timevar = c("time"), idvar = "index", direction = "wide", v.names = c("angle_1"))
+
+
+??reshape2
+
+?reshape
+expca_t <- dcast(expca, index~frame,value.var = "angle_1")
+rownames(expca_t) <- expca_t$index
+expca_t <- select(expca_t, -index)
+pca <- prcomp(expca_t,scale=TRUE)
+plot(pca)
+pca$rotation
+eigenworms <- data.frame(pca$x[,1:6])
+
+ev <- data.frame(pca$sdev^2)
+colnames(ev) <- "eigenvalue"
+ev$cumsum_eigenvalue <- cumsum(ev$eigenvalue)
+
+ev <- ev %>%
+  mutate(var_contr = cumsum_eigenvalue/sum(eigenvalue)) %>%
+  mutate(index = 1:n()) %>%
+  filter(index %in% c(1:5))
+
+
+ggplot(ev,aes(index,var_contr)) +
+  geom_line() +
+  scale_y_continuous(limits=c(0,1))
+
+
+```
+
+
+
+
 ##set parameters here
 ```{r, include=FALSE}
 #pixel to mm conversion
