@@ -441,7 +441,7 @@ theme_black = function(base_size = 12, base_family = "") {
 
 #define data paths
 ```{r, include=FALSE}
-target_folder_base <- ("/media/ella/raid5/timelapses")
+target_folder_base <- ("/Users/fpreuss/Desktop/tracking_demo/")
 target_folder_general <- c("2019-03-26_19-27-16")
                            # "2019-03-07_17-28-51",
                            # "2019-03-11_17-54-09",
@@ -913,12 +913,12 @@ skeleton <- function(datasetIDs, TrackIDs, selected_timepoints,frames){
 #function(datasetIDs, TrackIDs, tp,frames)
 TrackIDs <- unique(data$TrackID)
 # TrackIDs <- c("track_0","track_1","track_2","track_3","track_4","track_5","track_6","track_7","track_8","track_9","track_10")
-tps <- c(1,5,10,15,20,25,30,35,40,45,50,55,60,65,70,75,80,85,90,95,100,105,110)
-# tps <- unique(data$tp)
+#tps <- c(1,5,10,15,20,25,30,35,40,45,50,55,60,65,70,75,80,85,90,95,100,105,110)
+tps <- unique(data$tp)
 
-skeleton("2019-03-26_19-27-16",TrackIDs,tps,0:450)
+skeleton("2019-03-26_19-27-16",TrackIDs,tps,0:899)
 
-save(skeleton_data_all, file = paste0("2019-03-26_19-27-16","_","23tps","_","0-450",".RData"))
+#save(skeleton_data_all, file = paste0("2019-03-26_19-27-16","_","23tps","_","0-450",".RData"))
 
 ```
 
@@ -1003,49 +1003,138 @@ ggplot(skeleton_m, aes(x=X,y=Y,fill=angle_1))+
 
 ```{r, include=FALSE}
 
-
-expca <- skeleton_data_all %>%
-  # filter(TrackID == "track_12") %>%
-  filter(tp == 35) %>%
-  select(angle_1,index, frame,TrackCheck)
-
-expca$TrackCheck_cleaned <- replace_f(expca$TrackCheck, 24*120)
-
-expca <- expca %>% 
-  na.omit() %>%
-  select(-c(TrackCheck,TrackCheck_cleaned)) %>%
-  mutate(time = 1:n())
-
-expca_t <- dcast(expca, index~time,value.var = "angle_1")
+# 
 
 
-expca_t <- reshape(expca, timevar = c("time"), idvar = "index", direction = "wide", v.names = c("angle_1"))
 
 
-??reshape2
 
-?reshape
-expca_t <- dcast(expca, index~frame,value.var = "angle_1")
-rownames(expca_t) <- expca_t$index
-expca_t <- select(expca_t, -index)
-pca <- prcomp(expca_t,scale=TRUE)
-plot(pca)
-pca$rotation
-eigenworms <- data.frame(pca$x[,1:6])
 
-ev <- data.frame(pca$sdev^2)
-colnames(ev) <- "eigenvalue"
-ev$cumsum_eigenvalue <- cumsum(ev$eigenvalue)
 
-ev <- ev %>%
-  mutate(var_contr = cumsum_eigenvalue/sum(eigenvalue)) %>%
+skeleton_data_all_shuffled <- skeleton_data_all %>%
+  filter(tp %in% tps_to_shuffle) %>%
+  mutate(grouping=paste(dataset_ID, tp,sep="_")) %>%
+  group_by(grouping) %>%
+  mutate(tp = mapply(assign_new_tp,tp)) %>%
+  ungroup() %>%
+  select(-grouping)
+
+  
+
+
+calculate_eigenvalue_contribution <- function(timepoints,dataframe,frames){
+  print(timepoints)
+  for_pca <- dataframe  %>%
+    filter(tp %in% timepoints)  %>%
+    group_by(TrackID) %>%
+    filter(any(is_head=="YES")) %>%
+    select(angle_1,index, frame,TrackCheck,dataset_ID,TrackID,tp) %>%
+    mutate(TrackCheck_cleaned = replace_f(TrackCheck, 24*frames)) %>%
+    na.omit() %>%
+    select(-c(TrackCheck,TrackCheck_cleaned))
+  
+  
+  for_pca_2 <- for_pca %>%  
+     ungroup() %>%
+     mutate(grouping = paste(dataset_ID,tp, TrackID, sep="_")) %>%
+     mutate(unique_tracks = length(unique(grouping)))
+  
+   for_pca <- for_pca %>%
+     select(-c(dataset_ID))
+  
+
+  if(nrow(for_pca) != 0){
+    for_pca_t <- dcast(for_pca, index~frame+TrackID+tp,value.var = "angle_1")
+
+    rownames(for_pca_t) <- for_pca_t$index
+    for_pca_t <- select(for_pca_t, -index)
+    pca <- prcomp(for_pca_t,scale=TRUE)
+    # plot(pca)
+    data.frame(pca$sdev^2,unique(for_pca_2$unique_tracks))
+  } else {
+    rep(0, 22)
+  }
+} 
+
+
+# 
+dataframe <- skeleton_data_all
+frames <- 10
+liste <- list(c(12:40), c(41:69))
+timepoints <- liste
+
+eigenvalues_all <- map_dfc(liste,calculate_eigenvalue_contribution,dataframe,10)
+column_names <- paste0(rep(liste,each=2),rep(c("","_numberoftracks"),each=1,times=2))
+colnames(eigenvalues_all) <- column_names
+
+
+ev <- eigenvalues_all %>%
+  select(-contains("_")) %>%
+  melt() %>%
+  group_by(variable) %>%
+  mutate(cumsum_eigenvalue = cumsum(value)) %>%
+  mutate(var_contr = cumsum_eigenvalue/sum(value)) %>%
   mutate(index = 1:n()) %>%
-  filter(index %in% c(1:5))
+  filter(index %in% c(1:6))
+
+number_of_tracks <- eigenvalues_all %>%
+  select(contains("_")) %>%
+  slice(1)
 
 
-ggplot(ev,aes(index,var_contr)) +
+ev$variable <- as.numeric(ev$variable)
+ggplot(ev,aes(index,var_contr,group=variable,color=variable)) +
   geom_line() +
-  scale_y_continuous(limits=c(0,1))
+  geom_point()+
+  scale_y_continuous(limits=c(0,1),breaks=c(0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1)) +
+  scale_x_continuous(breaks=c(0,1,2,3,4,5,6)) +
+  scale_color_gradientn(colours =  wes_palette("Zissou1", 40, type = "continuous")) +
+  labs(x="# eigenworm", y="variance contribution (%)") +
+  theme(aspect.ratio=1)
+  #scale_color_viridis_c()
+
+assign_new_tp <- function(x){
+  s[x]
+}
+
+sampling_shuffled <- function(x){
+  tps_to_shuffle <- 12:69
+  s <<- sample(tps_to_shuffle, length(tps_to_shuffle))
+  
+  dataframe_shuffled <- skeleton_data_all %>%
+     filter(tp %in% tps_to_shuffle) %>%
+     mutate(grouping=paste(dataset_ID, tp,sep="_")) %>%
+     group_by(grouping) %>%
+     mutate(tp = mapply(assign_new_tp,tp)) %>%
+     ungroup() %>%
+     select(-grouping)
+
+  eigenvalues_all <- map_dfc(liste,calculate_eigenvalue_contribution,dataframe_shuffled,20)
+  column_names <- paste0(rep(liste,each=2),rep(c("","_numberoftracks"),each=1,times=2))
+  colnames(eigenvalues_all) <- column_names
+
+
+  ev <- eigenvalues_all %>%
+    select(-contains("_")) %>%
+    melt() %>%
+    group_by(variable) %>%
+    mutate(cumsum_eigenvalue = cumsum(value)) %>%
+    mutate(var_contr = cumsum_eigenvalue/sum(value)) %>%
+    mutate(index = 1:n()) %>%
+    filter(index %in% c(1:6)) %>%
+    mutate(iteration = x)
+
+  # number_of_tracks <- eigenvalues_all %>%
+  #   select(contains("_")) %>%
+  #   slice(1)
+  ev
+  
+  
+}
+
+test <- map_dfc(1:2,sampling_shuffled)
+
+map_dfc(1:2,assign_new_tp)
 
 
 ```
