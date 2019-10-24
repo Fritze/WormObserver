@@ -570,8 +570,8 @@ skeleton <- function(datasetIDs, TrackIDs, selected_timepoints,frames){
             mutate(x_dir = ifelse(x_lead < 0, "left","right")) %>%
             mutate(y_dir = ifelse(y_lead < 0, "up","down")) %>%
             mutate(direction = paste(x_dir,y_dir,sep="-"))
-          #only keep the direction when direction is stable over 7 seconds 
-          ds_tp_track$direction <- replace_f(ds_tp_track$direction,14)
+          #only keep the direction when direction is stable over 5 seconds 
+          ds_tp_track$direction <- replace_f(ds_tp_track$direction,10)
         
           #for every frame
           for(f in frames){
@@ -916,26 +916,62 @@ TrackIDs <- unique(data$TrackID)
 #tps <- c(1,5,10,15,20,25,30,35,40,45,50,55,60,65,70,75,80,85,90,95,100,105,110)
 tps <- unique(data$tp)
 
-skeleton("2019-03-26_19-27-16",TrackIDs,tps,0:899)
+skeleton("2019-03-26_19-27-16",TrackIDs,4,0:899)
 
 #save(skeleton_data_all, file = paste0("2019-03-26_19-27-16","_","23tps","_","0-450",".RData"))
 
 ```
 
 
-
+# example videos of skeletons
 ```{r, include=FALSE}
+#use this if you want only plot worms that are continuesly tracked over x frames
+x <- 10
+
+#function to plot skeletons
+plot_skeletons <- function(data_plot){
+  ggplot(data_plot, aes(x=X,y=Y,colour=angle_1))+
+      geom_point(size=0.25) +
+      geom_path(size=0.025) +
+      # geom_point(aes(fill=angle_1)) +
+      # transition_states(frame,transition_length = 0.1,state_length = 0.2) +
+      # ease_aes('linear') + 
+      #geom_text(aes(label=round(angle_1,3)),color="white",size=3,hjust=2, vjust=1)+
+      geom_point(data=data_plot[which(data_plot$is_head == "YES"), ], aes(x=X, y=Y), shape=17, stroke=1, alpha=0.5,colour = "gold", size=4) +
+      scale_x_continuous(limits=c(-10,70)) +
+      scale_y_continuous(expan = c(0, 0),limits=c(70,-10),trans="reverse") +
+      facet_wrap(~ grouping,nrow=25,ncol=35, labeller = labeller(grouping=tracknames))+
+      theme_black()+
+      scale_color_gradient2(low = "cornflowerblue", mid = "white",
+                         high = "brown2",midpoint=0,limits=c(-1,1),na.value="grey") +
+      coord_equal() +
+      theme(legend.position = "none",
+            axis.title=element_blank(),
+            axis.ticks=element_blank(),
+            axis.text=element_blank(),
+            axis.line=element_blank(),
+            strip.text.x = element_text(colour = 'white',size=5))+
+      guides(fill=guide_legend(title="Angle (rad)"))
+}
 
 
-# skeleton_data_all$TrackCheck_cleaned <- replace_f(skeleton_data_all$TrackCheck, 24*10)
+
+skeleton_data_all$TrackCheck_cleaned <- replace_f(skeleton_data_all$TrackCheck, 24*x)
+skeleton_data_all_cleaned <- skeleton_data_all %>%
+  mutate(X = ifelse(is.na(TrackCheck_cleaned), NA, X)) %>%
+  mutate(Y = ifelse(is.na(TrackCheck_cleaned), NA, Y)) %>%
+  mutate(grouping = paste0(dataset_ID, ",",tp,",",TrackID)) %>%
+  group_by(grouping) %>%
+  #only those that have a head detected at one point
+  filter(any(is_head=="YES"))
+
+
 # skeleton_data_all_cleaned <- skeleton_data_all %>%
-#   mutate(X = ifelse(is.na(TrackCheck_cleaned), NA, X)) %>%
-#   mutate(Y = ifelse(is.na(TrackCheck_cleaned), NA, Y)) %>%
 #   mutate(grouping = paste0(dataset_ID, ",",tp,",",TrackID))
 
-
-skeleton_data_all_cleaned <- skeleton_data_all %>%
-  mutate(grouping = paste0(dataset_ID, ",",tp,",",TrackID))
+#if you want to look at a certain timepoint
+# skeleton_data_all_cleaned <- skeleton_data_all_cleaned %>%
+#   filter(tp == 4)
 
 for (f in unique(skeleton_data_all_cleaned$frame)){
     data_plot <<- skeleton_data_all_cleaned %>%
@@ -945,28 +981,8 @@ for (f in unique(skeleton_data_all_cleaned$frame)){
     tracknames <- paste0("tp: ", data_plot$tp,"\n",data_plot$TrackID)
     data_plot$grouping <- factor(data_plot$grouping, levels=unique(data_plot$grouping))
     names(tracknames) <- data_plot$grouping
-  
-    p <- ggplot(data_plot, aes(x=X,y=Y,colour=angle_1))+
-      geom_point(size=0.25) +
-      geom_path(size=0.025) +
-      # geom_point(aes(fill=angle_1)) +
-      # transition_states(frame,transition_length = 0.1,state_length = 0.2) +
-      # ease_aes('linear') + 
-      #geom_text(aes(label=round(angle_1,3)),color="white",size=3,hjust=2, vjust=1)+
-      geom_point(data=data_plot[which(data_plot$is_head == "YES"), ], aes(x=X, y=Y), shape=19, colour = "gold", size=1.5, alpha=0.8) +
-      scale_x_continuous(limits=c(-10,50)) +
-      scale_y_continuous(expan = c(0, 0),limits=c(70,-10),trans="reverse") +
-      facet_wrap(~ grouping,nrow=25,ncol=35, labeller = labeller(grouping=tracknames))+
-      theme_black()+
-      scale_color_gradient2(low = "cornflowerblue", mid = "white",
-                         high = "red",midpoint=0,limits=c(-0.7,0.7)) +
-      coord_equal() +
-      theme(legend.position = "none",
-            axis.title=element_blank(),
-            axis.ticks=element_blank(),
-            axis.text=element_blank(),
-            axis.line=element_blank(),
-            strip.text.x = element_text(colour = 'white',size=5))
+    p <-plot_skeletons(data_plot)
+    
     #print(p)
     ggsave(paste0(file.path(target_folder_analysis,"ggplots"),"/",f,".png"),height = 60,width= 60,units = "cm",bg="black",dpi=150)
 }
@@ -975,95 +991,381 @@ for (f in unique(skeleton_data_all_cleaned$frame)){
 
 ```
 
-
+#show segment angle diagrams (aka "wave diagrams") next to skeleton of the same worm
 ```{r, include=FALSE}
+#function to plot a skeleton
+plot_skeleton <- function(data_plot){
+  ggplot(data_plot, aes(x=X,y=Y,colour=angle_1))+
+      geom_point(size=2) +
+      geom_path(size=1) +
+      # geom_point(aes(fill=angle_1)) +
+      # transition_states(frame,transition_length = 0.1,state_length = 0.2) +
+      # ease_aes('linear') + 
+      #geom_text(aes(label=round(angle_1,3)),color="white",size=3,hjust=2, vjust=1)+
+      geom_point(data=data_plot[which(data_plot$is_head == "YES"), ], aes(x=X, y=Y), shape=17, stroke=1, alpha=0.5,colour = "gold", size=4) +
+      scale_x_continuous(limits=c(-10,70)) +
+      scale_y_continuous(expan = c(0, 0),limits=c(70,-10),trans="reverse") +
+      #facet_wrap(~ grouping,nrow=25,ncol=35, labeller = labeller(grouping=tracknames))+
+      theme_black()+
+      scale_color_gradient2(low = "cornflowerblue", mid = "white",
+                         high = "brown2",midpoint=0,limits=c(-1,1),na.value="grey") +
+      coord_equal() +
+      theme(legend.position = "none",
+            axis.title=element_blank(),
+            axis.ticks=element_blank(),
+            axis.text=element_blank(),
+            axis.line=element_blank(),
+            strip.text.x = element_text(colour = 'white',size=5))
+      
+}
 
-skeleton_m <- skeleton_data_all %>%
-  # filter(TrackID == "track_12") %>%
-  group_by(frame) %>% 
+#function to plot the wave diagram
+plot_wave <- function(skeleton_wave_onetrack){
+  ggplot(skeleton_wave_onetrack, aes(x=X,y=Y,fill=angle_1))+
+  geom_raster(na.rm=TRUE) +
+  scale_x_continuous(limits=c(0,max(skeleton_wave_onetrack$frame))) +
+  scale_y_continuous(trans="reverse")+
+  geom_vline(xintercept=f,linetype="longdash")+
+  scale_fill_gradient2(low = "cornflowerblue",mid ="white",high = "brown2",midpoint=0,limits=c(-1,1),na.value="black") +
+  theme_black()+
+  theme(axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.line.y=element_blank(),
+        legend.position = "top")+
+  labs(x="frames",title=paste0("Timepoint: ", timepoint, ", ",unique(skeleton_wave_onetrack$TrackID)))+
+  labs(y="tail                                       head")+
+  theme(strip.text.x = element_text(size = 3))+
+  labs(fill = "Intersegment angle (rad)")
+
+}
+  
+
+#only those that have a head structure within one timepoint of choice
+skeleton_wave <- skeleton_data_all %>%
+  filter(tp == timepoint) %>%
+  group_by(TrackID,frame) %>%
   filter(any(is_head=="YES")) %>%
   mutate(X=frame, Y=index) %>%
   mutate(grouping  = paste(tp, TrackID, sep="_"))
 
+#present tracks with head
+skeleton_wave %>%
+  group_by(TrackID) %>%
+  summarise(number_of_frames = length(unique(frame)))
+
+#if you want a certain TrackID / timepoint
+skeleton_wave_onetrack <- skeleton_wave %>%
+  filter(TrackID == track)
+
+skeleton_data_onetrack <- skeleton_data_all %>%
+      filter(tp == timepoint) %>%
+      filter(TrackID == track)
 
 
-ggplot(skeleton_m, aes(x=X,y=Y,fill=angle_1))+
-  geom_raster(na.rm=TRUE) +
-  scale_x_continuous(limits=c(0,200)) +
-  facet_wrap(~grouping) +
-  scale_fill_gradient2(low = "cornflowerblue",mid = "white",high = "brown2",midpoint=0,limits=c(-0.7,0.7)) +
-  theme_void()+
-  theme(strip.text.x = element_text(size = 3))
+for (f in skeleton_data_onetrack %>% filter(!is.na(X)) %>% distinct(frame) %>% pull()){
+  data_plot <- skeleton_data_onetrack %>%
+      filter(frame == f)
+   
+    p1<-plot_skeleton(data_plot)
+    #print(p1)
+    p2 <- plot_wave(skeleton_wave_onetrack)
+    #print(p2)
+    plot_grid(p2,p1,align=("v"),scale=c(1,0.8))+ theme(plot.background = element_rect(fill = "black"))
+    ggsave(paste0(file.path(target_folder_analysis,"ggplots"),"/","Wave_and_skeleton_","timepoint_",timepoint,"_",track,"_","frame_",f,".png"))
+}
 
-
-
- ggsave(paste0(file.path(target_folder_analysis,"ggplots"),"/","test_waves",".png"),height = 60,width= 60,units = "cm",bg="black",dpi=150)
 
 ```
 
 ```{r, include=FALSE}
+one_worm_skeleton <-  skeleton_data_all %>%
+  filter(tp == 1) %>%
+  filter(frame == 2) %>%
+  filter(TrackID == "track_4") %>%
+  drop_na("angle_1") %>%
+  mutate(angle_scaled = scale(angle_1,scale=TRUE))
 
+
+mean(one_worm_skeleton$angle_1)
+mean(one_worm_skeleton$angle_scaled)
+
+
+# ggplot(one_worm_skeleton,aes(index,angle_scaled))+
+#   geom_line()+
+#   geom_hline(yintercept = 0,linetype="dotted")
 # 
+# ggplot(one_worm_skeleton,aes(index,angle_1))+
+#   geom_line()+
+#   geom_hline(yintercept = 0,linetype="dotted")
 
 
 
+```
 
 
+#calculate eigenworms
+```{r, include=FALSE}
 
-
-skeleton_data_all_shuffled <- skeleton_data_all %>%
-  filter(tp %in% tps_to_shuffle) %>%
-  mutate(grouping=paste(dataset_ID, tp,sep="_")) %>%
-  group_by(grouping) %>%
-  mutate(tp = mapply(assign_new_tp,tp)) %>%
-  ungroup() %>%
-  select(-grouping)
-
-  
-
-
-calculate_eigenvalue_contribution <- function(timepoints,dataframe,frames){
-  print(timepoints)
+calculate_PCA <- function(timepoints,dataframe,frames){
+  #print(timepoints)
   for_pca <- dataframe  %>%
     filter(tp %in% timepoints)  %>%
-    group_by(TrackID) %>%
-    filter(any(is_head=="YES")) %>%
+    group_by(tp,TrackID,frame) %>%
+    filter(any(is_head == "YES")) %>%
+    group_by(tp,TrackID) %>%
     select(angle_1,index, frame,TrackCheck,dataset_ID,TrackID,tp) %>%
     mutate(TrackCheck_cleaned = replace_f(TrackCheck, 24*frames)) %>%
     na.omit() %>%
     select(-c(TrackCheck,TrackCheck_cleaned))
   
   
-  for_pca_2 <- for_pca %>%  
-     ungroup() %>%
-     mutate(grouping = paste(dataset_ID,tp, TrackID, sep="_")) %>%
-     mutate(unique_tracks = length(unique(grouping)))
+  number_of_tracks <<- for_pca %>%  
+    ungroup() %>%
+    mutate(grouping = paste(dataset_ID,tp, TrackID, sep="_")) %>%
+    mutate(unique_tracks = length(unique(grouping))) %>%
+    select(unique_tracks) %>%
+    slice(1) %>%
+    pull(unique_tracks)
+  print(number_of_tracks)
   
-   for_pca <- for_pca %>%
-     select(-c(dataset_ID))
-  
+  for_pca_2 <<- for_pca %>%
+    mutate(ID = paste0(dataset_ID,"_",tp, "_",TrackID, "_",frame)) %>%
+    group_by(ID) %>%
+    mutate(angle_1 = scale(angle_1,scale=TRUE)) %>%
+    ungroup() %>%
+    select(-c(dataset_ID,tp,TrackID,frame))
+ 
+   
 
-  if(nrow(for_pca) != 0){
-    for_pca_t <- dcast(for_pca, index~frame+TrackID+tp,value.var = "angle_1")
-
-    rownames(for_pca_t) <- for_pca_t$index
-    for_pca_t <- select(for_pca_t, -index)
+  # if(nrow(for_pca) != 0){
+    for_pca_t <- dcast(for_pca_2,ID~index,value.var="angle_1")
+    rownames(for_pca_t) <- for_pca_t$ID
+    for_pca_t <- select(for_pca_t, -ID)
+    #for_pca_t <- select(for_pca_t, -index)
+    head(for_pca_t)
     pca <- prcomp(for_pca_t,scale=TRUE)
-    # plot(pca)
-    data.frame(pca$sdev^2,unique(for_pca_2$unique_tracks))
+    pca
+    
+}
+
+plot_six_eigenworms <- function(pca,timepoints,frames){
+    six_eigenworms <- melt(pca$rotation[,1:6])
+    colnames(six_eigenworms) <- c("Index", "PC","angle")
+    ggplot(six_eigenworms, aes(Index,angle)) +
+      #geom_point()+
+      geom_line(color="white")+
+      #geom_hline(yintercept=0, linetype="dashed",color="white")+
+      facet_wrap(~PC,dir="v",ncol=3)+
+      labs(x="# segment angle", y="angle (rad)")+
+      scale_y_continuous(limits=c(-0.8,0.8))+
+      theme_black()+
+      theme(aspect.ratio=1)+
+      ggtitle(paste0("Six_eigenworms_","minFrames_", frames,"_timepoints_",min(timepoints),"-",max(timepoints)))
+}
+
+plot_threetimes_six_eigenworms <- function(pca,pca2,pca3){
+  six_eigenworms_2 <- melt(pca2$rotation[,1:6])
+  colnames(six_eigenworms_2) <- c("Index", "PC","angle")
+  six_eigenworms_3 <- melt(pca3$rotation[,1:6])
+  colnames(six_eigenworms_3) <- c("Index", "PC","angle")
+  plot_six_eigenworms(pca,timepoints,frames) +
+    geom_line(data=six_eigenworms_2,color="yellow") +
+    geom_line(data=six_eigenworms_3,color="red")
+}
+
+
+
+
+plot_contribution <- function(pca,timepoints, frames){
+  pca_con <- setNames(data.frame(1:length(pca$sdev),pca$sdev^2),c("eigenworm","value")) %>%
+    mutate(cumsum_eigenvalue = cumsum(value)) %>%
+    mutate(var_contr = cumsum_eigenvalue/sum(value)) %>%
+    filter(eigenworm %in% c(1:6))
+    
+  ggplot(pca_con,aes(eigenworm,var_contr*100)) +
+    geom_line(color="white") +
+    geom_point(color="white")+
+    scale_y_continuous(limits=c(0,100),breaks=c(0,10,20,30,40,50,60,70,80,90,100)) +
+    scale_x_continuous(breaks=c(0,1,2,3,4,5,6)) +
+    labs(x="# eigenworm", y="variance contribution (%)") +
+    theme_black() +
+    theme(aspect.ratio=1,
+          legend.position = "top")+
+    ggtitle(paste0("Contribution_","minFrames_", frames,"_timepoints_",min(timepoints),"-",max(timepoints)))
+
+}
+
+
+
+frames <- 25
+dataframe <- skeleton_data_all
+
+timepoints <- c(0:69)
+pca <- calculate_PCA(timepoints, dataframe,frames)
+
+
+
+# mean_frames <- for_pca_2 %>%
+#   mutate(Track = gsub("(.+)_\\d+$","\\1",ID)) %>%
+#   group_by(Track) %>%
+#   summarise(number = n()/22)
+# 
+# hist(mean_frames$number)
+# abline(v=mean(mean_frames$number),col="red")
+# mean(mean_frames$number)/22
+
+plot_six_eigenworms(pca,timepoints,frames) 
+ggsave(paste0(file.path(target_folder_analysis,"ggplots"),"/","PCA","Six_eigenworms_","minFrames_", frames,"_timepoints_",min(timepoints),"-",max(timepoints),"_",number_of_tracks,"_tracks",".png"))
+plot_contribution(pca,timepoints,frames)
+ggsave(paste0(file.path(target_folder_analysis,"ggplots"),"/","Contribution_","minFrames_", frames,"_timepoints_",min(timepoints),"-",max(timepoints),"_",number_of_tracks,"_tracks",".png"))
+
+timepoints <- c(0:15)
+pca2 <- calculate_PCA(timepoints, dataframe,frames)
+plot_six_eigenworms(pca2,timepoints,frames) 
+ggsave(paste0(file.path(target_folder_analysis,"ggplots"),"/","PCA","Six_eigenworms_","minFrames_", frames,"_timepoints_",min(timepoints),"-",max(timepoints),"_",number_of_tracks,"_tracks",".png"))
+plot_contribution(pca2,timepoints,frames)
+ggsave(paste0(file.path(target_folder_analysis,"ggplots"),"/","Contribution_","minFrames_", frames,"_timepoints_",min(timepoints),"-",max(timepoints),"_",number_of_tracks,"_tracks",".png"))
+
+
+
+
+timepoints <- c(16:31)
+pca3 <- calculate_PCA(timepoints, dataframe,frames)
+plot_six_eigenworms(pca3,timepoints,frames) 
+ggsave(paste0(file.path(target_folder_analysis,"ggplots"),"/","PCA","Six_eigenworms_","minFrames_", frames,"_timepoints_",min(timepoints),"-",max(timepoints),"_",number_of_tracks,"_tracks",".png"))
+plot_contribution(pca3,timepoints,frames)
+ggsave(paste0(file.path(target_folder_analysis,"ggplots"),"/","Contribution_","minFrames_", frames,"_timepoints_",min(timepoints),"-",max(timepoints),"_",number_of_tracks,"_tracks",".png"))
+
+
+plot_threetimes_six_eigenworms(pca,pca2,pca3)
+ggsave(paste0(file.path(target_folder_analysis,"ggplots"),"/","Six_Eigenworms_","_NotTurned_","minFrames_", frames,"_timepoints_",min(timepoints),"-",max(timepoints),"_",number_of_tracks,"_tracks",".png"))
+
+pca2$rotation[,1] <- -pca2$rotation[,1]
+pca2$rotation[,3] <- -pca2$rotation[,3]
+pca2$rotation[,6] <- -pca2$rotation[,6]
+
+pca3$rotation[,4] <- -pca3$rotation[,4]
+pca3$rotation[,5] <- -pca3$rotation[,5]
+
+plot_threetimes_six_eigenworms(pca,pca2,pca3)
+ggsave(paste0(file.path(target_folder_analysis,"ggplots"),"/","Six_Eigenworms_","_Turned_","minFrames_", frames,"_timepoints_",min(timepoints),"-",max(timepoints),"_",number_of_tracks,"_tracks",".png"))
+
+second <- pca3$rotation[,2] 
+pca3$rotation[,2] <- pca3$rotation[,1] 
+pca3$rotation[,1] <- second
+
+plot_threetimes_six_eigenworms(pca,pca2,pca3)
+ggsave(paste0(file.path(target_folder_analysis,"ggplots"),"/","Six_Eigenworms_","_Turned_PCsSwapped","minFrames_", frames,"_timepoints_",min(timepoints),"-",max(timepoints),"_",number_of_tracks,"_tracks",".png"))
+
+
+# IDs <- unique(for_pca_2$ID)
+
+# ggplot(filter(for_pca_2, ID == IDs[10]),aes(index,angle_1))+
+#   geom_line()+
+#   geom_hline(yintercept = 0,linetype="dotted")+
+#   scale_y_continuous(limits = c(-2,2))
+
+
+?prcomp
+
+test <- data.frame(pca$x) %>%
+  add_rownames() 
+
+test$tp <- as.numeric(gsub(".+\\-16\\_(\\d+)\\_.+","\\1",test$rowname))
+
+ggplot(test, aes(PC4,PC5))+
+  geom_point(aes(colour=tp),alpha=0.1)+
+  scale_colour_gradientn(colours = terrain.colors(10))
+
+
+```
+
+
+```{r, include=FALSE}
+
+
+timepoints <- c(0:69)
+dataframe <- skeleton_data_all
+frames <- 22
+# calculate_eigenvalue_contribution <- function(timepoints,dataframe,frames){
+  print(timepoints)
+  for_pca <- dataframe  %>%
+    filter(tp %in% timepoints)  %>%
+    group_by(tp,TrackID,frame) %>%
+    filter(any(is_head == "YES")) %>%
+    group_by(tp,TrackID) %>%
+    select(angle_1,index, frame,TrackCheck,dataset_ID,TrackID,tp) %>%
+    mutate(TrackCheck_cleaned = replace_f(TrackCheck, 24*frames)) %>%
+    na.omit() %>%
+    select(-c(TrackCheck,TrackCheck_cleaned))
+  
+  number_of_tracks <- for_pca %>%  
+    ungroup() %>%
+    mutate(grouping = paste(dataset_ID,tp, TrackID, sep="_")) %>%
+    mutate(unique_tracks = length(unique(grouping))) %>%
+    select(unique_tracks) %>%
+    slice(1) %>%
+    pull(unique_tracks)
+  
+  for_pca <- for_pca %>%
+    mutate(ID = paste0(dataset_ID,"_",tp, "_",TrackID, "_",frame)) %>%
+    ungroup()  %>%
+    select(-c(dataset_ID,tp,TrackID,frame))
+ 
+   
+
+  # if(nrow(for_pca) != 0){
+    for_pca_t <- dcast(for_pca,ID~index,value.var="angle_1")
+    #for_pca_t <- dcast(for_pca, index~ID,value.var = "angle_1")
+    
+    rownames(for_pca_t) <- for_pca_t$ID
+    for_pca_t <- select(for_pca_t, -ID)
+    #for_pca_t <- select(for_pca_t, -index)
+    head(for_pca_t)
+    pca <- prcomp(for_pca_t,scale=TRUE)
+    plot(pca)
+    pca
+    six_eigenworms <- melt(pca$rotation[,1:6])
+    colnames(six_eigenworms) <- c("Index", "PC","angle")
+    ggplot(six_eigenworms, aes(Index,angle)) +
+      #geom_point()+
+      geom_line()+
+      geom_hline(yintercept=0, linetype="dashed")+
+      facet_wrap(~PC,dir="v",ncol=3)+
+      theme(aspect.ratio=1)+
+      labs(x="# segment angle", y="angle (rad)")
+    
+    plot(pca$rotation[,1:6])
+    
+    head(for_pca_t)
+    library(factoextra)
+    fviz_eig(pca)
+    fviz_pca_ind(pca,
+             col.ind = "cos2", # Color by the quality of representation
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     # Avoid text overlapping
+             )
+
+    fviz_pca_var(pca,
+             col.var = "contrib", # Color by contributions to the PC
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     # Avoid text overlapping
+             )
+
+    data.frame(pca$sdev^2,number_of_tracks)
   } else {
-    rep(0, 22)
+    data.frame(rep(NA,22),rep(NA,22))
+    
   }
 } 
 
 
-# 
 dataframe <- skeleton_data_all
-frames <- 10
-liste <- list(c(12:40), c(41:69))
+frames <- 50
+liste <- list(c(0:15),c(16:31))
 timepoints <- liste
 
-eigenvalues_all <- map_dfc(liste,calculate_eigenvalue_contribution,dataframe,10)
+eigenvalues_all <- map_dfc(liste,calculate_eigenvalue_contribution,dataframe,frames)
 column_names <- paste0(rep(liste,each=2),rep(c("","_numberoftracks"),each=1,times=2))
 colnames(eigenvalues_all) <- column_names
 
@@ -1078,27 +1380,44 @@ ev <- eigenvalues_all %>%
   filter(index %in% c(1:6))
 
 number_of_tracks <- eigenvalues_all %>%
-  select(contains("_")) %>%
+  select(contains("numberoftracks")) %>%
   slice(1)
 
 
-ev$variable <- as.numeric(ev$variable)
-ggplot(ev,aes(index,var_contr,group=variable,color=variable)) +
-  geom_line() +
+scale(for_pca_t[4,], pca$center, pca$scale) %*% pca$rotation 
+pca$rotation
+# ev$variable <- as.numeric(ev$variable)
+ggplot(ev,aes(index,var_contr*100,group=variable,color=variable)) +
+  geom_line(size=1) +
   geom_point()+
-  scale_y_continuous(limits=c(0,1),breaks=c(0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1)) +
+  scale_y_continuous(limits=c(0,100),breaks=c(0,10,20,30,40,50,60,70,80,90,100)) +
   scale_x_continuous(breaks=c(0,1,2,3,4,5,6)) +
-  scale_color_gradientn(colours =  wes_palette("Zissou1", 40, type = "continuous")) +
+  # scale_color_gradientn(colours =  wes_palette("Zissou1", 40, type = "continuous")) +
   labs(x="# eigenworm", y="variance contribution (%)") +
-  theme(aspect.ratio=1)
-  #scale_color_viridis_c()
+  theme_black() +
+  theme(aspect.ratio=1,
+        legend.position = "top")
+  # scale_color_viridis_c()
+
+
+ggsave(paste0(file.path(target_folder_analysis,"ggplots"),"/","test",".png"))
+
+ev_diff <- dcast(ev,index~variable, value.var = "var_contr") %>%
+  rename("early" = 2, "late" =3) %>%
+  mutate(difference = abs(early - late)) %>%
+  summarise(max(difference))
+
+
+
 
 assign_new_tp <- function(x){
   s[x]
 }
 
+
+  
 sampling_shuffled <- function(x){
-  tps_to_shuffle <- 12:69
+  tps_to_shuffle <- 0:31
   s <<- sample(tps_to_shuffle, length(tps_to_shuffle))
   
   dataframe_shuffled <- skeleton_data_all %>%
@@ -1109,7 +1428,7 @@ sampling_shuffled <- function(x){
      ungroup() %>%
      select(-grouping)
 
-  eigenvalues_all <- map_dfc(liste,calculate_eigenvalue_contribution,dataframe_shuffled,20)
+  eigenvalues_all <- map_dfc(liste,calculate_eigenvalue_contribution,dataframe_shuffled,22)
   column_names <- paste0(rep(liste,each=2),rep(c("","_numberoftracks"),each=1,times=2))
   colnames(eigenvalues_all) <- column_names
 
@@ -1132,14 +1451,56 @@ sampling_shuffled <- function(x){
   
 }
 
-test <- map_dfc(1:2,sampling_shuffled)
+test <- map_dfr(1:10,sampling_shuffled)
 
-map_dfc(1:2,assign_new_tp)
+
+shuffled <- dcast(test,index+iteration~variable, value.var = "var_contr") %>%
+  rename("early" = 3, "late" =4) %>%
+  mutate(difference = abs(early - late)) %>%
+  summarise(max(difference))
+
+
+ggplot(test,aes(index,var_contr*100)) +
+  geom_line(aes(group=iteration,color=iteration)) +
+  geom_point(aes(shape=variable))+
+  scale_y_continuous(limits=c(0,100),breaks=c(0,10,20,30,40,50,60,70,80,90,100)) +
+  scale_x_continuous(breaks=c(0,1,2,3,4,5,6)) +
+  scale_color_gradientn(colours =  wes_palette("Zissou1", 40, type = "continuous")) +
+  labs(x="# eigenworm", y="variance contribution (%)") +
+  theme_black() +
+  theme(aspect.ratio=1,
+        legend.position = "top")
+
+head(for_pca_t)
+
+  
+```
+
+```{r, include=FALSE}
+
+pal <- wes_palette("Zissou1", 21, type = "continuous")
+
+skeleton_data_cluster <- skeleton_data_all %>%
+  mutate(ID = paste0(tp,"_",TrackID,"_",frame)) %>%
+  filter(tp %in% c(0,10,20,30))
+
+p1 <- ggplot(skeleton_data_cluster, aes(x=index, y=ID))+
+          geom_tile(aes(fill = angle_1))+
+          #geom_vline(xintercept = t, linetype="dotted")+
+          scale_fill_gradientn(colours = pal) +
+          labs(x="time (seconds)",y="#Neuron") +
+          #scale_x_continuous(expand= c(0,0),breaks = seq(0, max(int_norm_exp$seconds), by = 100)) +
+          #scale_y_discrete(expand = c(0, 0)) +
+          theme(axis.text.x = element_text(size = 10, colour="white"),
+              axis.title = element_text(size=10, colour="white"),
+              legend.position="none",
+              plot.background = element_rect(fill = "black"),
+              plot.title = element_text(size = 10, colour = "white"))
+          #ggtitle(paste0(i))
+p1
 
 
 ```
-
-
 
 
 ##set parameters here
