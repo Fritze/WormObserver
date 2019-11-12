@@ -94,7 +94,7 @@ imported_data <-  unlist(map(target_folder_analysis,find_zip_files)) %>%
 
 
 #downsampled to for conversion
-downsampled_fps <- unique(na.omit(data$downsampled_to))
+downsampled_fps <- unique(na.omit(imported_data$downsampled_to))
 
 #save(data, file = paste0("6experiments","_","1-50tp",".RData"))
 #write.csv(data, file = paste0("6experiments","_","1-50tp",".RData"))
@@ -109,7 +109,7 @@ downsampled_fps <- unique(na.omit(data$downsampled_to))
 TrackIDs <- unique(imported_data$TrackID)
 # TrackIDs <- c("track_0","track_1","track_2","track_3","track_4","track_5","track_6","track_7","track_8","track_9","track_10")
 #tps <- c(1,5,10,15,20,25,30,35,40,45,50,55,60,65,70,75,80,85,90,95,100,105,110)
-tps <- unique(data$tp)
+tps <- unique(imported_data$tp)
 
 # tic()
 # skeleton("2019-03-26_19-27-16","track_1",1,0:959)
@@ -129,14 +129,22 @@ tp_names
 #plan(multiprocess)
 
 
+imported_data_filtered <- imported_data %>%
+  filter(tp == 1)
 
+first_equal_to <- function(x, value){
+    (x == value) & (cumsum(x == value) == "YES")
+}
+
+t <- data_skeleton %>%
+  group_by(dataset_ID,tp,TrackID) %>%
+  mutate(first = first_equal_to(is_head, "YES"))
 
 tic()
 #looks like future and furrr makes this 8x faster
-data_skeleton <- imported_data %>%
+data_skeleton <- imported_data  %>%
   filter(dataset_ID %in% dataset_names) %>%
   filter(tp %in% tp_names) %>%
-  filter(TrackID %in% trackID_names) %>%
   group_by(dataset_ID,tp,TrackID) %>%
   nest() %>%
   mutate(m = map(data,skeleton_direction)) %>%
@@ -168,6 +176,8 @@ toc()
 
 unique(data$tp)
 unique(data_skeleton$tp)
+unique(data_skeleton$TrackID)
+
 unique(imported_data$tp)
 unique(imported_data$dataset_ID)
 imported_data %>%
@@ -177,7 +187,7 @@ imported_data %>%
 ?count
 unique(data_skeleton$frame)
 
-save(data_skeleton, file = paste0("2019-03-26_19-27-16","_","23tps","_","0-900","_no_head",".RData"))
+save(data_skeleton, file = file.path(target_folder_base,"analysis","191112",paste0("2019-03-26_19-27-16","_","70tps","_","0-900",".RData")))
 
 ```
 
