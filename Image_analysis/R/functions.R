@@ -26,6 +26,7 @@ library("ggbeeswarm")
 library("ggsci")
 library("reshape2")
 library("pracma")
+
 #functions
 
 
@@ -1094,6 +1095,55 @@ skeleton_head <- function(data){
   }
 }
 
+
+skeleton_head_estimate <- function(data) {
+  n <- filter(data, head_detected == "NO") %>%
+    select(frame) %>%
+    distinct() %>%
+    pull()
+  
+  ny <- filter(data,head_detected == "not yet") %>%
+    select(frame) %>%
+    distinct() %>%
+    pull()
+  
+  
+  
+  for (i in ny){
+    #detect frames where head is detected (for particular track)
+    
+    s <- filter(data,!is.na(is_head)) %>%
+      select(frame) %>%
+      distinct() %>%
+      pull()
+    
+    #list of adjacent frames to ones with head
+    list_of_frames <- c(setdiff(s-1,s),setdiff(s+1,s))
+    list_of_frames_to_be_detected <- setdiff(list_of_frames,n)
+    if (length(list_of_frames_to_be_detected) > 0){
+      f <- list_of_frames_to_be_detected[1]
+      #select frame where to estimate head
+      adjacent_f <- s[which(abs(s-f)==min(abs(s-f)))][1]
+      
+      
+      XX <- filter(data, frame == adjacent_f & is_head == "YES") %>% pull(X)
+      YY <- filter(data, frame == adjacent_f & is_head == "YES") %>% pull(Y)
+      
+      data <- data %>%
+        mutate(distance_to_latest_head=if_else(frame == f  & !is.na(is_end) ,suppressWarnings(as.numeric(mapply(distance,X,Y,XX,YY))),NA_real_ )) %>%
+        mutate(is_head = if_else(distance_to_latest_head == suppressWarnings(min(distance_to_latest_head,na.rm=TRUE)) & frame == f, "YES", is_head)) %>%
+        mutate(distance_to_latest_head = NA) %>%
+        mutate(head_detected=if_else(frame == f,"YES",head_detected)) %>%
+        mutate(status=if_else(frame == f,"Head estimated",status))
+    }else{
+      data <- data %>%
+        mutate(status = if_else(head_detected == "not yet","no head estimation possible",status)) %>%
+        mutate(head_detected = if_else(status == "no head estimation possible","NO", head_detected)) %>%
+        as_tibble()
+      break
+    }
+  }
+}
 # skeleton_head_propagation <- function(data){
 # #if we do not have a good indication about the direction in this frame, we try to get it from the last frame
 # first <- 

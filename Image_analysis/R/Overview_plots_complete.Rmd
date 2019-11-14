@@ -136,10 +136,6 @@ first_equal_to <- function(x, value){
     (x == value) & (cumsum(x == value) == "YES")
 }
 
-t <- data_skeleton %>%
-  group_by(dataset_ID,tp,TrackID) %>%
-  mutate(first = first_equal_to(is_head, "YES"))
-
 tic()
 #looks like future and furrr makes this 8x faster
 data_skeleton <- imported_data  %>%
@@ -164,15 +160,29 @@ data_skeleton <- imported_data  %>%
   select(-ends_with("1"))
 toc()
 
+tic()
+test <- data_skeleton %>%
+  filter(tp == 1) %>%
+  mutate(head_detected = ifelse(grepl("downsampled | unclear",status),"not yet","NO" )) %>%
+  mutate(distance_to_latest_head = NA) %>%
+  group_by(dataset_ID, tp,TrackID) %>%
+  nest() %>%
+  group_by(dataset_ID, tp,TrackID) %>%
+  mutate(mhe = map(data,skeleton_head_estimate))%>%
+  select(dataset_ID, tp,TrackID,mhe) %>%
+  unnest(cols=c(mhe))
+toc()
 
 
-# data_skeleton_head <- data_skeleton %>%
-#   group_by(dataset_ID,tp,TrackID,frame) %>%
-#   nest() %>%
-#   mutate(mh = future_map(data,skeleton_head)) %>%
-#   select(dataset_ID,tp,TrackID,frame,mh) %>%
-#   unnest() %>%
-#   select(-ends_with("1"))
+
+
+any(is.na(test$distance_to_latest_head))
+any(test$head_detected == "not yet")
+test %>% filter(status == "no head estimation possible") %>% pull(frame) %>% unique()
+typeof(test$distance_to_latest_head)
+
+
+
 
 unique(data$tp)
 unique(data_skeleton$tp)
@@ -187,7 +197,7 @@ imported_data %>%
 ?count
 unique(data_skeleton$frame)
 
-save(data_skeleton, file = file.path(target_folder_base,"analysis","191112",paste0("2019-03-26_19-27-16","_","70tps","_","0-900",".RData")))
+#save(data_skeleton, file = file.path(target_folder_base,"analysis","191112",paste0("2019-03-26_19-27-16","_","70tps","_","0-900",".RData")))
 
 ```
 
@@ -788,7 +798,7 @@ binning_factor = 8 #==4 seconds
 #conversion_factor,offset,binning_factor,max_gaps,duration
 dfp <- calculate_overview_statistics(imported_data,conversion_factor,offset,binning_factor,max_gaps,duration)
 
-unique(dfp$dataset_ID)
+
 
 ```
 
