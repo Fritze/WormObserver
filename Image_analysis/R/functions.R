@@ -1139,7 +1139,8 @@ skeleton_head_estimate <- function(data) {
       data <- data %>%
         mutate(status = if_else(head_detected == "not yet","no head estimation possible",status)) %>%
         mutate(head_detected = if_else(status == "no head estimation possible","NO", head_detected)) %>%
-        as_tibble()
+        select(-distance_to_latest_head)
+      return(data)
       break
     }
   }

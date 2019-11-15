@@ -163,13 +163,14 @@ toc()
 tic()
 test <- data_skeleton %>%
   filter(tp == 1) %>%
+  filter(TrackID == "track_1") %>%
   mutate(head_detected = ifelse(grepl("downsampled | unclear",status),"not yet","NO" )) %>%
   mutate(distance_to_latest_head = NA) %>%
   group_by(dataset_ID, tp,TrackID) %>%
   nest() %>%
   group_by(dataset_ID, tp,TrackID) %>%
-  mutate(mhe = map(data,skeleton_head_estimate))%>%
-  select(dataset_ID, tp,TrackID,mhe) %>%
+  mutate(mhe = map(data,skeleton_head_estimate)) %>%
+  select(dataset_ID,tp,TrackID,mhe) %>%
   unnest(cols=c(mhe))
 toc()
 
@@ -194,11 +195,11 @@ imported_data %>%
   count(tp,TrackID) %>%
   summarise(mean_frames_per_track= mean(n))
 
-?count
-unique(data_skeleton$frame)
 
 #save(data_skeleton, file = file.path(target_folder_base,"analysis","191112",paste0("2019-03-26_19-27-16","_","70tps","_","0-900",".RData")))
 
+
+head(test)
 ```
 
 
