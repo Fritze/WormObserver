@@ -1109,9 +1109,8 @@ skeleton_head_estimate <- function(data) {
   
   
   
-  for (i in ny){
+  for (i in 1:10^3){
     #detect frames where head is detected (for particular track)
-    
     s <- filter(data,!is.na(is_head)) %>%
       select(frame) %>%
       distinct() %>%
@@ -1119,7 +1118,10 @@ skeleton_head_estimate <- function(data) {
     
     #list of adjacent frames to ones with head
     list_of_frames <- c(setdiff(s-1,s),setdiff(s+1,s))
+    #only those that are NOT within the list of head_detected == "NO"
     list_of_frames_to_be_detected <- setdiff(list_of_frames,n)
+    #only those that are within the list of frames that span the track
+    list_of_frames_to_be_detected <- intersect(list_of_frames_to_be_detected,unique(data$frame))
     if (length(list_of_frames_to_be_detected) > 0){
       f <- list_of_frames_to_be_detected[1]
       #select frame where to estimate head
@@ -1135,6 +1137,7 @@ skeleton_head_estimate <- function(data) {
         mutate(distance_to_latest_head = NA) %>%
         mutate(head_detected=if_else(frame == f,"YES",head_detected)) %>%
         mutate(status=if_else(frame == f,"Head estimated",status))
+
     }else{
       data <- data %>%
         mutate(status = if_else(head_detected == "not yet","no head estimation possible",status)) %>%
@@ -1142,6 +1145,7 @@ skeleton_head_estimate <- function(data) {
         select(-distance_to_latest_head)
       return(data)
       break
+
     }
   }
 }
