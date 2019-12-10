@@ -6,12 +6,12 @@ output: html_document
 #define data paths
 ```{r, include=FALSE}
 target_folder_base <- ("/media/ella/raid5/timelapses")
-target_folder_general <- c("2019-03-26_19-27-16")
+target_folder_general <- c(#"2019-03-26_19-27-16")
                            #"2019-03-07_17-28-51",
                            #"2019-03-11_17-54-09",
                            #"2019-03-18_18-01-40",
                            #"2019-03-19_17-40-32",
-                           #"2019-03-25_18-10-06",#no food
+                           "2019-03-25_18-10-06")#no food
                            #"2019-03-27_18-24-47",
                            #"2019-04-15_17-32-23",
                            #"2019-04-23_17-46-08",#daf2
@@ -101,41 +101,12 @@ save(imported_data, file = file.path(target_folder_base,"analysis","191122",past
 ```
 
 
-
+#Skeletonize and estimate heads where possible
 ```{r message=FALSE, include=FALSE}
-
-# all_tracks <- as.character(unique(data$TrackID))
-#function(datasetIDs, TrackIDs, tp,frames)
-# TrackIDs <- c("track_0","track_1","track_2","track_3","track_4","track_5","track_6","track_7","track_8","track_9","track_10")
-#tps <- c(1,5,10,15,20,25,30,35,40,45,50,55,60,65,70,75,80,85,90,95,100,105,110)
-tps <- unique(imported_data$tp)
-datasets <- unique(imported_data$dataset_ID)
-tps
-datasets
-# tic()
-# skeleton("2019-03-26_19-27-16","track_1",1,0:959)
-# toc()
-
-
-# library(future)
-# library(furrr)
-
-
-trackID_names <- TrackIDs
-dataset_names <-"2019-03-26_19-27-16"
-tp_names <- tps
-trackID_names
-tp_names
-
-#plan(multiprocess)
-
-
 
 tic()
 #looks like future and furrr makes this 8x faster
 data_skeleton <- imported_data  %>%
-  # filter(dataset_ID %in% dataset_names) %>%
-  # filter(tp %in% tp_names) %>%
   group_by(dataset_ID,tp,TrackID) %>%
   nest() %>%
   mutate(m = map(data,skeleton_direction)) %>%
@@ -154,9 +125,13 @@ data_skeleton <- imported_data  %>%
   unnest() %>%
   select(-ends_with("1"))
 toc()
+save(data_skeleton, file = file.path(target_folder_analysis,target_folder_general,"_with_head.rds"))
+```
 
+```{r message=FALSE, include=FALSE}
+data_skeleton <- readRDS(file.path(target_folder_analysis,target_folder_general,"_with_head.rds"))
 tic()
-data_skeleton_headext <- data_skeleton %>%
+data_skeleton_with_headext <- data_skeleton %>%
   mutate(head_detected = ifelse(grepl("downsampled | unclear",status),"not yet","NO" )) %>%
   mutate(distance_to_latest_head = NA) %>%
   group_by(dataset_ID, tp,TrackID) %>%
@@ -166,40 +141,31 @@ data_skeleton_headext <- data_skeleton %>%
   select(dataset_ID,tp,TrackID,mhe) %>%
   unnest(cols=c(mhe))
 toc()
-
-
-
-
-# any(is.na(test$distance_to_latest_head))
-#any(data_skeleton_headext$head_detected == "not yet")
-# test %>% filter(status == "no head estimation possible") %>% pull(frame) %>% unique()
-# typeof(test$distance_to_latest_head)
-# 
-# 
-# 
-# 
-# unique(data$tp)
-unique(data_skeleton$tp)
-unique(data_skeleton$TrackID)
-unique(data_skeleton$dataset_ID)
-
-unique(data_skeleton_headext$tp)
-unique(data_skeleton_headext$TrackID)
-unique(data_skeleton_headext$dataset_ID)
-# 
-unique(imported_data$tp)
-unique(imported_data$TrackID)
-# imported_data %>%
-#   count(tp,TrackID) %>%
-#   summarise(mean_frames_per_track= mean(n))
-
-head(data_skeleton)
-
-save(data_skeleton_headext, file = file.path(target_folder_base,"analysis","191122",paste0("2019-05-07_12-15-40","_","70tps","_","0-900","with_headext",".RData")))
-
+#save(data_skeleton_headext, file = file.path(target_folder_analysis,target_folder_general,"_with_headext.rds"))
 ```
 
+```{r message=FALSE, include=FALSE}
+data_skeleton_with_headext <- readRDS(file.path(target_folder_analysis,target_folder_general,"_with_headext.rds"))
+skeleton_reorder <- function(data){
+    if(!is.na(data[nrow(data),"is_head"])){
+      data$index <- nrow(data):1
+      data
+    } else {
+      data <- data
+    }
+}
 
+tic()
+data_skeleton_with_headext_reordered <- data_skeleton_with_headext %>%
+  group_by(dataset_ID, tp,TrackID,frame) %>%
+  nest() %>%
+  mutate(mr = map(data,skeleton_reorder)) %>%
+  select(dataset_ID,tp,TrackID,frame,mr) %>%
+  unnest()
+toc()
+
+#save(data_skeleton_headext, file = file.path(target_folder_analysis,target_folder_general,"_with_headext_reordered.rds"))
+```
 
 
 
