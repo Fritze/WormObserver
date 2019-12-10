@@ -96,8 +96,7 @@ imported_data <-  unlist(map(target_folder_analysis,find_zip_files)) %>%
 #downsampled to for conversion
 downsampled_fps <- unique(na.omit(imported_data$downsampled_to))
 
-#save(data, file = paste0("6experiments","_","1-50tp",".RData"))
-save(imported_data, file = file.path(target_folder_base,"analysis","191122",paste0("2019-03-26_19-27-16","_","70tps","_","0-900",".RData")))
+# save(imported_data, file = file.path(target_folder_analysis,target_folder_general,".rds"))
 ```
 
 
@@ -125,7 +124,7 @@ data_skeleton <- imported_data  %>%
   unnest() %>%
   select(-ends_with("1"))
 toc()
-save(data_skeleton, file = file.path(target_folder_analysis,target_folder_general,"_with_head.rds"))
+#save(data_skeleton, file = file.path(target_folder_analysis,target_folder_general,"_with_head.rds"))
 ```
 
 ```{r message=FALSE, include=FALSE}
