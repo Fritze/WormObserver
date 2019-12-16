@@ -1,0 +1,36 @@
+
+# Get statistics for head detection efficiency
+```{r, include=FALSE}
+data_skeleton_with_headext %>%
+  group_by(tp,TrackID,frame) %>%
+  summarise(status = first(status)) %>%
+  group_by(status) %>%
+  summarise(occurences = n()) %>%
+  mutate(occurences_total = sum(occurences)) %>%
+  mutate(occurences_percentage=round(occurences/occurences_total*100,2))
+  
+```
+
+# Check if head is always index == 1
+```{r, include=FALSE}
+data_skeleton_with_headext %>%
+  ungroup() %>%
+  filter(is_head == "YES" & index == 26) %>%
+  summarise(n = n())
+
+    
+```
+
+# How many annotated frames per tp
+```{r, include=FALSE}
+data_skeleton_with_headext %>%
+  group_by(dataset_ID,tp,TrackID,frame) %>%
+  filter(any(is_head=="YES")) %>%
+  group_by(dataset_ID,tp) %>%
+  summarise(number_of_postures = n()/26) %>%
+  ungroup() %>%
+  mutate(total_number_of_postures = sum(number_of_postures)) %>%
+  mutate(mean = mean(number_of_postures))
+
+    
+```

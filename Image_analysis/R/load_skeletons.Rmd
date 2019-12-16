@@ -1,0 +1,10 @@
+z
+```{r, include=FALSE}
+
+base_location <- "/Users/fpreuss/Desktop/tracking_demo/2019-03-25/"
+
+data_skeleton_with_headext <- readRDS(file.path(base_location,"2019-03-25_18-10-06_with_headext_reordered.rds"))
+# imported_data <- readRDS(file.path(base_location,"2019-03-26_19-27-16_70tps_0-900.rds"))
+```
+
+
