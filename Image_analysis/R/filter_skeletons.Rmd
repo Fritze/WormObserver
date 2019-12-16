@@ -1,0 +1,23 @@
+#Filter skeleton
+```{r, include=FALSE}
+
+
+frames <- 30
+
+skeleton_data_cluster <- data_skeleton_with_headext %>%
+  # filter(tp %in% 1:30) %>%
+  #only postures that have a "YES"
+  group_by(dataset_ID,tp,TrackID,frame) %>%
+  filter(any(is_head=="YES")) %>%
+  mutate(ID = paste0(dataset_ID, "_",tp,"_",TrackID,"_",frame)) %>%
+  group_by(ID) %>%
+  #only those that have a head detected at one point
+  # filter(index %in% 2:25) %>%
+  ungroup() %>%
+  mutate(TrackCheck_cleaned = replace_f(TrackCheck, 26*frames)) %>%
+  drop_na("TrackCheck_cleaned") %>%
+  ungroup()
+
+
+
+```

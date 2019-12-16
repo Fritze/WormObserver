@@ -1,0 +1,205 @@
+
+
+angle_data_cluster <- skeleton_data_cluster %>%
+  dcast(ID ~ index,value.var = "angle")
+
+rownames(angle_data_cluster) <- angle_data_cluster$ID
+angle_data_cluster <- select(angle_data_cluster,-ID)
+
+angle_data_cluster <-angle_data_cluster[,2:(ncol(angle_data_cluster)-1)]
+
+```
+
+#Cluster
+```{r, include=FALSE}
+#Elbow Method for finding the optimal number of clusters
+set.seed(123)
+# Compute and plot wss for k = 2 to k = 15.
+k.max <- 200
+data <- angle_data_cluster
+#Get total within-clusters sum of squares for each k
+wss <- sapply(seq(10,k.max,by=10), 
+              function(k){kmeans(data,centers=k,iter.max = 1000,algorithm = "Lloyd")$tot.withinss})
+
+#make data table of results
+wss_table <- data.frame(cbind(wss,seq(10,k.max,by=10)))
+
+#plot
+ggplot(wss_table, aes(V2, wss))+
+  geom_point(color="white")+
+  geom_path(color="white")+
+  labs(x="Number of clusters K", y="Total within-clusters sum of squares")+
+  theme_black()
+```
+
+
+#calculate clusters
+```{r, include=FALSE}
+cluster <- kmeans(angle_data_cluster,centers=100,iter.max = 1000,algorithm = "Lloyd")
+
+groups <- as.character(cluster$cluster)
+
+angle_data_clustered <- skeleton_data_cluster  %>%
+  mutate(ID = paste0(dataset_ID, "_",tp,"_",TrackID,"_",frame)) %>%
+  dcast(.,ID ~ index,value.var = "angle") %>%
+  select(ID) %>%
+  #add groups
+  mutate(clusterID = groups) %>%
+  inner_join(skeleton_data_cluster, by="ID")
+
+```
+#plot ranked postures
+```{r, include=FALSE}
+
+freq_postures <- angle_data_clustered %>%
+  mutate(clusterID = as.numeric(clusterID)) %>%
+  group_by(clusterID) %>%
+  summarise(counts = n()) %>%
+  mutate(total = sum(counts)) %>%
+  mutate(perc = counts/total * 100) %>% 
+  arrange(desc(perc)) 
+
+freq_postures <- mutate(freq_postures, rank = 1:n())
+#level_order <- freq_postures$clusterID
+
+p <- ggplot(freq_postures, aes(x=rank, y=perc))+
+  geom_bar(stat="identity",fill="white") +
+  theme_black()
+p
+# ggsave("191209_100postures.png")
+```
+
+
+#Visualize individual clusters
+```{r, include=FALSE}
+clustertotest <- "76"
+
+cluster_ID_list_sampled <- angle_data_clustered %>%
+  filter(clusterID %in% clustertotest) %>%
+  select(ID) %>%
+  distinct() %>%
+  sample_n(10) %>%
+  pull()
+
+#cluster_ID_list_sampled
+clustered_skeleton_list <- data_skeleton_with_headext %>%
+  mutate(ID = paste0(dataset_ID, "_",tp,"_",TrackID,"_",frame)) %>%
+  filter(ID %in% cluster_ID_list_sampled) %>%
+  mutate(grouping = paste0(TrackID,"_",tp,"_",frame))
+
+
+ggplot(clustered_skeleton_list, aes(x=X,y=Y,colour=angle))+
+      geom_point(size=0.25) +
+      geom_path(size=0.025) +
+      # geom_point(aes(fill=angle_1)) +
+      # transition_states(frame,transition_length = 0.1,state_length = 0.2) +
+      # ease_aes('linear') + 
+      #geom_text(aes(label=round(angle_1,3)),color="white",size=3,hjust=2, vjust=1)+
+      geom_point(data=clustered_skeleton_list[which(clustered_skeleton_list$is_head == "YES"), ], aes(x=X, y=Y), shape=17, stroke=1, ,colour = "gold", size=1) +
+      scale_x_continuous(limits=c(-10,70)) +
+      scale_y_continuous(expan = c(0, 0),limits=c(70,-10),trans="reverse") +
+      facet_wrap(~ grouping,nrow=25,ncol=35)+
+      theme_black()+
+      scale_color_gradient2(low = "cornflowerblue", mid = "white",
+                         high = "brown2",midpoint=0,limits=c(-1,1),na.value="grey") +
+      coord_equal() +
+      theme(legend.position = "none",
+            axis.title=element_blank(),
+            axis.ticks=element_blank(),
+            axis.text=element_blank(),
+            axis.line=element_blank(),
+            strip.text.x = element_text(colour = 'white',size=5))+
+      guides(fill=guide_legend(title="Angle (rad)"))
+
+
+
+ggsave(file.path(base_location,paste0("example_skeletons_",clustertotest,".png")))
+
+```
+
+```{r, include=FALSE}
+
+dd <- angle_data_clustered %>%
+  # mutate(time=ifelse(tp %in% 1:30, "early",NA))%>%
+  # mutate(time=ifelse(tp %in% 31:70, "late",time))%>%
+  group_by(clusterID,tp) %>%
+  mutate(n=n()) %>%
+  group_by(tp) %>%
+  mutate(all=n()) %>%
+  ungroup() %>%
+  mutate(perc = n/all) %>%
+  group_by(clusterID) %>%
+  mutate(perc_norm = (perc-mean(perc))/sd(perc)) %>%
+  group_by(clusterID,tp) %>%
+  summarise(n = first(n),all= first(all),perc = first(perc),perc_norm=first(perc_norm)) %>%
+  mutate(mean_frames_per_tp = mean(all)/24,mean_frames_per_clusterID = mean(n)/24)
+
+```
+
+
+```{r, include=FALSE}
+
+dd$perc_norm <- scale(dd$perc_norm)
+cluster_clusters <- dd %>%
+  dcast(.,clusterID ~ tp,value.var = "perc_norm")
+
+rownames(cluster_clusters) <- cluster_clusters$clusterID
+cluster_clusters <- select(cluster_clusters,-clusterID)
+
+cll <- hclust(dist(cluster_clusters, method = "euclidean"), method = "average")
+ordering <- cll$order
+ordering
+
+level_order <- ordering
+
+
+ggplot(dd,aes(x=tp,y=factor(clusterID,levels=level_order)))+
+  geom_tile(aes(fill=perc_norm))+
+  theme_classic()+
+  scale_fill_gradient2(limits=c(-2.5,2.5))+
+  # scale_x_continuous(limits=c(0,40))+
+  theme_black()+
+  theme(axis.text.y = element_text(size = 5,colour="white"))
+
+ggsave(file.path(base_location,paste0("skeletons_freq_heatmap_percent_norm",".png")))
+```
+
+```{r, include=FALSE}
+
+ggplot(filter(dd, clusterID %in% c("15","40","5","70","82","45")),aes(x=tp,y=factor(clusterID,levels=level_order),fill=perc_norm))+
+  geom_tile()+
+  theme_classic()+
+  scale_fill_gradientn(colours = pal)+
+  theme_black()+
+  theme(axis.text.y = element_text(size = 5,colour="white"))
+
+```
+```{r, include=FALSE}
+test_skeleton_list <- angle_data_clustered %>%
+  filter(clusterID == 32)
+
+yo <- unique(test_skeleton_list$ID)[1:10]
+
+
+test_skeleton <- angle_data_clustered %>%
+  filter(ID %in% yo)
+
+ggplot(test_skeleton, aes(x=angle,y=index,colour=angle))+
+      geom_path(size=1,lineend = "round") +
+      geom_point(size=0.5)+
+      scale_x_continuous(limits=c(-1.5,1.5)) +
+      facet_wrap(~ ID)+
+      theme_black()+
+      scale_color_gradient2(low = "cornflowerblue", mid = "white",
+                         high = "brown2",midpoint=0,limits=c(-1,1),na.value="grey") +
+      theme(legend.position = "none",
+            axis.title=element_blank(),
+            axis.ticks=element_blank(),
+            axis.text=element_blank(),
+            axis.line=element_blank(),
+            strip.text.x = element_text(colour = 'white',size=5))+
+      guides(fill=guide_legend(title="Angle (rad)"))
+
+
+```
+
