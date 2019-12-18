@@ -2,22 +2,21 @@
 ```{r, include=FALSE}
 
 
-frames <- 30
+frames <- 10
 
-skeleton_data_cluster <- data_skeleton_with_headext %>%
-  # filter(tp %in% 1:30) %>%
-  #only postures that have a "YES"
+skeleton_data_filtered <- data_skeleton_with_headext %>%
   group_by(dataset_ID,tp,TrackID,frame) %>%
+  #only postures that have a "YES"
   filter(any(is_head=="YES")) %>%
   mutate(ID = paste0(dataset_ID, "_",tp,"_",TrackID,"_",frame)) %>%
   group_by(ID) %>%
-  #only those that have a head detected at one point
-  # filter(index %in% 2:25) %>%
   ungroup() %>%
   mutate(TrackCheck_cleaned = replace_f(TrackCheck, 26*frames)) %>%
   drop_na("TrackCheck_cleaned") %>%
   ungroup()
 
-
+skeleton_data_filtered %>%
+  group_by(tp) %>%
+  summarise(n = n_distinct(TrackID))
 
 ```

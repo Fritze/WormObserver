@@ -1,53 +1,37 @@
+```{r, include=FALSE}
+dataset_name <- unique(skeleton_data_filtered$dataset_ID)
 
-
-angle_data_cluster <- skeleton_data_cluster %>%
+#transpose - rows: posture IDs, -columns: angles
+angle_data_cluster <- skeleton_data_filtered %>%
   dcast(ID ~ index,value.var = "angle")
 
+#make IDs the rowname so that this column is not part of the clustering data
 rownames(angle_data_cluster) <- angle_data_cluster$ID
 angle_data_cluster <- select(angle_data_cluster,-ID)
 
+#take out first and last angle
 angle_data_cluster <-angle_data_cluster[,2:(ncol(angle_data_cluster)-1)]
 
 ```
 
-#Cluster
-```{r, include=FALSE}
-#Elbow Method for finding the optimal number of clusters
-set.seed(123)
-# Compute and plot wss for k = 2 to k = 15.
-k.max <- 200
-data <- angle_data_cluster
-#Get total within-clusters sum of squares for each k
-wss <- sapply(seq(10,k.max,by=10), 
-              function(k){kmeans(data,centers=k,iter.max = 1000,algorithm = "Lloyd")$tot.withinss})
-
-#make data table of results
-wss_table <- data.frame(cbind(wss,seq(10,k.max,by=10)))
-
-#plot
-ggplot(wss_table, aes(V2, wss))+
-  geom_point(color="white")+
-  geom_path(color="white")+
-  labs(x="Number of clusters K", y="Total within-clusters sum of squares")+
-  theme_black()
-```
-
 
 #calculate clusters
+#choose right number of centers!
 ```{r, include=FALSE}
-cluster <- kmeans(angle_data_cluster,centers=100,iter.max = 1000,algorithm = "Lloyd")
+cluster <- kmeans(angle_data_cluster,centers=90,iter.max = 1000,algorithm = "Lloyd")
 
 groups <- as.character(cluster$cluster)
 
-angle_data_clustered <- skeleton_data_cluster  %>%
+angle_data_clustered <- skeleton_data_filtered  %>%
   mutate(ID = paste0(dataset_ID, "_",tp,"_",TrackID,"_",frame)) %>%
   dcast(.,ID ~ index,value.var = "angle") %>%
   select(ID) %>%
   #add groups
   mutate(clusterID = groups) %>%
-  inner_join(skeleton_data_cluster, by="ID")
+  inner_join(skeleton_data_filtered, by="ID")
 
 ```
+
 #plot ranked postures
 ```{r, include=FALSE}
 
@@ -70,9 +54,61 @@ p
 ```
 
 
+#Calculate relative occurence of postures per timepoint and plot this as a heatmap
+```{r, include=FALSE}
+
+angle_data_postures <- angle_data_clustered %>%
+  group_by(clusterID,tp) %>%
+  mutate(number_of_cluster_members_per_tp=n_distinct(ID)) %>%
+  group_by(tp) %>%
+  mutate(postures_per_tp=n_distinct(ID)) %>%
+  mutate(tracks_per_tp=n_distinct(TrackID)) %>%
+  ungroup() %>%
+  mutate(perc = number_of_cluster_members_per_tp/postures_per_tp) %>%
+  group_by(clusterID) %>%
+  mutate(perc_norm = (perc-mean(perc))/sd(perc)) %>%
+  select(clusterID,tp, postures_per_tp,tracks_per_tp, perc,perc_norm,ID,number_of_cluster_members_per_tp) %>%
+  group_by(clusterID,tp) %>%
+  summarise(number_of_cluster_members_per_tp = first(number_of_cluster_members_per_tp),postures_per_tp= first(postures_per_tp),tracks_per_tp = first(tracks_per_tp),perc = first(perc),perc_norm=first(perc_norm))
+
+ordering <- angle_data_postures %>%
+  filter(tp <= 8) %>%
+  group_by(clusterID) %>%
+  summarise(mean_perc_norm_per_clusterID = mean(perc_norm)) %>%
+  arrange(desc(mean_perc_norm_per_clusterID)) %>%
+  pull(clusterID)
+
+# angle_data_postures$perc_norm <- scale(angle_data_postures$perc_norm)
+# cluster_clusters <- angle_data_postures  %>%
+#   dcast(.,clusterID ~ tp,value.var = "perc_norm")
+# 
+# rownames(cluster_clusters) <- cluster_clusters$clusterID
+# cluster_clusters <- select(cluster_clusters,-clusterID)
+# cluster_clusters
+
+# cll <- hclust(dist(cluster_clusters, method = "maximum"), method = "average")
+# ordering <- cll$order
+
+ggplot(angle_data_postures,aes(x=tp,y=factor(clusterID,levels=ordering)))+
+  geom_tile(aes(fill=perc_norm))+
+  theme_classic()+
+  # scale_fill_viridis_c(option = "plasma",limits=c(-2.5,2.5))+
+  # scale_fill_viridis(limits=c(-2.5,2.5))+
+  scale_fill_distiller(palette = "Spectral",limits=c(-2.5,2.5))+
+  # scale_fill_distiller(palette=4, direction=1,limits=c(-2.5,2.5)) +
+  # scale_x_continuous(limits=c(0,40))+
+  labs(y="posture IDs") +
+  theme_black()+
+  theme(axis.text.y = element_text(size = 5,colour="white"),
+        legend.position = "top")+
+  ggtitle(dataset_name)
+
+ggsave(file.path(base_location,paste0(dataset_name,"_skeletons_freq_heatmap_percent_norm",".png")),width=15,height=11)
+```
+
 #Visualize individual clusters
 ```{r, include=FALSE}
-clustertotest <- "76"
+clustertotest <- "70"
 
 cluster_ID_list_sampled <- angle_data_clustered %>%
   filter(clusterID %in% clustertotest) %>%
@@ -113,56 +149,11 @@ ggplot(clustered_skeleton_list, aes(x=X,y=Y,colour=angle))+
 
 
 
-ggsave(file.path(base_location,paste0("example_skeletons_",clustertotest,".png")))
-
-```
-
-```{r, include=FALSE}
-
-dd <- angle_data_clustered %>%
-  # mutate(time=ifelse(tp %in% 1:30, "early",NA))%>%
-  # mutate(time=ifelse(tp %in% 31:70, "late",time))%>%
-  group_by(clusterID,tp) %>%
-  mutate(n=n()) %>%
-  group_by(tp) %>%
-  mutate(all=n()) %>%
-  ungroup() %>%
-  mutate(perc = n/all) %>%
-  group_by(clusterID) %>%
-  mutate(perc_norm = (perc-mean(perc))/sd(perc)) %>%
-  group_by(clusterID,tp) %>%
-  summarise(n = first(n),all= first(all),perc = first(perc),perc_norm=first(perc_norm)) %>%
-  mutate(mean_frames_per_tp = mean(all)/24,mean_frames_per_clusterID = mean(n)/24)
+# ggsave(file.path(base_location,paste0("example_skeletons_",clustertotest,".png")))
 
 ```
 
 
-```{r, include=FALSE}
-
-dd$perc_norm <- scale(dd$perc_norm)
-cluster_clusters <- dd %>%
-  dcast(.,clusterID ~ tp,value.var = "perc_norm")
-
-rownames(cluster_clusters) <- cluster_clusters$clusterID
-cluster_clusters <- select(cluster_clusters,-clusterID)
-
-cll <- hclust(dist(cluster_clusters, method = "euclidean"), method = "average")
-ordering <- cll$order
-ordering
-
-level_order <- ordering
-
-
-ggplot(dd,aes(x=tp,y=factor(clusterID,levels=level_order)))+
-  geom_tile(aes(fill=perc_norm))+
-  theme_classic()+
-  scale_fill_gradient2(limits=c(-2.5,2.5))+
-  # scale_x_continuous(limits=c(0,40))+
-  theme_black()+
-  theme(axis.text.y = element_text(size = 5,colour="white"))
-
-ggsave(file.path(base_location,paste0("skeletons_freq_heatmap_percent_norm",".png")))
-```
 
 ```{r, include=FALSE}
 
@@ -203,3 +194,25 @@ ggplot(test_skeleton, aes(x=angle,y=index,colour=angle))+
 
 ```
 
+
+#Cluster
+```{r, include=FALSE}
+#Elbow Method for finding the optimal number of clusters
+set.seed(123)
+# Compute and plot wss for k = 2 to k = 15.
+k.max <- 200
+data <- angle_data_cluster
+#Get total within-clusters sum of squares for each k
+wss <- sapply(seq(10,k.max,by=10), 
+              function(k){kmeans(data,centers=k,iter.max = 1000,algorithm = "Lloyd")$tot.withinss})
+
+#make data table of results
+wss_table <- data.frame(cbind(wss,seq(10,k.max,by=10)))
+
+#plot
+ggplot(wss_table, aes(V2, wss))+
+  geom_point(color="white")+
+  geom_path(color="white")+
+  labs(x="Number of clusters K", y="Total within-clusters sum of squares")+
+  theme_black()
+```
