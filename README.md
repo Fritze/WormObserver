@@ -3,19 +3,19 @@
 For any question, please drop me a line at:
 Friedrich.Preusser[at]mdc-berlin.de
 
-![Sketch](https://github.com/Fritze/WormObserver/blob/master/Images/WormObserver_sketch.png)
+![Sketch](https://github.com/Fritze/WormObserver/blob/master/images_readme/WormObserver_sketch.png)
 
 # A lightweight solution for adding a Raspberry Pi Camera to a stereoscopic microscope
 
 ## The set-up
 
-![Parts](https://github.com/Fritze/WormObserver/blob/master/Images/Overview_WormObserver.jpg)
+![Parts](https://github.com/Fritze/WormObserver/blob/master/images_readme/Overview_WormObserver.jpg)
 
 This is an adapted version of an adapter allowing coupling of a standard Raspberry Pi camera to a Zeiss Stereo Discover V8 microscope. However, by changing the inner diameter of the eyepiece sleeve accordingly, the design can easily adjusted to any other microscope.
 The design is inspired by [this](https://www.thingiverse.com/thing:2007339) design, previously published on the open source thingiverse platform.
 The Raspberry Pi camera can be either glued directly to the printed holder or fixed with screws through the dedicated holes on the camera chip.
 
-![Set-up](https://github.com/Fritze/WormObserver/blob/master/Images/Microscope_WormObserver.jpg)
+![Set-up](https://github.com/Fritze/WormObserver/blob/master/images_readme/Microscope_WormObserver.jpg)
 
 ### Attaching the camera to the Raspberry Pi
 
@@ -40,8 +40,8 @@ Total. 148$
 
 ## Image analysis pipeline
 
-![workflow](https://github.com/Fritze/WormObserver/blob/master/Images/WormObserver_workflow_sketch.png)
+![workflow](https://github.com/Fritze/WormObserver/blob/master/images_readme/WormObserver_workflow_sketch.png)
 
-![KNIME](https://github.com/Fritze/WormObserver/blob/master/Images/WormObserver_screen.png)
+![KNIME](https://github.com/Fritze/WormObserver/blob/master/images_readme/WormObserver_screen.png)
 
-![analysis](https://github.com/Fritze/WormObserver/blob/master/Images/analysis_overview.png)
+![analysis](https://github.com/Fritze/WormObserver/blob/master/images_readme/analysis_overview.png)
