@@ -1,0 +1,77 @@
+
+
+#Skeletonize and estimate heads where possible
+```{r message=FALSE, include=FALSE}
+
+datasets_loaded <- unique(imported_data$dataset_ID)
+
+
+for (a_dataset in datasets_loaded){
+  a_dataset_filepath <- file.path(target_folder_base,a_dataset)
+  print("processing ", a_dataset)
+  tic()
+  #looks like future and furrr makes this 8x faster (?)
+  data_skeleton <- imported_data  %>%
+    filter(dataset_ID == a_dataset) %>%
+    filter(tp == 1) %>% ######deeeeeeeeleeeeeeete
+    group_by(dataset_ID,tp,TrackID) %>%
+    nest() %>%
+    mutate(m = map(data,skeleton_direction)) %>%
+    select(dataset_ID,tp,TrackID,m) %>%
+    unnest() %>%
+    group_by(dataset_ID, tp,TrackID,frame) %>%
+    nest() %>%
+    group_by(dataset_ID, tp,TrackID,frame) %>%
+    mutate(mf =map(data,skeleton_frame,dataset_ID,tp,TrackID,frame)) %>%
+    select(dataset_ID,tp,TrackID,frame,mf) %>%
+    unnest() %>%
+    group_by(dataset_ID,tp,TrackID,frame) %>%
+    nest() %>%
+    mutate(mh = map(data,skeleton_head)) %>%
+    select(dataset_ID,tp,TrackID,frame,mh) %>%
+    unnest() %>%
+    select(-ends_with("1"))
+  toc()
+  print("skeletonization done. now extend head by looking at neighbouring frames.")
+  #save(data_skeleton, file = file.path(target_folder_analysis,target_folder_general,"_with_head.rds"))
+  #data_skeleton <- readRDS(file.path(target_folder_analysis,target_folder_general,"_with_head.rds"))
+  tic()
+  data_skeleton_with_headext <- data_skeleton %>%
+    mutate(head_detected = ifelse(grepl("downsampled | unclear",status),"not yet","NO" )) %>%
+    mutate(distance_to_latest_head = NA) %>%
+    group_by(dataset_ID, tp,TrackID) %>%
+    nest() %>%
+    group_by(dataset_ID, tp,TrackID) %>%
+    mutate(mhe = map(data,skeleton_head_estimate)) %>%
+    select(dataset_ID,tp,TrackID,mhe) %>%
+    unnest(cols=c(mhe))
+  toc()
+  print("head extension done. now reorder indexes so that head is always index 1.")
+  #save(data_skeleton_headext, file = file.path(target_folder_analysis,target_folder_general,"_with_headext.rds"))
+  
+  #data_skeleton_with_headext <- readRDS(file.path(target_folder_analysis,target_folder_general,"_with_headext.rds"))
+  
+  skeleton_reorder <- function(data){
+      if(!is.na(data[nrow(data),"is_head"])){
+        data$index <- nrow(data):1
+        data
+      } else {
+        data <- data
+      }
+  }
+  
+  tic()
+  data_skeleton_with_headext_reordered <- data_skeleton_with_headext %>%
+    group_by(dataset_ID, tp,TrackID,frame) %>%
+    nest() %>%
+    mutate(mr = map(data,skeleton_reorder)) %>%
+    select(dataset_ID,tp,TrackID,frame,mr) %>%
+    unnest()
+  toc()
+  print("head reordering done. now saving.")
+  saveRDS(data_skeleton_with_headext_reordered, file = file.path(a_dataset_filepath,paste0(a_dataset,"_with_headext_reordered.rds")))
+}
+```
+
+
+

@@ -3,22 +3,24 @@
 ```{r, include=FALSE}
 
 #define data paths
+
 target_folder_base <- ("/media/ella/raid5/timelapses")
-target_folder_general <- c(#"2019-03-26_19-27-16")
-                           #"2019-03-07_17-28-51",
-                           #"2019-03-11_17-54-09",
-                           #"2019-03-18_18-01-40",
-                           #"2019-03-19_17-40-32",
-                           "2019-03-25_18-10-06")#no food
-                           #"2019-03-27_18-24-47",
-                           #"2019-04-15_17-32-23",
-                           #"2019-04-23_17-46-08",#daf2
-                           #"2019-04-30_14-15-44", #L2
-                           #"2019-05-04_15-36-42",#L2
-                           #"2019-05-07_12-15-40"#daf2
-                           #"2019-05-08_14-11-15",#daf2
-                           #"2019-07-08_18-33-57",#1:5 OP50
-                           #"2019-07-09_18-22-34"#1:5 OP50
+target_folder_general <- c(#"2019-03-26_19-27-16")  #1:10 N2
+                           #"2019-03-11_17-54-09",  #1:10 N2
+                           #"2019-03-19_17-40-32",  #1:10 N2
+                           # "2019-03-25_18-10-06")   #N2 no food
+                           #"2019-03-27_18-24-47",  #1:10 N2
+                           #"2019-04-23_17-46-08",  #daf2
+                           #"2019-04-30_14-15-44",  #L2
+                           #"2019-05-04_15-36-42",  #L2
+                           #"2019-05-07_12-15-40"   #daf2
+                           #"2019-05-08_14-11-15",  #daf2
+                           #"2019-07-08_18-33-57",  #1:5 OP50
+                           #"2019-07-09_18-22-34"   #1:5 OP50
+                           # "2019-11-14_18-25-04", #1:10 DR47 dauer
+                           "2019-11-18_18-43-57", #no food
+                           "2019-11-20_17-29-55") #no food
+                           # "2019-11-25_17-28-23", #1:10 N2
                            #)
 
 target_folder_analysis <- file.path(target_folder_base,target_folder_general, "analysis")
@@ -96,73 +98,3 @@ downsampled_fps <- unique(na.omit(imported_data$downsampled_to))
 
 # save(imported_data, file = file.path(target_folder_analysis,target_folder_general,".rds"))
 ```
-
-
-#Skeletonize and estimate heads where possible
-```{r message=FALSE, include=FALSE}
-
-tic()
-#looks like future and furrr makes this 8x faster
-data_skeleton <- imported_data  %>%
-  group_by(dataset_ID,tp,TrackID) %>%
-  nest() %>%
-  mutate(m = map(data,skeleton_direction)) %>%
-  select(dataset_ID,tp,TrackID,m) %>%
-  unnest() %>%
-  group_by(dataset_ID, tp,TrackID,frame) %>%
-  nest() %>%
-  group_by(dataset_ID, tp,TrackID,frame) %>%
-  mutate(mf =map(data,skeleton_frame,dataset_ID,tp,TrackID,frame)) %>%
-  select(dataset_ID,tp,TrackID,frame,mf) %>%
-  unnest() %>%
-  group_by(dataset_ID,tp,TrackID,frame) %>%
-  nest() %>%
-  mutate(mh = map(data,skeleton_head)) %>%
-  select(dataset_ID,tp,TrackID,frame,mh) %>%
-  unnest() %>%
-  select(-ends_with("1"))
-toc()
-#save(data_skeleton, file = file.path(target_folder_analysis,target_folder_general,"_with_head.rds"))
-```
-
-```{r message=FALSE, include=FALSE}
-data_skeleton <- readRDS(file.path(target_folder_analysis,target_folder_general,"_with_head.rds"))
-tic()
-data_skeleton_with_headext <- data_skeleton %>%
-  mutate(head_detected = ifelse(grepl("downsampled | unclear",status),"not yet","NO" )) %>%
-  mutate(distance_to_latest_head = NA) %>%
-  group_by(dataset_ID, tp,TrackID) %>%
-  nest() %>%
-  group_by(dataset_ID, tp,TrackID) %>%
-  mutate(mhe = map(data,skeleton_head_estimate)) %>%
-  select(dataset_ID,tp,TrackID,mhe) %>%
-  unnest(cols=c(mhe))
-toc()
-#save(data_skeleton_headext, file = file.path(target_folder_analysis,target_folder_general,"_with_headext.rds"))
-```
-
-```{r message=FALSE, include=FALSE}
-data_skeleton_with_headext <- readRDS(file.path(target_folder_analysis,target_folder_general,"_with_headext.rds"))
-skeleton_reorder <- function(data){
-    if(!is.na(data[nrow(data),"is_head"])){
-      data$index <- nrow(data):1
-      data
-    } else {
-      data <- data
-    }
-}
-
-tic()
-data_skeleton_with_headext_reordered <- data_skeleton_with_headext %>%
-  group_by(dataset_ID, tp,TrackID,frame) %>%
-  nest() %>%
-  mutate(mr = map(data,skeleton_reorder)) %>%
-  select(dataset_ID,tp,TrackID,frame,mr) %>%
-  unnest()
-toc()
-
-#save(data_skeleton_headext, file = file.path(target_folder_analysis,target_folder_general,"_with_headext_reordered.rds"))
-```
-
-
-
