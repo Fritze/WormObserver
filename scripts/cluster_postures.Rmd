@@ -106,9 +106,33 @@ ggplot(angle_data_postures,aes(x=tp,y=factor(clusterID,levels=ordering)))+
 ggsave(file.path(base_location,paste0(dataset_name,"_skeletons_freq_heatmap_percent_norm",".png")),width=15,height=11)
 ```
 
+#How many worms/tracks per timepoint?
+```{r, include=FALSE}
+angle_data_postures %>%
+  filter(clusterID == 1) %>%
+  mutate(mean_tracks_per_tp=mean(tracks_per_tp))
+
+```
+
+#How many postures per timepoint?
+```{r, include=FALSE}
+angle_data_postures %>%
+  filter(clusterID == 1) %>%
+  mutate(mean_postures_per_tp=mean(postures_per_tp))
+
+```
+#How many postures of a certain type per timepoint?
+```{r, include=FALSE}
+angle_data_postures %>%
+  filter(clusterID == 1) %>%
+  mutate(mean_cluster_members_per_tp=mean(number_of_cluster_members_per_tp))
+
+```
+
+
 #Visualize individual clusters
 ```{r, include=FALSE}
-clustertotest <- "70"
+clustertotest <- "21"
 
 cluster_ID_list_sampled <- angle_data_clustered %>%
   filter(clusterID %in% clustertotest) %>%
@@ -124,7 +148,7 @@ clustered_skeleton_list <- data_skeleton_with_headext %>%
   mutate(grouping = paste0(TrackID,"_",tp,"_",frame))
 
 
-ggplot(clustered_skeleton_list, aes(x=X,y=Y,colour=angle))+
+p <- ggplot(clustered_skeleton_list, aes(x=X,y=Y,colour=angle))+
       geom_point(size=0.25) +
       geom_path(size=0.025) +
       # geom_point(aes(fill=angle_1)) +
@@ -147,9 +171,9 @@ ggplot(clustered_skeleton_list, aes(x=X,y=Y,colour=angle))+
             strip.text.x = element_text(colour = 'white',size=5))+
       guides(fill=guide_legend(title="Angle (rad)"))
 
+p
 
-
-# ggsave(file.path(base_location,paste0("example_skeletons_",clustertotest,".png")))
+ggsave(file.path(base_location,paste0("example_skeletons_",clustertotest,".png")))
 
 ```
 
