@@ -82,7 +82,6 @@ for(a_dataset in target_folder_general){
   #looks like future and furrr makes this 8x faster (?)
   data_skeleton <- imported_data  %>%
     filter(dataset_ID == a_dataset) %>%
-    filter(tp == 1) %>% ######deeeeeeeeleeeeeeete
     group_by(dataset_ID,tp,TrackID) %>%
     nest() %>%
     mutate(m = map(data,skeleton_direction)) %>%

@@ -6,12 +6,11 @@ frames <- 10
 
 skeleton_data_filtered <- data_skeleton_with_headext %>%
   group_by(dataset_ID,tp,TrackID,frame) %>%
-  #only postures that have a "YES" == frames where a head was detected
+  #only postures that have a "YES"
   filter(any(is_head=="YES")) %>%
   mutate(ID = paste0(dataset_ID, "_",tp,"_",TrackID,"_",frame)) %>%
   group_by(ID) %>%
   ungroup() %>%
-  #only trajectories longer than 10 frames == 5 seconds
   mutate(TrackCheck_cleaned = replace_f(TrackCheck, 26*frames)) %>%
   drop_na("TrackCheck_cleaned") %>%
   ungroup()
