@@ -5,22 +5,22 @@
 #define data paths
 
 target_folder_base <- ("/media/ella/raid5/timelapses")
-target_folder_general <- c("2019-03-26_19-27-16",  #1:10 N2
-                           "2019-03-11_17-54-09",  #1:10 N2
-                           "2019-03-19_17-40-32",  #1:10 N2
-                            #"2019-03-25_18-10-06",   #N2 no food
-                           "2019-03-27_18-24-47",  #1:10 N2
-                           #"2019-04-23_17-46-08",  #daf2
+target_folder_general <- c(#"2019-03-26_19-27-16",  #1:10 N2
+                           #"2019-03-11_17-54-09",  #1:10 N2
+                           #"2019-03-19_17-40-32",  #1:10 N2
+                          #"2019-03-25_18-10-06",   #N2 no food
+                           #"2019-03-27_18-24-47",  #1:10 N2
+                           "2019-04-23_17-46-08",  #daf2
                            #"2019-04-30_14-15-44",  #L2
                            #"2019-05-04_15-36-42",  #L2
-                           #"2019-05-07_12-15-40",   #daf2
-                           #"2019-05-08_14-11-15",  #daf2
+                           "2019-05-07_12-15-40",   #daf2
+                           "2019-05-08_14-11-15"  #daf2
                            #"2019-07-08_18-33-57",  #1:5 OP50
-                           #"2019-07-09_18-22-34",   #1:5 OP50
-                           "2019-11-14_18-25-04", #1:10 DR47 dauer
-                           #"2019-11-18_18-43-57", #no food
-                           #"2019-11-20_17-29-55", #no food
-                           "2019-11-25_17-28-23" #1:10 N2
+                           #"2019-07-09_18-22-34"   #1:5 OP50
+                           ##"2019-11-14_18-25-04", #1:10 DR47 dauer
+                          #"2019-11-18_18-43-57", #no food
+                          #"2019-11-20_17-29-55" #no food
+                           #"2019-11-25_17-28-23" #1:10 N2
                            )
 
 target_folder_analysis <- file.path(target_folder_base,target_folder_general, "analysis")
@@ -93,8 +93,6 @@ imported_data <-  unlist(map(target_folder_analysis,find_zip_files)) %>%
 
 
 
-#downsampled to for conversion
-downsampled_fps <- unique(na.omit(imported_data$downsampled_to))
 
 # save(imported_data, file = file.path(target_folder_analysis,target_folder_general,".rds"))
 ```
