@@ -8,95 +8,52 @@
 #Bin data in time bins (per hour) & sample equal number from each bin
 ```{r, include=FALSE}
 
-sample_number <- 5000
+sample_number <- 15000
 
 dataset_name <- unique(skeleton_data_filtered$dataset_ID)
 
 bin_data_sampled <- skeleton_data_filtered %>%
-   filter(tp %in% 1:40) %>%
-   mutate(time = ifelse(tp < 8,"<1h",NA)) %>%
-   mutate(time = ifelse(tp >= 8 & tp < 16,"<2h",time)) %>%
-   mutate(time = ifelse(tp >= 16 & tp < 24,"<3h",time)) %>%
-   mutate(time = ifelse(tp >= 24 & tp < 32,"<4h",time)) %>%
-   mutate(time = ifelse(tp >= 32 & tp <= 40,"<5h",time)) %>%
-   group_by(ID,time) %>%
-   nest() %>%
-   # drop_na("time") %>%
-   group_by(time) %>%
-   sample_n(sample_number) %>%
-   arrange(desc(ID)) %>%
-   mutate(ID_number= 1:n()) %>%
-   unnest(cols=c(data))
+  mutate(time = ifelse(hours_rounded < 1,"1h",NA)) %>%
+  mutate(time = ifelse(hours_rounded >= 1 & hours_rounded < 2,"2h",time)) %>%
+  mutate(time = ifelse(hours_rounded >= 2 & hours < 3,"3h",time)) %>%
+  mutate(time = ifelse(hours_rounded >= 3 & hours_rounded < 4,"4h",time)) %>%
+  mutate(time = ifelse(hours_rounded >= 4 & hours_rounded < 5,"5h",time)) %>%
+  mutate(time = ifelse(hours_rounded >= 5 & hours_rounded < 6,"6h",time)) %>%
+  mutate(time = ifelse(hours_rounded >= 6 & hours_rounded <= 7 ,"7h",time)) %>%
+  group_by(ID,time) %>%
+  nest() %>%
+  # drop_na("time") %>%
+  group_by(time) %>%
+  sample_n(sample_number) %>%
+  arrange(desc(ID)) %>%
+  mutate(ID_number= 1:n()) %>%
+  unnest(cols=c(data))
 
-# numbers_of_tracks_per_time <- skeleton_data_filtered %>%
-#    filter(tp %in% 1:40) %>%
-#    mutate(time = ifelse(tp < 8,"<1h",NA)) %>%
-#    mutate(time = ifelse(tp >= 8 & tp < 16,"<2h",time)) %>%
-#    mutate(time = ifelse(tp >= 16 & tp < 24,"<3h",time)) %>%
-#    mutate(time = ifelse(tp >= 24 & tp < 32,"<4h",time)) %>%
-#    mutate(time = ifelse(tp >= 32 & tp <= 40,"<5h",time)) %>%
-#    group_by(time) %>%
-#    summarise(n = n_distinct(TrackID))
-# numbers_of_tracks_per_time
+
 
 bin_data_sampled %>%
    group_by(time) %>%
-   summarise(n = n_distinct(TrackID))
+   summarise(n = n_distinct(dataset_TrackID))
 ```
 
 
-#Plot averaged angles for each bin, adding one more posture each image
-```{r, include=FALSE}
 
-for(i in seq(1:1000)){
-   
-   to_plot <- bin_data_sampled %>%
-    filter(ID_number %in% 1:i)
- 
-   ggplot(to_plot, aes(x=angle,y=index),group=time )+
-      # geom_bin2d()+
-      # geom_hex()+
-      stat_density_2d(aes(fill = ..ndensity..),contour=FALSE,geom="raster")+
-      # stat_density_2d(aes(fill = stat(nlevel)),contour=FALSE)+
-      geom_point(data=bin_data_sampled %>% filter(ID_number == i ),aes(x=angle,y=index,color=angle), alpha=0.75,size=1.5)+
-      # geom_path(data=bin_data_sampled %>% filter(ID_number == i ),aes(x=angle,y=index,color=angle), size=1)+
-      scale_color_gradient2(low = "cornflowerblue", mid = "white",
-                            high = "brown2",midpoint=0,limits=c(-1,1),na.value="grey") +
-      facet_grid(~time)+
-      scale_x_continuous(limits=c(-1,1),labels=c(-1,-0.5,0,0.5,1))+
-      scale_y_continuous(trans = "reverse")+
-      scale_fill_viridis(limits=c(0.01,1),na.value="black")+
-      # scale_fill_distiller(palette = "Spectral",limits=c(0.1,1),na.value="black")+
-      theme_black()+
-      theme(legend.position = "top")+
-      ggtitle(dataset_name)
-       
-   ggsave(file.path(base_location,"plots",paste0("averaged_angles_examples_",i,".png")),width=12,height=9)
-}
-```
 
 #Plot distribution for each angle in each time bin
 ```{r, include=FALSE}
 
-ggplot(bin_data_sampled, aes(x=angle,y=index),group=time )+
-   # geom_bin2d()+
-   # geom_hex()+
+ggplot(bin_data_sampled, aes(x=angle,y=index),group=time)+
    stat_density_2d(aes(fill = ..ndensity..),contour=FALSE,geom="raster")+
-   # stat_density_2d(aes(fill = stat(nlevel)),contour=FALSE)+
-   # geom_point(data=bin_data_sampled %>% filter(ID_number == i ),aes(x=angle,y=index,color=angle), alpha=0.75,size=1.5)+
-   # geom_path(data=bin_data_sampled %>% filter(ID_number == i ),aes(x=angle,y=index,color=angle), size=1)+
    scale_color_gradient2(low = "cornflowerblue", mid = "white",
                          high = "brown2",midpoint=0,limits=c(-1,1),na.value="grey") +
    facet_grid(~time)+
    scale_x_continuous(limits=c(-1,1),labels=c(-1,-0.5,0,0.5,1))+
    scale_y_continuous(trans = "reverse")+
    scale_fill_viridis(limits=c(0.01,1),na.value="black")+
-   # scale_fill_distiller(palette = "Spectral",limits=c(0.1,1),na.value="black")+
    theme_black()+
-   theme(legend.position = "top")+
-   ggtitle(dataset_name)
+   theme(legend.position = "top")
 
-ggsave(file.path(base_location,"plots",paste0(dataset_name,"_averaged_angles_downsampled_",sample_number,"postures",".png")),width=12,height=9)
+ggsave(file.path(save_path,paste0("L2_averaged_all_angles",sample_number,"postures",".png")),width=12,height=9)
 
 ```
 
@@ -106,49 +63,26 @@ ggsave(file.path(base_location,"plots",paste0(dataset_name,"_averaged_angles_dow
 bin_data_sampled_head <- bin_data_sampled %>%
    filter(index %in% c(1,2,3,4,5)) %>%
    drop_na("angle")
+```
 
-
-for(i in seq(1:1000)){
-   
-   to_plot <- bin_data_sampled_head %>%
-    filter(ID_number %in% 1:i)
-
-   ggplot(to_plot, aes(x=angle,y=index),group=time )+
-      # geom_bin2d()+
-      # geom_hex()+
-      # stat_density_2d(aes(fill = ..density..), geom = "polygon")+
-      stat_density_2d(aes(fill = ..ndensity..), geom = "raster", contour = FALSE) +
-      # stat_density_2d(aes(fill = stat(nlevel)), geom = "polygon",n=200)+
-      geom_point(data=bin_data_sampled_head %>% filter(ID_number == i ),aes(x=angle,y=index,color=angle), alpha=0.75,size=2)+
-      # geom_path(data=bin_data_sampled_head %>% filter(ID_number == i ),aes(x=angle,y=index,color=angle), alpha=0.75,size=1)+
-      scale_color_gradient2(low = "cornflowerblue", mid = "white",
-                            high = "brown2",midpoint=0,limits=c(-1,1),na.value="grey") +
-      facet_grid(~time)+
-      scale_x_continuous(limits=c(-1,1),labels=c(-1,-0.5,0,0.5,1))+
-      scale_y_continuous(trans = "reverse",limits=c(5.5,1.5))+
-      scale_fill_viridis(limits=c(0.01,1),na.value="black")+
-      theme_black()+
-      theme(legend.position = "top")+
-      ggtitle(dataset_name)
-   ggsave(file.path(base_location,"plots",paste0("head_averaged_angles_examples_",i,".png")),width=12,height=9)
-
-}
-# ggsave(file.path(base_location,"plots",paste0(dataset_name,"head_averaged_angles_downsampled_",sample_number,"postures",".png")),width=12,height=9)
-```   
 
 ```{r, include=FALSE}
-x<-bin_data_sampled_head$angle
-filter(bin_data_sampled_head,angle > 1 )
+
+ggplot(bin_data_sampled_head, aes(x=time, y=angle,group=time))+
+   geom_bin2d()+
+   scale_y_continuous(limits=c(-1,1))+
+   scale_fill_distiller(palette = "Spectral")+
+   theme_black()+
+   theme(legend.position = "top")
+
+ggsave(file.path(save_path,paste0("L2_head_averaged_over_all_angles_",sample_number,"postures",".png")),width=12,height=9)
 
 
-scaleggplot(bin_data_sampled_head, aes(x=angle,y=index),group=time )+
-   # geom_bin2d()+
-   # geom_hex()+
-   # stat_density_2d(aes(fill = ..density..), geom = "polygon")+
+```  
+
+```{r, include=FALSE}
+ggplot(bin_data_sampled_head, aes(x=angle,y=index),group=time )+
    stat_density_2d(aes(fill = ..ndensity..), geom = "raster", contour = FALSE) +
-   # stat_density_2d(aes(fill = stat(nlevel)), geom = "polygon",n=200)+
-   # geom_point(data=bin_data_sampled_head %>% filter(ID_number == i ),aes(x=angle,y=index,color=angle), alpha=0.75,size=2)+
-   # geom_path(data=bin_data_sampled_head %>% filter(ID_number == i ),aes(x=angle,y=index,color=angle), alpha=0.75,size=1)+
    scale_color_gradient2(low = "cornflowerblue", mid = "white",
                          high = "brown2",midpoint=0,limits=c(-1,1),na.value="grey") +
    facet_grid(~time)+
@@ -156,9 +90,9 @@ scaleggplot(bin_data_sampled_head, aes(x=angle,y=index),group=time )+
    scale_y_continuous(trans = "reverse",limits=c(5.5,1.5))+
    scale_fill_viridis(limits=c(0.01,1),na.value="black")+
    theme_black()+
-   theme(legend.position = "top")+
-   ggtitle(dataset_name)
+   theme(legend.position = "top")
 
+ggsave(file.path(save_path,paste0("L2_head_averaged_angles_downsampled_",sample_number,"postures",".png")),width=12,height=9)
 ```  
 
 
@@ -193,67 +127,65 @@ ks.test(three_hours,five_hours)
 ```
 
 
-#Reproduce the two plots above but with full data not only downsampled
+#Plot averaged angles for each bin, adding one more posture each image
 ```{r, include=FALSE}
 
-bin_data <- skeleton_data_filtered %>%
-   # filter(index %in% 3:26) %>%
-   mutate(time = ifelse(tp < 8,"<1h",NA)) %>%
-   mutate(time = ifelse(tp >= 8 & tp < 16,"<2h",time)) %>%
-   mutate(time = ifelse(tp >= 16 & tp < 24,"<3h",time)) %>%
-   mutate(time = ifelse(tp >= 24 & tp < 32,"<4h",time)) %>%
-   mutate(time = ifelse(tp >= 32 & tp < 40,"<5h",time)) %>%
-   drop_na("time")
-
-bin_data %>%
-   filter(tp %in% 1:40) %>%
-   group_by(time) %>%
-   summarise(number_of_postures = n_distinct(ID))
-
-ggplot(bin_data,aes(x=time,y=angle,group=time,fill=time))+
-  # geom_boxplot()+
-  geom_violin()+
-  # geom_boxplot()+
-  coord_flip()+
-  scale_y_continuous(limits=c(-1,1))+
-  theme_black()+
-  theme(legend.position = "top")
-
-ggplot(bin_data, aes(x=angle,y=index))+
-   stat_density_2d(aes(fill = ..density..), geom = "raster", contour = FALSE) +
-   # geom_point(data=bin_data_sampled %>% filter(ID_number == i ),aes(x=angle,y=index,color=angle),alpha=1, size=2)+
-   facet_grid(~time)+
-   # scale_fill_viridis()+
-   # scale_fill_distiller(palette= "Spectral", direction=1) +
-   scale_fill_viridis_c(option = "plasma") +
-   # scale_fill_distiller(palette = "Spectral")+
-   # scale_fill_distiller(palette=4, direction=1) +
-   scale_y_continuous(trans = "reverse")+
-   scale_x_continuous(limits=c(-1,1))+
-   theme_classic2()
-
-
-ggsave(file.path(base_location,"plots",paste0("2019-03-25_18-10-06_averaged_angles_full_data_",".png")),width=12,height=9)
-
+for(i in seq(1:1000)){
+   
+   to_plot <- bin_data_sampled %>%
+    filter(ID_number %in% 1:i)
+ 
+   ggplot(to_plot, aes(x=angle,y=index),group=time )+
+      # geom_bin2d()+
+      # geom_hex()+
+      stat_density_2d(aes(fill = ..ndensity..),contour=FALSE,geom="raster")+
+      # stat_density_2d(aes(fill = stat(nlevel)),contour=FALSE)+
+      geom_point(data=bin_data_sampled %>% filter(ID_number == i ),aes(x=angle,y=index,color=angle), alpha=0.75,size=1.5)+
+      # geom_path(data=bin_data_sampled %>% filter(ID_number == i ),aes(x=angle,y=index,color=angle), size=1)+
+      scale_color_gradient2(low = "cornflowerblue", mid = "white",
+                            high = "brown2",midpoint=0,limits=c(-1,1),na.value="grey") +
+      facet_grid(~time)+
+      scale_x_continuous(limits=c(-1,1),labels=c(-1,-0.5,0,0.5,1))+
+      scale_y_continuous(trans = "reverse")+
+      scale_fill_viridis(limits=c(0.01,1),na.value="black")+
+      # scale_fill_distiller(palette = "Spectral",limits=c(0.1,1),na.value="black")+
+      theme_black()+
+      theme(legend.position = "top")+
+      ggtitle(dataset_name)
+       
+   ggsave(file.path(save_path,paste0("withfoods_averaged_angles_examples_",i,".png")),width=12,height=9)
+}
 ```
+
+
 
 ```{r, include=FALSE}
-bin_data_sampled_head <- bin_data_sampled %>%
-   filter(index %in% c(1,2,3,4,5)) %>%
-   drop_na("angle")
 
 
-ggplot(bin_data_sampled_head, aes(x=time, y=angle,group=time))+
-   geom_bin2d()+
-   scale_y_continuous(limits=c(-1,1))+
-   scale_fill_distiller(palette = "Spectral")+
-   theme_black()+
-   theme(legend.position = "top")
+for(i in seq(1:1000)){
+   
+   to_plot <- bin_data_sampled_head %>%
+    filter(ID_number %in% 1:i)
 
-# ggsave(file.path(base_location,"plots",paste0(dataset_name,"_head_averaged_angles_downsampled_",sample_number,"postures",".png")),width=12,height=9)
+   ggplot(to_plot, aes(x=angle,y=index),group=time )+
+      # geom_bin2d()+
+      # geom_hex()+
+      # stat_density_2d(aes(fill = ..density..), geom = "polygon")+
+      stat_density_2d(aes(fill = ..ndensity..), geom = "raster", contour = FALSE) +
+      # stat_density_2d(aes(fill = stat(nlevel)), geom = "polygon",n=200)+
+      geom_point(data=bin_data_sampled_head %>% filter(ID_number == i ),aes(x=angle,y=index,color=angle), alpha=0.75,size=2)+
+      # geom_path(data=bin_data_sampled_head %>% filter(ID_number == i ),aes(x=angle,y=index,color=angle), alpha=0.75,size=1)+
+      scale_color_gradient2(low = "cornflowerblue", mid = "white",
+                            high = "brown2",midpoint=0,limits=c(-1,1),na.value="grey") +
+      facet_grid(~time)+
+      scale_x_continuous(limits=c(-1,1),labels=c(-1,-0.5,0,0.5,1))+
+      scale_y_continuous(trans = "reverse",limits=c(5.5,1.5))+
+      scale_fill_viridis(limits=c(0.01,1),na.value="black")+
+      theme_black()+
+      theme(legend.position = "top")+
+      ggtitle(dataset_name)
+   ggsave(file.path(base_location,"plots",paste0("head_averaged_angles_examples_",i,".png")),width=12,height=9)
 
-
-
-
-
-```
+}
+# ggsave(file.path(base_location,"plots",paste0(dataset_name,"head_averaged_angles_downsampled_",sample_number,"postures",".png")),width=12,height=9)
+```   
