@@ -68,17 +68,130 @@ bin_data_sampled_head <- bin_data_sampled %>%
 
 ```{r, include=FALSE}
 
-ggplot(bin_data_sampled_head, aes(x=time, y=angle,group=time))+
+head_angles_1 <- readRDS(file="/Users/fpreuss/Desktop/behavior/daf2_head_sampled.rds") %>%
+   mutate(annotation = "daf2")
+head_angles_2 <- readRDS(file="/Users/fpreuss/Desktop/behavior/nofood_head_sampled.rds") %>%
+   mutate(annotation = "no food")
+head_angles_3 <- readRDS(file="/Users/fpreuss/Desktop/behavior/withfood_head_sampled.rds") %>%
+   mutate(annotation = "with food")
+
+bin_data_sampled_head <- rbind(
+   head_angles_1,
+   head_angles_2,
+   head_angles_3
+)
+
+bin_data_sampled_head %>%
+   group_by(hours_rounded,annotation) %>%
+   summarise(number_of_tracks=n_distinct(dataset_TrackID)) %>%
+   group_by(annotation) %>%
+   mutate(mean_number_of_tracks=mean(number_of_tracks))
+
+
+```
+
+```{r, include=FALSE}
+
+bin_data_sampled_head_abs <- bin_data_sampled_head %>%
+   mutate(angle = abs(angle)) %>%
+   filter(index %in% c(2,3))
+
+# ggplot(bin_data_sampled_head_abs, aes(x=time, y=angle,group=time))+
+#    geom_bin2d(aes(fill = ..ndensity..))+
+#    scale_y_continuous(limits=c(0,1))+
+#    scale_fill_viridis(option = "inferno")+
+#    facet_wrap(~annotation)+
+#    theme_black()+
+#    theme(legend.position = "top")
+
+ggplot(bin_data_sampled_head_abs, aes(x=time, y=angle,group=time))+
    geom_bin2d()+
-   scale_y_continuous(limits=c(-1,1))+
-   scale_fill_distiller(palette = "Spectral")+
+   scale_y_continuous(limits=c(0,1))+
+   scale_fill_distiller(palette= "Spectral") +
+   facet_wrap(~annotation)+
    theme_black()+
    theme(legend.position = "top")
 
-ggsave(file.path(save_path,paste0("L2_head_averaged_over_all_angles_",sample_number,"postures",".png")),width=12,height=9)
+
+ggplot(filter(bin_data_sampled_head_abs,annotation=="with food"), aes(x=time, y=angle,group=time))+
+   geom_bin2d()+
+   scale_y_continuous(limits=c(0,1))+
+   scale_fill_distiller(palette= "Spectral") +
+   facet_wrap(~annotation)+
+   theme_black()+
+   theme(legend.position = "top")
+
+# ggplot(bin_data_sampled_head_abs, aes(angle,color=time))+
+#    geom_density()+
+#    scale_x_continuous(limits=c(0,1))+
+#    facet_wrap(~annotation)
+# 
+# d <- bin_data_sampled_head_abs %>%
+#    group_by(annotation,time) %>%
+#    summarise(sum01= sum(angle<=0.1)/n_distinct(ID)*2,
+#              sum02= sum(angle<=0.2)/n_distinct(ID)*2,
+#              sum03= sum(angle<=0.3)/n_distinct(ID)*2,
+#              sum04= sum(angle<=0.4)/n_distinct(ID)*2,
+#              sum05= sum(angle<=0.5)/n_distinct(ID)*2) %>%
+#     gather(condition, measurement, sum01:sum05, factor_key=TRUE)
+#    
+   
+# ggplot(d,aes(x=time,y=measurement,fill=condition))+
+#    geom_boxplot()
+
+
+ggsave(file.path("/Users/fpreuss/Desktop/behavior/",paste0("head_averaged_over_all_angles_",sample_number,"postures",".png")),width=15,height=10)
 
 
 ```  
+
+```{r, include=FALSE}
+
+filtered <- bin_data_sampled_head %>%
+   mutate(angle_rounded = round(angle,1)) %>%
+   filter(angle_rounded < 0.5 & angle_rounded > -0.5) %>%
+   group_by(index,time,angle_rounded,annotation) %>%
+   summarise(number = n_distinct(ID)) %>%
+   filter(index < 4)
+
+ggplot(filtered, aes(x=angle_rounded, y=number,fill=as.character(index)))+
+   geom_bar(stat="identity")+
+   coord_polar()+
+   scale_x_reverse()+
+   facet_wrap(vars(annotation,time),nrow =3)+
+   scale_fill_brewer(palette="Greens")+
+   theme_void()+
+   theme(legend.position = "top",
+         panel.background = element_rect(fill ="black"))
+
+# ggsave(file.path("/Users/fpreuss/Desktop/behavior/",paste0("head_averaged_over_all_angles_",sample_number,"postures",".png")),width=15,height=10)
+
+
+```  
+
+```{r, include=FALSE}
+
+for(i in seq(1:1000)){
+   
+   to_plot <- bin_data_sampled_head %>%
+    filter(ID_number %in% 1:i)
+
+   ggplot(to_plot, aes(x=time, y=angle,group=time))+
+      geom_bin2d(aes(fill = ..ndensity..))+
+      scale_y_continuous(limits=c(-1,1))+
+      scale_fill_viridis(option = "inferno")+
+      facet_wrap(~annotation)+
+      theme_black()+
+      theme(legend.position = "top")
+
+   ggsave(file.path("/Users/fpreuss/Desktop/behavior/",paste0("head_averaged_over_all_angles_",sample_number,"postures_",i,".png")),width=15,height=10)
+   
+}
+
+
+```  
+
+
 
 ```{r, include=FALSE}
 ggplot(bin_data_sampled_head, aes(x=angle,y=index),group=time )+
