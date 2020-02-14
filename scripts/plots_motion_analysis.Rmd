@@ -5,15 +5,15 @@
 target_folder_base <- "/media/ella/raid5/timelapses/analysis/200213"
 save_path <- "/media/ella/raid5/timelapses/analysis/200213"
 
-motion_1 <- readRDS(file=file.path(target_folder_base,"2000213_Motion_1_1.RDS"))
-motion_2 <- readRDS(file=file.path(target_folder_base,"2000213_Motion_5.RDS"))
-# motion_3 <- readRDS(file=file.path(target_folder_base,"200128_Motion_3.RDS"))
-motion_4 <- readRDS(file=file.path(target_folder_base,"200127_Motion_4.RDS"))
+motion_1 <- readRDS(file=file.path(target_folder_base,"200213_Motion_1_1.RDS"))
+motion_2 <- readRDS(file=file.path(target_folder_base,"200127_Motion_2.RDS"))
+motion_3 <- readRDS(file=file.path(target_folder_base,"200214_Motion_3_1.RDS"))
+# motion_4 <- readRDS(file=file.path(target_folder_base,"200127_Motion_4.RDS"))
 
 imported_data <- rbind(motion_1,
                        motion_2,
-                       # motion_3,
-                       motion_4)
+                       motion_3)
+                       # motion_4)
 
 ```
 
@@ -93,23 +93,22 @@ chosen_exps_1 <- c(#with bacteria
   "2019-03-27_18-24-47",
   "2019-11-25_17-28-23")
 
-# chosen_exps_2 <-c("2019-05-07_12-15-40", #daf2 dauer
-#                   "2019-04-23_17-46-08",
-#                   "2019-05-08_14-11-15")
+chosen_exps_2 <-c("2019-05-07_12-15-40", #daf2 dauer
+                  "2019-04-23_17-46-08")
 
 
-# chosen_exps_3 <- c("2019-03-25_18-10-06",
-#                    "2019-11-18_18-43-57",
-#                    "2019-11-20_17-29-55") #no food
+chosen_exps_3 <- c("2019-03-25_18-10-06",
+                   "2019-11-18_18-43-57",
+                   "2019-11-20_17-29-55") #no food
 
 # chosen_exps_4 <- c("2019-11-14_18-25-04") # DR47
 
 
-chosen_exps_4 <-c("2019-07-08_18-33-57", #1:5 OP50
-                  "2019-07-09_18-22-34") #1:5 OP50
+# chosen_exps_4 <-c("2019-07-08_18-33-57", #1:5 OP50
+#                   "2019-07-09_18-22-34") #1:5 OP50
 
-chosen_exps_5 <-c("2019-04-30_14-15-44", #L2
-                  "2019-05-04_15-36-42")
+# chosen_exps_5 <-c("2019-04-30_14-15-44", #L2
+#                   "2019-05-04_15-36-42")
 
 ```
 
@@ -119,15 +118,15 @@ chosen_exps_5 <-c("2019-04-30_14-15-44", #L2
 imported_data_grouped <- imported_data %>%
     filter(
           dataset_ID %in% chosen_exps_1 |
-          # dataset_ID %in% chosen_exps_2 |
-          # dataset_ID %in% chosen_exps_3 |
-          dataset_ID %in% chosen_exps_4 |
-          dataset_ID %in% chosen_exps_5) %>%
+          dataset_ID %in% chosen_exps_2 |
+          dataset_ID %in% chosen_exps_3 ) %>%
+          # dataset_ID %in% chosen_exps_4 |
+          # dataset_ID %in% chosen_exps_5) %>%
     mutate(annotation = ifelse(dataset_ID %in% chosen_exps_1, "N2 dauers w. food",NA)) %>%
-    # mutate(annotation = ifelse(dataset_ID %in% chosen_exps_2, "daf2 dauers",annotation)) %>%
-    # mutate(annotation = ifelse(dataset_ID %in% chosen_exps_3, "N2 dauers no food",annotation)) %>%
-    mutate(annotation = ifelse(dataset_ID %in% chosen_exps_4, "1:5",annotation)) %>%
-    mutate(annotation = ifelse(dataset_ID %in% chosen_exps_5, "L2",annotation))%>%
+    mutate(annotation = ifelse(dataset_ID %in% chosen_exps_2, "daf2 dauers",annotation)) %>%
+    mutate(annotation = ifelse(dataset_ID %in% chosen_exps_3, "N2 dauers no food",annotation)) %>%
+    # mutate(annotation = ifelse(dataset_ID %in% chosen_exps_4, "1:5",annotation)) %>%
+    # mutate(annotation = ifelse(dataset_ID %in% chosen_exps_5, "L2",annotation))%>%
     #round per half an hour
     mutate(hours_rounded= floor(hours* 2) / 2) %>%
     #filter out first 30 mins
@@ -139,7 +138,7 @@ imported_data_grouped <- imported_data %>%
 
 ```{r, echo=TRUE}
 
-pal <- wes_palette("Darjeeling1",5)[c(1,3,5)]
+pal <- wes_palette("Darjeeling1",5)[c(5,1,3)]
 
 
 perc_turn <- imported_data_grouped %>%
@@ -158,26 +157,25 @@ perc_turn <- imported_data_grouped %>%
 print(ggplot(perc_turn,aes(x=hours_rounded,y=mean,color=annotation,group=annotation))+
   geom_line(size=1)+
   geom_point()+
-  geom_errorbar(width=.1, aes(ymin=lower_ci, ymax=upper_ci))+
-  geom_ribbon(aes(ymin=lower_ci, ymax=upper_ci), fill="white",linetype = 0, alpha=0.2)+
+  geom_errorbar(width=.1, aes(ymin=mean-se, ymax=mean+se))+
+  geom_ribbon(aes(ymin=mean-se, ymax=mean+se), fill="white",linetype = 0, alpha=0.2)+
   # ggtitle(paste0(i," with standard error of the mean"))+
   # scale_y_continuous(limits = c(0,1))+
-  scale_x_continuous(limits = c(0,9),breaks = seq(0, 9, 1))+
+  scale_x_continuous(limits = c(0,9.5),breaks = seq(0, 9, 1))+
   xlab("hours") + ylab("relative occurence of turns")+
   theme_black()+
   theme(legend.direction="vertical")+
   scale_color_manual(values =pal)+
-  #theme(axis.title=element_blank(), axis.text=element_blank(), axis.ticks=element_blank(), plot.background = element_rect(fill = "black"))
   ggsave(file.path(save_path,paste0("perc_turn_line",".png")))
   
 )
 
 print(ggplot(perc_turn,aes(x=hours_rounded,y=mean,fill=annotation))+
   geom_bar(stat="identity", position=position_dodge())+
-  geom_errorbar(position=position_dodge(.45),width=.1, aes(ymin=lower_ci, ymax=upper_ci),color="white")+
+  geom_errorbar(position=position_dodge(.45),width=.1, aes(ymin=mean-se, ymax=mean+se),color="white")+
   # geom_ribbon(aes(ymin=lower_ci, ymax=upper_ci), fill="white",linetype = 0, alpha=0.2)+
   # ggtitle(paste0(i," with standard error of the mean"))+
-  scale_x_continuous(limits = c(0,9),breaks = seq(0, 9, 1))+
+  scale_x_continuous(limits = c(0,9.5),breaks = seq(0, 9.5, 1))+
   xlab("hours") + ylab("relative occurence of turns")+
   theme_black()+
   theme(legend.direction="vertical")+
@@ -206,15 +204,15 @@ perc_straight <- imported_data_grouped %>%
     ungroup() %>%
     mutate(annotation = paste0(annotation, "\n(", round(mean_number_of_tracks_per_roundedtp_exptype),")"))
  
-pal <- wes_palette("Darjeeling1",5)[c(1,3,5)]
+pal <- wes_palette("Darjeeling1",5)[c(5,1,3)]
           
 print(ggplot(perc_straight,aes(x=hours_rounded,y=mean,color=annotation,group=annotation,palette = "jco"))+
   geom_line(size=1)+
   geom_point()+
-  geom_errorbar(width=.1, aes(ymin=lower_ci, ymax=upper_ci))+
-  geom_ribbon(aes(ymin=lower_ci, ymax=upper_ci), fill="white",linetype = 0, alpha=0.2)+
+  geom_errorbar(width=.1, aes(ymin=mean-se, ymax=mean+se))+
+  geom_ribbon(aes(ymin=mean-se, ymax=mean+se), fill="white",linetype = 0, alpha=0.2)+
   # ggtitle(paste0(i," with standard error of the mean"))+
-  scale_x_continuous(limits = c(0,9),breaks = seq(0, 9, 1))+
+  scale_x_continuous(limits = c(0,9.5),breaks = seq(0, 9, 1))+
   scale_y_continuous(limits = c(0,1))+
   xlab("hours") + ylab("relative occurence of straight movement")+
   theme_black()+
@@ -226,7 +224,7 @@ print(ggplot(perc_straight,aes(x=hours_rounded,y=mean,color=annotation,group=ann
 
 print(ggplot(perc_straight,aes(x=hours_rounded,y=mean,fill=annotation))+
   geom_bar(stat="identity", position=position_dodge())+
-  geom_errorbar(position=position_dodge(.5),width=.1, aes(ymin=lower_ci, ymax=upper_ci),color="white")+
+  geom_errorbar(position=position_dodge(.5),width=.1, aes(ymin=mean-se, ymax=mean+se),color="white")+
   # geom_ribbon(aes(ymin=lower_ci, ymax=upper_ci), fill="white",linetype = 0, alpha=0.2)+
   # ggtitle(paste0(i," with standard error of the mean"))+
   scale_x_continuous(limits = c(0,9),breaks = seq(0, 9, 1))+
@@ -254,16 +252,16 @@ perc_pause <- imported_data_grouped %>%
     ungroup() %>%
     mutate(annotation = paste0(annotation, "\n(", round(mean_number_of_tracks_per_roundedtp_exptype),")"))
 
-pal <- wes_palette("Darjeeling1",5)[c(1,3,5)]
+pal <- wes_palette("Darjeeling1",5)[c(5,1,3)]
 
 print(ggplot(perc_pause,aes(x=hours_rounded,y=mean,color=annotation,group=annotation,palette = "jco"))+
   geom_line(size=1)+
   geom_point()+
-  geom_errorbar(width=.1, aes(ymin=lower_ci, ymax=upper_ci))+
-  geom_ribbon(aes(ymin=lower_ci, ymax=upper_ci), fill="white",linetype = 0, alpha=0.2)+
+  geom_errorbar(width=.1, aes(ymin=mean-se, ymax=mean+se))+
+  geom_ribbon(aes(ymin=mean-se, ymax=mean+se), fill="white",linetype = 0, alpha=0.2)+
   # ggtitle(paste0(i," with standard error of the mean"))+
   scale_y_continuous(limits = c(0,1))+
-  scale_x_continuous(limits = c(0,9),breaks = seq(0, 9, 1))+
+  scale_x_continuous(limits = c(0,9.5),breaks = seq(0, 9, 1))+
   xlab("hours") + ylab("relative occurence of pausing")+
   theme_black()+
   theme(legend.direction="vertical")+
@@ -274,7 +272,7 @@ print(ggplot(perc_pause,aes(x=hours_rounded,y=mean,color=annotation,group=annota
 
 print(ggplot(perc_pause,aes(x=hours_rounded,y=mean,fill=annotation))+
   geom_bar(stat="identity", position=position_dodge())+
-  geom_errorbar(position=position_dodge(.5),width=.1, aes(ymin=lower_ci, ymax=upper_ci),color="white")+
+  geom_errorbar(position=position_dodge(.5),width=.1, aes(ymin=mean-se, ymax=mean+se),color="white")+
   # geom_ribbon(aes(ymin=lower_ci, ymax=upper_ci), fill="white",linetype = 0, alpha=0.2)+
   # ggtitle(paste0(i," with standard error of the mean"))+
   scale_x_continuous(limits = c(0,9),breaks = seq(0, 9, 1))+
@@ -304,13 +302,13 @@ perc_omega <- imported_data_grouped %>%
     mutate(annotation = paste0(annotation, "\n(", round(mean_number_of_tracks_per_roundedtp_exptype),")"))
 
 
-pal <- wes_palette("Darjeeling1",5)[c(1,3,5)]
+pal <- wes_palette("Darjeeling1",5)[c(5,1,3)]
 
 print(ggplot(perc_omega,aes(x=hours_rounded,y=mean,color=annotation,group=annotation,palette = "jco"))+
   geom_line(size=1)+
   geom_point()+
-  geom_errorbar(width=.1, aes(ymin=lower_ci, ymax=upper_ci))+
-  geom_ribbon(aes(ymin=lower_ci, ymax=upper_ci), fill="white",linetype = 0, alpha=0.2)+
+  geom_errorbar(width=.1, aes(ymin=mean-se, ymax=mean+se))+
+  geom_ribbon(aes(ymin=mean-se, ymax=mean+se), fill="white",linetype = 0, alpha=0.2)+
   # ggtitle(paste0(i," with standard error of the mean"))+
   scale_x_continuous(limits = c(0,9),breaks = seq(0, 9, 1))+
   xlab("hours") + ylab("relative occurence of omega turns")+
@@ -323,7 +321,7 @@ print(ggplot(perc_omega,aes(x=hours_rounded,y=mean,color=annotation,group=annota
 
 print(ggplot(perc_omega,aes(x=hours_rounded,y=mean,fill=annotation))+
   geom_bar(stat="identity", position=position_dodge())+
-  geom_errorbar(position=position_dodge(.5),width=.1, aes(ymin=lower_ci, ymax=upper_ci),color="white")+
+  geom_errorbar(position=position_dodge(.5),width=.1, aes(ymin=mean-se, ymax=mean+se),color="white")+
   # geom_ribbon(aes(ymin=lower_ci, ymax=upper_ci), fill="white",linetype = 0, alpha=0.2)+
   # ggtitle(paste0(i," with standard error of the mean"))+
   scale_x_continuous(limits = c(0,9),breaks = seq(0, 9, 1))+
@@ -334,6 +332,7 @@ print(ggplot(perc_omega,aes(x=hours_rounded,y=mean,fill=annotation))+
   #theme(axis.title=element_blank(), axis.text=element_blank(), axis.ticks=element_blank(), plot.background = element_rect(fill = "black"))
   ggsave(file.path(save_path,paste0("perc_omega_line",".png")))
 )
+
 
 ```
 
@@ -351,14 +350,14 @@ mean_velocity <- imported_data_grouped %>%
     ungroup() %>%
     mutate(annotation = paste0(annotation, "\n(", round(mean_number_of_tracks_per_roundedtp_exptype),")"))
 
-pal <- wes_palette("Darjeeling1",5)[c(1,3,5)]
+pal <- wes_palette("Darjeeling1",5)[c(5,1,3)]
 
 
 print(ggplot(mean_velocity,aes(x=hours_rounded,y=mean,color=annotation,group=annotation,palette = "jco"))+
   geom_line(size=1)+
   geom_point()+
-  geom_errorbar(width=.1, aes(ymin=lower_ci, ymax=upper_ci))+
-  geom_ribbon(aes(ymin=lower_ci, ymax=upper_ci), fill="white",linetype = 0, alpha=0.2)+
+  geom_errorbar(width=.1, aes(ymin=mean-se, ymax=mean+se))+
+  geom_ribbon(aes(ymin=mean-se, ymax=mean+se), fill="white",linetype = 0, alpha=0.2)+
   # ggtitle(paste0(i," with standard error of the mean"))+
   scale_x_continuous(limits = c(0,9),breaks = seq(0, 9, 1))+
   xlab("hours") + ylab("average worm velocity (µm/s)")+
@@ -371,7 +370,7 @@ print(ggplot(mean_velocity,aes(x=hours_rounded,y=mean,color=annotation,group=ann
 
 print(ggplot(mean_velocity,aes(x=hours_rounded,y=mean,fill=annotation))+
   geom_bar(stat="identity", position=position_dodge())+
-  geom_errorbar(position=position_dodge(.5),width=.1, aes(ymin=lower_ci, ymax=upper_ci),color="white")+
+  geom_errorbar(position=position_dodge(.5),width=.1, aes(ymin=mean-se, ymax=mean+se),color="white")+
   # geom_ribbon(aes(ymin=lower_ci, ymax=upper_ci), fill="white",linetype = 0, alpha=0.2)+
   # ggtitle(paste0(i," with standard error of the mean"))+
   scale_x_continuous(limits = c(0,9),breaks = seq(0, 9, 1))+
@@ -398,14 +397,14 @@ mean_angle <- imported_data_grouped %>%
     ungroup() %>%
     mutate(annotation = paste0(annotation, "\n(", round(mean_number_of_tracks_per_roundedtp_exptype),")"))
 
-pal <- wes_palette("Darjeeling1",5)[c(1,3,5)]
+pal <- wes_palette("Darjeeling1",5)[c(5,1,3)]
 
 
 print(ggplot(mean_angle,aes(x=hours_rounded,y=mean,color=annotation,group=annotation))+
   geom_line(size=1)+
   geom_point()+
-  geom_errorbar(width=.1, aes(ymin=lower_ci, ymax=upper_ci))+
-  geom_ribbon(aes(ymin=lower_ci, ymax=upper_ci), fill="white",linetype = 0, alpha=0.2)+
+  geom_errorbar(width=.1, aes(ymin=mean-se, ymax=mean+se))+
+  geom_ribbon(aes(ymin=mean-se, ymax=mean+se), fill="white",linetype = 0, alpha=0.2)+
   # ggtitle(paste0(i," with standard error of the mean"))+
   scale_x_continuous(limits = c(0,9),breaks = seq(0, 9, 1))+
   xlab("hours") + ylab("Average worm path angle (degrees)")+
@@ -418,7 +417,7 @@ print(ggplot(mean_angle,aes(x=hours_rounded,y=mean,color=annotation,group=annota
 
 print(ggplot(mean_angle,aes(x=hours_rounded,y=mean,fill=annotation))+
   geom_bar(stat="identity", position=position_dodge())+
-  geom_errorbar(position=position_dodge(.5),width=.1, aes(ymin=lower_ci, ymax=upper_ci),color="white")+
+  geom_errorbar(position=position_dodge(.5),width=.1, aes(ymin=mean-se, ymax=mean+se),color="white")+
   # geom_ribbon(aes(ymin=lower_ci, ymax=upper_ci), fill="white",linetype = 0, alpha=0.2)+
   # ggtitle(paste0(i," with standard error of the mean"))+
   scale_x_continuous(limits = c(0,9),breaks = seq(0, 9, 1))+
@@ -438,7 +437,7 @@ boxplot <- imported_data_grouped %>%
   filter(annotation != "L2")
   
 
-pal <- wes_palette("Darjeeling1",5)[c(1,5)]
+pal <- wes_palette("Darjeeling1",5)[c(5,1,3)]
 
 
 ggplot(boxplot,aes(x=as.character(hours_rounded),y=p_mean_angle,fill=annotation))+
@@ -472,6 +471,7 @@ ggplot(boxplot,aes(x=as.character(hours_rounded),y=p_length,fill=annotation))+
 ```{r, echo=TRUE}
 heatmap <- imported_data_grouped
 
+
 ggplot(heatmap,aes(x = p_mean_angle, y = p_mean_velocity))+
   stat_density_2d(aes(fill = ..ndensity..),contour=FALSE,geom="raster")+
   scale_fill_viridis(option = "inferno")+
@@ -488,9 +488,22 @@ ggplot(heatmap,aes(x = p_mean_angle, y = p_mean_velocity))+
 
 pal <- wes_palette("Darjeeling1",5)[c(3,5)]
 
+
+imported_data_grouped %>%
+  mutate(ratio = p_mean_velocity/p_mean_angle) %>%
+  mutate(behavioral_state=ifelse(ratio > 1, "roaming","dwelling")) %>%
+  ggplot(.,aes(x = p_mean_angle, y = p_mean_velocity,color=behavioral_state))+
+    geom_point(alpha=0.1)+
+    facet_wrap(annotation+hours_rounded ~ ., nrow=length(unique(heatmap$annotation)), ncol= 18)+
+    theme_black()+
+    coord_fixed(ratio = 1)+
+    scale_x_log10(limits=c(1,180))+
+    scale_y_log10()+
+    ggsave(file.path(save_path,paste0("roaming_dwelling_heatmap_binarized",".png")),height=10,width=15)
+
+
 heatmap <- imported_data_grouped %>%
   # filter(annotation %in% c("N2 dauers w. food")) %>%
-  filter(hours_rounded < 7.5) %>%
   mutate(ratio = p_mean_velocity/p_mean_angle) %>%
   mutate(behavioral_state=ifelse(ratio > 1, "roaming","dwelling")) %>%
   group_by(annotation,hours_rounded,behavioral_state,dataset_ID) %>%
@@ -499,12 +512,7 @@ heatmap <- imported_data_grouped %>%
   mutate(sum=sum(counts)) %>%
   mutate(perc = counts/sum)
 
-# ggplot(imported_data_grouped,aes(x = p_mean_angle, y = p_mean_velocity,color=behavioral_state))+
-#   geom_point(alpha=0.1)+
-#   scale_x_log10(limits=c(1,180))+
-#   scale_y_log10()+
-#   theme_black()+
-#   coord_fixed(ratio = 1)
+
 
 ggplot(heatmap,aes(x=as.character(hours_rounded),y=perc,fill=behavioral_state,color=behavioral_state))+
       geom_boxplot(outlier.shape = NA)+
@@ -522,21 +530,5 @@ ggplot(heatmap,aes(x=as.character(hours_rounded),y=perc,fill=behavioral_state,co
       ggsave(file.path(save_path,paste0("roaming_dwelling_relative",".png")),height=10,width=15)
 ```
 
-```{r, echo=TRUE}
-test <- MASS::geyser
-
-threedimensionalmap <- imported_data_grouped %>%
-  filter(annotation %in% c("N2 dauers w. food"))
-
-data <- data.frame(threedimensionalmap$p_mean_angle,threedimensionalmap$p_mean_velocity)
-colnames(data) <- c("mean_angle","mean_velocity")
-
-kd <- with(data, MASS::kde2d(mean_angle,mean_velocity, n = 50))
-p <- plot_ly(x = kd$x, y = kd$y, z = kd$z) %>% add_surface()
-p
-chart_link = api_create(p, filename="surface-2")
-chart_link
-
-```
 
 
