@@ -7,12 +7,12 @@ save_path <- "/media/ella/raid5/timelapses/analysis/200213"
 
 motion_1 <- readRDS(file=file.path(target_folder_base,"200213_Motion_1_1.RDS"))
 motion_2 <- readRDS(file=file.path(target_folder_base,"200127_Motion_2.RDS"))
-motion_3 <- readRDS(file=file.path(target_folder_base,"200214_Motion_3_1.RDS"))
+# motion_3 <- readRDS(file=file.path(target_folder_base,"200214_Motion_3_1.RDS"))
 # motion_4 <- readRDS(file=file.path(target_folder_base,"200127_Motion_4.RDS"))
 
 imported_data <- rbind(motion_1,
-                       motion_2,
-                       motion_3)
+                       motion_2)
+                       # motion_3)
                        # motion_4)
 
 ```
@@ -93,8 +93,8 @@ chosen_exps_1 <- c(#with bacteria
   "2019-03-27_18-24-47",
   "2019-11-25_17-28-23")
 
-chosen_exps_2 <-c("2019-05-07_12-15-40", #daf2 dauer
-                  "2019-04-23_17-46-08")
+# chosen_exps_2 <-c("2019-05-07_12-15-40", #daf2 dauer
+#                   "2019-04-23_17-46-08")
 
 
 chosen_exps_3 <- c("2019-03-25_18-10-06",
@@ -118,12 +118,12 @@ chosen_exps_3 <- c("2019-03-25_18-10-06",
 imported_data_grouped <- imported_data %>%
     filter(
           dataset_ID %in% chosen_exps_1 |
-          dataset_ID %in% chosen_exps_2 |
+          # dataset_ID %in% chosen_exps_2 |
           dataset_ID %in% chosen_exps_3 ) %>%
-          # dataset_ID %in% chosen_exps_4 |
+          # dataset_ID %in% chosen_exps_4 )  %>%
           # dataset_ID %in% chosen_exps_5) %>%
     mutate(annotation = ifelse(dataset_ID %in% chosen_exps_1, "N2 dauers w. food",NA)) %>%
-    mutate(annotation = ifelse(dataset_ID %in% chosen_exps_2, "daf2 dauers",annotation)) %>%
+    # mutate(annotation = ifelse(dataset_ID %in% chosen_exps_2, "daf2 dauers",annotation)) %>%
     mutate(annotation = ifelse(dataset_ID %in% chosen_exps_3, "N2 dauers no food",annotation)) %>%
     # mutate(annotation = ifelse(dataset_ID %in% chosen_exps_4, "1:5",annotation)) %>%
     # mutate(annotation = ifelse(dataset_ID %in% chosen_exps_5, "L2",annotation))%>%
@@ -138,7 +138,7 @@ imported_data_grouped <- imported_data %>%
 
 ```{r, echo=TRUE}
 
-pal <- wes_palette("Darjeeling1",5)[c(5,1,3)]
+pal <- wes_palette("Darjeeling1",5)[c(1,3)]
 
 
 perc_turn <- imported_data_grouped %>%
@@ -161,7 +161,7 @@ print(ggplot(perc_turn,aes(x=hours_rounded,y=mean,color=annotation,group=annotat
   geom_ribbon(aes(ymin=mean-se, ymax=mean+se), fill="white",linetype = 0, alpha=0.2)+
   # ggtitle(paste0(i," with standard error of the mean"))+
   # scale_y_continuous(limits = c(0,1))+
-  scale_x_continuous(limits = c(0,9.5),breaks = seq(0, 9, 1))+
+  scale_x_continuous(limits = c(0,9),breaks = seq(0, 9, 1))+
   xlab("hours") + ylab("relative occurence of turns")+
   theme_black()+
   theme(legend.direction="vertical")+
@@ -175,7 +175,7 @@ print(ggplot(perc_turn,aes(x=hours_rounded,y=mean,fill=annotation))+
   geom_errorbar(position=position_dodge(.45),width=.1, aes(ymin=mean-se, ymax=mean+se),color="white")+
   # geom_ribbon(aes(ymin=lower_ci, ymax=upper_ci), fill="white",linetype = 0, alpha=0.2)+
   # ggtitle(paste0(i," with standard error of the mean"))+
-  scale_x_continuous(limits = c(0,9.5),breaks = seq(0, 9.5, 1))+
+  scale_x_continuous(limits = c(0,9.5),breaks = seq(0, 9, 1))+
   xlab("hours") + ylab("relative occurence of turns")+
   theme_black()+
   theme(legend.direction="vertical")+
@@ -204,7 +204,7 @@ perc_straight <- imported_data_grouped %>%
     ungroup() %>%
     mutate(annotation = paste0(annotation, "\n(", round(mean_number_of_tracks_per_roundedtp_exptype),")"))
  
-pal <- wes_palette("Darjeeling1",5)[c(5,1,3)]
+pal <- wes_palette("Darjeeling1",5)[c(1,3)]
           
 print(ggplot(perc_straight,aes(x=hours_rounded,y=mean,color=annotation,group=annotation,palette = "jco"))+
   geom_line(size=1)+
@@ -212,7 +212,7 @@ print(ggplot(perc_straight,aes(x=hours_rounded,y=mean,color=annotation,group=ann
   geom_errorbar(width=.1, aes(ymin=mean-se, ymax=mean+se))+
   geom_ribbon(aes(ymin=mean-se, ymax=mean+se), fill="white",linetype = 0, alpha=0.2)+
   # ggtitle(paste0(i," with standard error of the mean"))+
-  scale_x_continuous(limits = c(0,9.5),breaks = seq(0, 9, 1))+
+  scale_x_continuous(limits = c(0,9),breaks = seq(0, 9, 1))+
   scale_y_continuous(limits = c(0,1))+
   xlab("hours") + ylab("relative occurence of straight movement")+
   theme_black()+
@@ -252,7 +252,7 @@ perc_pause <- imported_data_grouped %>%
     ungroup() %>%
     mutate(annotation = paste0(annotation, "\n(", round(mean_number_of_tracks_per_roundedtp_exptype),")"))
 
-pal <- wes_palette("Darjeeling1",5)[c(5,1,3)]
+pal <- wes_palette("Darjeeling1",5)[c(1,3)]
 
 print(ggplot(perc_pause,aes(x=hours_rounded,y=mean,color=annotation,group=annotation,palette = "jco"))+
   geom_line(size=1)+
@@ -261,7 +261,7 @@ print(ggplot(perc_pause,aes(x=hours_rounded,y=mean,color=annotation,group=annota
   geom_ribbon(aes(ymin=mean-se, ymax=mean+se), fill="white",linetype = 0, alpha=0.2)+
   # ggtitle(paste0(i," with standard error of the mean"))+
   scale_y_continuous(limits = c(0,1))+
-  scale_x_continuous(limits = c(0,9.5),breaks = seq(0, 9, 1))+
+  scale_x_continuous(limits = c(0,9),breaks = seq(0, 9, 1))+
   xlab("hours") + ylab("relative occurence of pausing")+
   theme_black()+
   theme(legend.direction="vertical")+
@@ -302,7 +302,7 @@ perc_omega <- imported_data_grouped %>%
     mutate(annotation = paste0(annotation, "\n(", round(mean_number_of_tracks_per_roundedtp_exptype),")"))
 
 
-pal <- wes_palette("Darjeeling1",5)[c(5,1,3)]
+pal <- wes_palette("Darjeeling1",5)[c(1,3)]
 
 print(ggplot(perc_omega,aes(x=hours_rounded,y=mean,color=annotation,group=annotation,palette = "jco"))+
   geom_line(size=1)+
@@ -350,7 +350,7 @@ mean_velocity <- imported_data_grouped %>%
     ungroup() %>%
     mutate(annotation = paste0(annotation, "\n(", round(mean_number_of_tracks_per_roundedtp_exptype),")"))
 
-pal <- wes_palette("Darjeeling1",5)[c(5,1,3)]
+pal <- wes_palette("Darjeeling1",5)[c(1,3)]
 
 
 print(ggplot(mean_velocity,aes(x=hours_rounded,y=mean,color=annotation,group=annotation,palette = "jco"))+
@@ -397,7 +397,7 @@ mean_angle <- imported_data_grouped %>%
     ungroup() %>%
     mutate(annotation = paste0(annotation, "\n(", round(mean_number_of_tracks_per_roundedtp_exptype),")"))
 
-pal <- wes_palette("Darjeeling1",5)[c(5,1,3)]
+pal <- wes_palette("Darjeeling1",5)[c(1,3)]
 
 
 print(ggplot(mean_angle,aes(x=hours_rounded,y=mean,color=annotation,group=annotation))+
@@ -434,10 +434,10 @@ print(ggplot(mean_angle,aes(x=hours_rounded,y=mean,fill=annotation))+
 ```{r, echo=TRUE}
 
 boxplot <- imported_data_grouped %>%
-  filter(annotation != "L2")
+  filter(hours_rounded <= 9.0)
   
 
-pal <- wes_palette("Darjeeling1",5)[c(5,1,3)]
+pal <- wes_palette("Darjeeling1",5)[c(1,3)]
 
 
 ggplot(boxplot,aes(x=as.character(hours_rounded),y=p_mean_angle,fill=annotation))+
@@ -469,7 +469,8 @@ ggplot(boxplot,aes(x=as.character(hours_rounded),y=p_length,fill=annotation))+
 
 
 ```{r, echo=TRUE}
-heatmap <- imported_data_grouped
+heatmap <- imported_data_grouped %>%
+  filter(hours_rounded <= 9.0)
 
 
 ggplot(heatmap,aes(x = p_mean_angle, y = p_mean_velocity))+
@@ -490,7 +491,7 @@ pal <- wes_palette("Darjeeling1",5)[c(3,5)]
 
 
 imported_data_grouped %>%
-  mutate(ratio = p_mean_velocity/p_mean_angle) %>%
+  filter(hours_rounded <= 9.0)  %>%mutate(ratio = p_mean_velocity/p_mean_angle) %>%
   mutate(behavioral_state=ifelse(ratio > 1, "roaming","dwelling")) %>%
   ggplot(.,aes(x = p_mean_angle, y = p_mean_velocity,color=behavioral_state))+
     geom_point(alpha=0.1)+
