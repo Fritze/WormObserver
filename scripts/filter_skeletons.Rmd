@@ -53,7 +53,7 @@ skeleton_data_filtered <- data_skeleton_with_headext %>%
   #only postures that have a "YES"
   filter(any(is_head=="YES")) %>%
   mutate(ID = paste0(dataset_ID, "_",tp,"_",TrackID,"_",frame)) %>%
-  mutate(dataset_TrackID = paste0(dataset_ID,"_",TrackID)) %>%
+  mutate(dataset_TrackID = paste0(dataset_ID,"_",tp,"_",TrackID)) %>%
   mutate(minutes = 10 + ((tp-1)*8+(tp-1)*0)) %>%
   mutate(hours= minutes/60) %>%
   mutate(hours_rounded= ceiling(hours* 2) / 2) %>%

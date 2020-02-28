@@ -1,4 +1,8 @@
+
+
 ```{r, include=FALSE}
+target_folder_base <- "/media/ella/raid5/timelapses/analysis/200213"
+skeleton_data_filtered <- readRDS(file.path(target_folder_base,"200214_Skeletons_filtered.RDS"))
 dataset_name <- unique(skeleton_data_filtered$dataset_ID)
 
 #transpose - rows: posture IDs, -columns: angles
@@ -42,7 +46,7 @@ plot(seq(100,kmax,by=20),totwss, pch=20, cex=2)
 #calculate clusters
 #choose right number of centers!
 ```{r, include=FALSE}
-#
+
 cluster <- kmeans(angle_data_cluster,centers=100,iter.max = 1000,algorithm = "Lloyd")
 
 groups <- as.character(cluster$cluster)
@@ -55,7 +59,15 @@ angle_data_clustered <- skeleton_data_filtered  %>%
   mutate(clusterID = groups) %>%
   inner_join(skeleton_data_filtered, by="ID")
 
-saveRDS(skeleton_data_filtered, file=file.path(target_folder_base,"200214_Skeletons_filtered_clustered.RDS"))
+saveRDS(angle_data_clustered, file=file.path(target_folder_base,"200214_Skeletons_filtered_clustered.RDS"))
+
+```
+
+#if previously saved clustering
+```{r, include=FALSE}
+
+target_folder_base <- "/media/ella/raid5/timelapses/analysis/200213"
+angle_data_clustered <- readRDS(file.path(target_folder_base,"200214_Skeletons_filtered_clustered.RDS"))
 
 ```
 
@@ -63,16 +75,42 @@ saveRDS(skeleton_data_filtered, file=file.path(target_folder_base,"200214_Skelet
 ```{r, include=FALSE}
 save_path <- "/media/ella/raid5/timelapses/analysis/200213"
 
-freq_postures <- angle_data_clustered %>%
+chosen_exps_1 <- c(
+  "2019-03-26_19-27-16",
+  "2019-03-27_18-24-47",
+  "2019-11-25_17-28-23")#with bacteria
+
+chosen_exps_2 <- c("2019-03-25_18-10-06",
+                   "2019-11-18_18-43-57",
+                   "2019-11-20_17-29-55") #no food
+
+
+
+freq_postures_anno <- angle_data_clustered %>%
+  filter(dataset_ID %in% chosen_exps_1 | dataset_ID %in% chosen_exps_2) %>%
+  mutate(annotation = ifelse(dataset_ID %in% chosen_exps_1, "N2 dauers w. food",NA)) %>%
+  mutate(annotation = ifelse(dataset_ID %in% chosen_exps_2, "N2 dauers no food",annotation))
+
+freq_postures_w_food <- freq_postures_anno %>%
+  filter(annotation == "N2 dauers w. food") %>%
   mutate(clusterID = as.numeric(clusterID)) %>%
   group_by(clusterID) %>%
   summarise(counts = n()) %>%
   mutate(total = sum(counts)) %>%
   mutate(perc = counts/total * 100) %>% 
-  arrange(desc(perc)) 
+  arrange(desc(perc)) %>%
+  mutate(rank = 1:n())
 
-freq_postures <- mutate(freq_postures, rank = 1:n())
-#level_order <- freq_postures$clusterID
+freq_postures_no_food <- freq_postures_anno %>%
+  filter(annotation == "N2 dauers no food") %>%
+  mutate(clusterID = as.numeric(clusterID)) %>%
+  group_by(clusterID) %>%
+  summarise(counts = n()) %>%
+  mutate(total = sum(counts)) %>%
+  mutate(perc = counts/total * 100) %>% 
+  arrange(desc(perc)) %>%
+  mutate(rank = 1:n())
+
 
 p <- ggplot(freq_postures, aes(x=rank, y=perc))+
   geom_bar(stat="identity",fill="white") +
@@ -85,41 +123,43 @@ ggsave(file.path(save_path,paste0("nofood_and_food_100_postures_ranked",".png"))
 #Calculate relative occurence of postures per timepoint and plot this as a heatmap
 ```{r, include=FALSE}
 
-chosen_exps_1 <- c(
-  "2019-03-26_19-27-16",
-  "2019-03-27_18-24-47",
-  "2019-11-25_17-28-23")#with bacteria
-
-chosen_exps_2 <- c("2019-03-25_18-10-06",
-                   "2019-11-18_18-43-57",
-                   "2019-11-20_17-29-55") #no food
-
 
 angle_data_postures <- angle_data_clustered %>%
   filter(dataset_ID %in% chosen_exps_1 | dataset_ID %in% chosen_exps_2) %>%
   mutate(annotation = ifelse(dataset_ID %in% chosen_exps_1, "N2 dauers w. food",NA)) %>%
   mutate(annotation = ifelse(dataset_ID %in% chosen_exps_2, "N2 dauers no food",annotation)) %>%
-  group_by(clusterID,hours,annotation) %>%
+  group_by(ID) %>%
+  mutate(dataset_TrackID =  paste0(dataset_ID,"_",tp,"_",TrackID)) %>%
+  summarise(clusterID = first(clusterID),dataset_TrackID = first(dataset_TrackID),minutes=first(minutes),annotation=first(annotation),hours_rounded = first(hours_rounded))
+  
+angle_data_postures_red <- angle_data_postures %>%
+  group_by(clusterID,hours_rounded,annotation) %>%
   mutate(number_of_cluster_members_per_tp=n_distinct(ID)) %>%
-  group_by(hours,annotation) %>%
+  group_by(hours_rounded,annotation) %>%
   mutate(postures_per_tp=n_distinct(ID)) %>%
   mutate(tracks_per_tp=n_distinct(dataset_TrackID)) %>%
-  ungroup()
-  # mutate(perc = number_of_cluster_members_per_tp/postures_per_tp) %>%
-  # group_by(clusterID,annotation) %>%
-  # mutate(perc_norm = (perc-mean(perc))/sd(perc)) %>%
-  # select(clusterID,hours_rounded, postures_per_tp,tracks_per_tp, perc,perc_norm,ID,number_of_cluster_members_per_tp) %>%
-  # group_by(clusterID,hours_rounded,annotation) %>%
-  # summarise(number_of_cluster_members_per_tp = first(number_of_cluster_members_per_tp),postures_per_tp= first(postures_per_tp),tracks_per_tp = first(tracks_per_tp),perc = first(perc),perc_norm=first(perc_norm))
+  mutate(perc = number_of_cluster_members_per_tp/postures_per_tp) %>%
+  group_by(clusterID,annotation,hours_rounded) %>%
+  summarise(number_of_cluster_members_per_tp = first(number_of_cluster_members_per_tp),postures_per_tp = first(postures_per_tp),tracks_per_tp = first(tracks_per_tp),perc=first(perc))
+  
+angle_data_postures_norm <- angle_data_postures_red %>%
+  group_by(clusterID,annotation) %>%
+  mutate(rM = rollmean(perc, 4, fill=NA)) %>%
+  mutate(perc_norm = (perc-mean(perc))/sd(perc)) %>%
+  mutate(rM_norm = (rM-mean(rM,na.rm=TRUE)/sd(rM,na.rm=TRUE)))
+
+
+  # group_by(clusterID,minutes,annotation) %>%
+  # summarise(number_of_cluster_members_per_tp = first(number_of_cluster_members_per_tp),postures_per_tp= first(postures_per_tp),tracks_per_tp = first(tracks_per_tp),perc = first(perc),perc_norm=first(perc_norm),rM = first(rM))
 
 ```
 
 ```{r, include=FALSE}
 
 
-cluster_clusters <- angle_data_postures  %>%
+cluster_clusters <- angle_data_postures_norm  %>%
   filter(annotation == "N2 dauers no food") %>%
-  dcast(clusterID ~ hours_rounded,value.var = "perc_norm")
+  dcast(clusterID ~ minutes,value.var = "perc_norm")
 
 rownames(cluster_clusters) <- cluster_clusters$clusterID
 cluster_clusters <- select(cluster_clusters,-clusterID)
@@ -133,21 +173,35 @@ ordering <- cll$order
 
 ```{r, include=FALSE}
 
-angle_data_postures_filtered <- filter(angle_data_postures,clusterID %in% freq_postures$clusterID)
+# angle_data_postures_norm_filtered <- filter(angle_data_postures_norm,clusterID %in% freq_postures$clusterID)
 
-ggplot(angle_data_postures_filtered,aes(x=factor(clusterID,levels=ordering),y=hours_rounded))+
+ggplot(filter(angle_data_postures_norm,annotation=="N2 dauers w. food"),aes(x=factor(clusterID,levels=freq_postures_no_food$clusterID),y=hours_rounded))+
   geom_tile(aes(fill=perc_norm))+
   theme_classic()+
-  scale_fill_distiller(palette = "PiYG",limits=c(-1,1) * max(abs(angle_data_postures$perc_norm)))+
+  scale_fill_distiller(palette = "PiYG",limits=c(-1,1) * max(abs(angle_data_postures_norm$perc_norm)))+
   labs(x="posture IDs",y = "hours") +
   theme_black()+
-  facet_wrap(~annotation,nrow=2)+
   theme(axis.text.y = element_text(size = 7,colour="white"),
         axis.text.x = element_text(size = 5,colour="white"),
         legend.position = "right",legend.direction='horizontal')+
   coord_equal()
 
-ggsave(file.path(save_path,paste0("nofood_skeletons_freq_heatmap_percent_all_postures_per_dataset_20mostabundant",".png")),width=20,height=13)
+ggsave(file.path(save_path,paste0("with_food2_freq_heatmap_percent_all_postures_per_dataset_new",".png")),width=20,height=13)
+
+
+ggplot(filter(angle_data_postures_norm,annotation=="N2 dauers no food"),aes(x=factor(clusterID,levels=freq_postures_no_food$clusterID),y=hours_rounded))+
+  geom_tile(aes(fill=perc_norm))+
+  theme_classic()+
+  scale_fill_distiller(palette = "PiYG",limits=c(-1,1) * max(abs(angle_data_postures_norm$perc_norm)))+
+  labs(x="posture IDs",y = "hours") +
+  theme_black()+
+  theme(axis.text.y = element_text(size = 7,colour="white"),
+        axis.text.x = element_text(size = 5,colour="white"),
+        legend.position = "right",legend.direction='horizontal')+
+  coord_equal()
+
+ggsave(file.path(save_path,paste0("no_food2_freq_heatmap_percent_all_postures_per_dataset_new",".png")),width=20,height=13)
+
 ```
 
 #Visualize individual clusters
