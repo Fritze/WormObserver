@@ -2,8 +2,8 @@
 ##Plots1
 ```{r, echo=FALSE}
 
-target_folder_base <- "/media/ella/raid5/timelapses/analysis/200305"
-save_path <- "/media/ella/raid5/timelapses/analysis/200305"
+target_folder_base <- "/media/ella/raid5/timelapses/analysis/200305/motion"
+save_path <- "/media/ella/raid5/timelapses/analysis/200305/motion"
 
 motion_1 <- readRDS(file=file.path(target_folder_base,"200213_Motion_1_1.RDS")) #N2 1:10 OP50
 motion_2 <- readRDS(file=file.path(target_folder_base,"200127_Motion_2.RDS")) #N2 empty
@@ -127,16 +127,10 @@ sixhonfood_empty <- c("2020-02-26_18-31-08",
 
 
 imported_data_grouped <- imported_data %>%
-    # filter(
-    #       dataset_ID %in% chosen_exps_1 |
-    #       # dataset_ID %in% chosen_exps_2 |
-    #       dataset_ID %in% chosen_exps_3 ) %>%
-    #       # dataset_ID %in% chosen_exps_4 )  %>%
-    #       # dataset_ID %in% chosen_exps_5) %>%
     mutate(annotation = ifelse(dataset_ID %in% with_bacteria_1to10 , "1:10 OP50",NA)) %>%
     mutate(annotation = ifelse(dataset_ID %in% daf_2_1to10 , "daf2 dauers",annotation)) %>%
     mutate(annotation = ifelse(dataset_ID %in% empty, "N2 dauers no food",annotation)) %>%
-    # mutate(annotation = ifelse(dataset_ID %in% with_bacteria_1to5, "1:5 OP50",annotation)) %>%
+    mutate(annotation = ifelse(dataset_ID %in% with_bacteria_1to5, "1:5 OP50",annotation)) %>%
     mutate(annotation = ifelse(dataset_ID %in% sixhonfood_1to10, "6h on food, 1:10 OP50",annotation)) %>%
     mutate(annotation = ifelse(dataset_ID %in% sixhonfood_empty, "6h on food, empty",annotation)) %>%
     #round per half an hour
@@ -185,19 +179,8 @@ print(ggplot(perc_turn,aes(x=hours_rounded,y=mean,color=annotation,group=annotat
   
 )
 
-# print(ggplot(perc_turn,aes(x=hours_rounded,y=mean,fill=annotation))+
-#   geom_bar(stat="identity", position=position_dodge())+
-#   geom_errorbar(position=position_dodge(.45),width=.1, aes(ymin=mean-se, ymax=mean+se),color="white")+
-#   # geom_ribbon(aes(ymin=lower_ci, ymax=upper_ci), fill="white",linetype = 0, alpha=0.2)+
-#   # ggtitle(paste0(i," with standard error of the mean"))+
-#   scale_x_continuous(limits = c(0, show_until),breaks = seq(0, show_until, 1))+
-#   xlab("hours") + ylab("relative occurence of turns")+
-#   theme_black()+
-#   theme(legend.direction="vertical")+
-#   scale_fill_manual(values =pal)+
-#   #theme(axis.title=element_blank(), axis.text=element_blank(), axis.ticks=element_blank(), plot.background = element_rect(fill = "black"))
-#   ggsave(file.path(save_path,paste0("perc_turn_bar",".png")))
-# )
+
+
 
 ```
 
@@ -228,7 +211,7 @@ print(ggplot(perc_pause,aes(x=hours_rounded,y=mean,color=annotation,group=annota
   geom_line(size=1)+
   geom_point()+
   geom_errorbar(width=.1, aes(ymin=mean-se, ymax=mean+se))+
-  geom_ribbon(aes(ymin=mean-se, ymax=mean+se), fill="white",linetype = 0, alpha=0.2)+
+  geom_ribbon(aes(ymin=mean-se, ymax=mean+se), fill="darkgray",linetype = 0, alpha=0.2)+
   # ggtitle(paste0(i," with standard error of the mean"))+
   scale_y_continuous(limits = c(0,1))+
   scale_x_continuous(limits = c(0,show_until),breaks = seq(0, show_until, 1))+
@@ -253,7 +236,7 @@ print(ggplot(perc_pause,aes(x=hours_rounded,y=mean,color=annotation,group=annota
 #   scale_fill_manual(values =pal)+
 #   #theme(axis.title=element_blank(), axis.text=element_blank(), axis.ticks=element_blank(), plot.background = element_rect(fill = "black"))
 #   ggsave(file.path(save_path,paste0("perc_pause_bar",".png")))
-)
+# )
 
 ```
 
@@ -283,7 +266,7 @@ print(ggplot(perc_omega,aes(x=hours_rounded,y=mean,color=annotation,group=annota
   geom_line(size=1)+
   geom_point()+
   geom_errorbar(width=.1, aes(ymin=mean-se, ymax=mean+se))+
-  geom_ribbon(aes(ymin=mean-se, ymax=mean+se), fill="white",linetype = 0, alpha=0.2)+
+  geom_ribbon(aes(ymin=mean-se, ymax=mean+se), fill="darkgray",linetype = 0, alpha=0.2)+
   # ggtitle(paste0(i," with standard error of the mean"))+
   scale_x_continuous(limits = c(0,show_until),breaks = seq(0, show_until, 1))+
   xlab("hours") + ylab("relative occurence of omega turns")+
@@ -335,11 +318,11 @@ mean_velocity <- imported_data_grouped %>%
 
 
 
-print(ggplot(mean_velocity,aes(x=hours_rounded,y=mean,color=annotation,group=annotation,palette = "jco"))+
+print(ggplot(mean_velocity,aes(x=hours_rounded,y=mean,color=annotation,group=annotation))+
   geom_line(size=1)+
   geom_point()+
   geom_errorbar(width=.1, aes(ymin=mean-se, ymax=mean+se))+
-  geom_ribbon(aes(ymin=mean-se, ymax=mean+se), fill="white",linetype = 0, alpha=0.2)+
+  geom_ribbon(aes(ymin=mean-se, ymax=mean+se), fill="darkgray",linetype = 0, alpha=0.2)+
   # ggtitle(paste0(i," with standard error of the mean"))+
   scale_x_continuous(limits = c(0,show_until),breaks = seq(0, show_until, 1))+
   xlab("hours") + ylab("average worm velocity (µm/s)")+
@@ -352,19 +335,20 @@ print(ggplot(mean_velocity,aes(x=hours_rounded,y=mean,color=annotation,group=ann
   ggsave(file.path(save_path,paste0("mean_velocity_line",".png")),height=10,width=15)
 )  
 
-# print(ggplot(mean_velocity,aes(x=hours_rounded,y=mean,fill=annotation))+
-#   geom_bar(stat="identity", position=position_dodge())+
-#   geom_errorbar(position=position_dodge(.5),width=.1, aes(ymin=mean-se, ymax=mean+se),color="white")+
-#   # geom_ribbon(aes(ymin=lower_ci, ymax=upper_ci), fill="white",linetype = 0, alpha=0.2)+
-#   # ggtitle(paste0(i," with standard error of the mean"))+
-#   scale_x_continuous(limits = c(0,9),breaks = seq(0, 9, 1))+
-#   xlab("hours") + ylab("average worm velocity (µm/s)")+
-#   theme_black()+
-#   theme(legend.direction="vertical")+
-#   scale_fill_manual(values =pal)+
-#   #theme(axis.title=element_blank(), axis.text=element_blank(), axis.ticks=element_blank(), plot.background = element_rect(fill = "black"))
-#   ggsave(file.path(save_path,paste0("mean_velocity_bar",".png")))
-# )
+imported_data_grouped %>%
+  filter(hours_rounded < 6.5) %>%
+  ggplot(.,aes(p_mean_velocity))+
+    geom_histogram(bins=50,aes(y=..density..), fill="white")+
+    geom_density(alpha=.3, fill="gold") +
+    scale_x_continuous(limits=c(0,400)) +
+    xlab("") + ylab("mean path angle")+
+    facet_wrap(vars(annotation,hours_rounded),ncol=12)
+    # theme_black()
+
+
+  ggsave(file.path(save_path,paste0("histo_velocity_with_fit",".png")),height=20,width=30)
+  
+
 
 ```
 
@@ -392,9 +376,9 @@ print(ggplot(mean_angle,aes(x=hours_rounded,y=mean,color=annotation,group=annota
   geom_line(size=1)+
   geom_point()+
   geom_errorbar(width=.1, aes(ymin=mean-se, ymax=mean+se))+
-  geom_ribbon(aes(ymin=mean-se, ymax=mean+se), fill="white",linetype = 0, alpha=0.2)+
+  geom_ribbon(aes(ymin=mean-se, ymax=mean+se), fill="darkgray",linetype = 0, alpha=0.2)+
   # ggtitle(paste0(i," with standard error of the mean"))+
-  scale_x_continuous(limits = c(0,9),breaks = seq(0, 9, 1))+
+  scale_x_continuous(limits = c(0,show_until),breaks = seq(0, show_until, 1))+
   xlab("hours") + ylab("Average worm path angle (degrees)")+
   theme_bw()+
   theme(legend.direction="vertical",
@@ -405,19 +389,29 @@ print(ggplot(mean_angle,aes(x=hours_rounded,y=mean,color=annotation,group=annota
   ggsave(file.path(save_path,paste0("mean_angle_line",".png")),height=10,width=15)
 )
 
-# print(ggplot(mean_angle,aes(x=hours_rounded,y=mean,fill=annotation))+
-#   geom_bar(stat="identity", position=position_dodge())+
-#   geom_errorbar(position=position_dodge(.5),width=.1, aes(ymin=mean-se, ymax=mean+se),color="white")+
-#   # geom_ribbon(aes(ymin=lower_ci, ymax=upper_ci), fill="white",linetype = 0, alpha=0.2)+
-#   # ggtitle(paste0(i," with standard error of the mean"))+
-#   scale_x_continuous(limits = c(0,9),breaks = seq(0, 9, 1))+
-#   xlab("hours") + ylab("Average worm path angle (degrees)")+
-#   theme_black()+
-#   theme(legend.direction="vertical")+
-#   scale_fill_manual(values =pal)+
-#   #theme(axis.title=element_blank(), axis.text=element_blank(), axis.ticks=element_blank(), plot.background = element_rect(fill = "black"))
-#   ggsave(file.path(save_path,paste0("mean_angle_bar",".png")))
-# )
+
+
+# unique_tracks<-imported_data_grouped %>%
+#   filter(hours_rounded < 6.5) %>%
+#   mutate(ID = paste0(dataset_ID,"_",tp,"_",TrackID)) %>%
+#   group_by(hours_rounded,annotation) %>%
+#   summarise(n=n_distinct(ID))
+# 
+# write.csv(unique_tracks, file.path(save_path, "unique_tracks_per_timepoint"))
+
+
+imported_data_grouped %>%
+  filter(hours_rounded < 6.5) %>%
+  ggplot(.,aes(p_mean_angle))+
+    geom_histogram(bins=50,aes(y=..density..), fill="white")+
+    # geom_density(alpha=.3, fill="gold") +
+    xlab("") + ylab("mean path angle")+
+    facet_wrap(vars(annotation,hours_rounded),ncol=12)+
+    theme_black()
+
+
+
+  ggsave(file.path(save_path,paste0("histo_path_angle_no_fit",".png")),height=20,width=30)
 ```
 
 

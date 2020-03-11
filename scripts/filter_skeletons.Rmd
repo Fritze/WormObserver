@@ -1,7 +1,7 @@
 #Filter skeleton
 ```{r, include=FALSE}
 
-target_folder_base <- "/media/ella/raid5/timelapses/analysis/200127/posture"
+target_folder_base <- "/media/ella/raid5/timelapses/analysis/200305/posture"
 save_path <- "/media/ella/raid5/timelapses/analysis/200127/posture/plots"
 
 
@@ -13,14 +13,11 @@ datasets <- c(
    "2019-11-20_17-29-55",#no food
   "2019-03-26_19-27-16",#with food
   "2019-03-27_18-24-47",#with food
-  # "2019-07-08_18-33-57",#with food
-  # "2019-07-09_18-22-34"#with food
-  "2019-11-25_17-28-23"#with food
-  # "2019-04-23_17-46-08",#daf2
-  # "2019-05-07_12-15-40"#daf2
-  ## "2019-05-08_14-11-15"#daf2
-  # "2019-04-30_14-15-44",#L2
-  # "2019-05-04_15-36-42"#L2
+  "2019-11-25_17-28-23",#with food
+  "2019-04-23_17-46-08",#daf2
+  "2019-05-07_12-15-40",#daf2
+  "2020-02-20_18-53-49",#6honfood1:10
+  ###"2020-02-21_15-58-43"#6honfood1:10
   
 )
 
@@ -32,6 +29,22 @@ posture_3 <- readRDS(file=file.path(target_folder_base,files[3]))
 posture_4 <- readRDS(file=file.path(target_folder_base,files[4]))
 posture_5 <- readRDS(file=file.path(target_folder_base,files[5]))
 posture_6 <- readRDS(file=file.path(target_folder_base,files[6]))
+posture_7 <- readRDS(file=file.path(target_folder_base,files[7]))
+posture_8 <- readRDS(file=file.path(target_folder_base,files[8]))
+posture_9 <- readRDS(file=file.path(target_folder_base,files[9]))
+posture_10 <- readRDS(file=file.path(target_folder_base,files[10]))
+
+
+# posture_1 <-NULL
+# posture_2 <- NULL
+# posture_3 <- NULL
+# posture_4 <- NULL
+# posture_5 <- NULL
+# posture_6 <- NULL
+# posture_7 <- NULL
+# posture_8 <- NULL
+# posture_9 <-NULL
+# posture_10 <- NULL
 
 
 data_skeleton_with_headext <- rbind(
@@ -40,7 +53,11 @@ data_skeleton_with_headext <- rbind(
   posture_3,
   posture_4,
   posture_5,
-  posture_6
+  posture_6,
+  posture_7,
+  posture_8,
+  posture_9,
+  posture_10
 )
 
 ```
@@ -60,7 +77,7 @@ skeleton_data_filtered <- data_skeleton_with_headext %>%
   group_by(dataset_TrackID,tp) %>%
   mutate(TrackCheck_cleaned = replace_f(TrackCheck, 26*frames)) %>%
   drop_na("TrackCheck_cleaned") %>%
-  filter(hours_rounded <= 9) %>%
+  filter(hours_rounded <= 6) %>%
   ungroup()
 
 skeleton_data_filtered %>%
@@ -68,5 +85,5 @@ skeleton_data_filtered %>%
   summarise(n = n_distinct(dataset_TrackID))
 
 
-saveRDS(skeleton_data_filtered, file=file.path(target_folder_base,"200214_Skeletons_filtered.RDS"))
+saveRDS(skeleton_data_filtered, file=file.path(target_folder_base,"200305_Skeletons_filtered.RDS"))
 ```

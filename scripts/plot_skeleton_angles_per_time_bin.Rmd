@@ -7,29 +7,45 @@
 
 #Bin data in time bins (per hour) & sample equal number from each bin
 ```{r, include=FALSE}
-
-sample_number <- 15000
+save_path <- "/media/ella/raid5/timelapses/analysis/200305/posture"
+sample_number <- 5000
 
 dataset_name <- unique(skeleton_data_filtered$dataset_ID)
 
-bin_data_sampled <- skeleton_data_filtered %>%
+skeleton_data_filtered_named <- skeleton_data_filtered %>%
+   mutate(experiment = ifelse(dataset_ID == "2019-03-25_18-10-06" | dataset_ID == "2019-11-18_18-43-57" | dataset_ID == "2019-11-20_17-29-55","empty",NA)) %>%
+   mutate(experiment = ifelse(dataset_ID == "2019-03-26_19-27-16" | dataset_ID == "2019-03-27_18-24-47" | dataset_ID == "2019-11-25_17-28-23","1:10 OP50",experiment)) %>%
+   mutate(experiment = ifelse(dataset_ID == "2019-04-23_17-46-08" | dataset_ID == "2019-05-07_12-15-40", "daf2", experiment)) %>%
+   mutate(experiment = ifelse(dataset_ID == "2020-02-20_18-53-49","6h on food 1:10",experiment))
+   
+
+
+
+bin_data_sampled <- skeleton_data_filtered_named %>%
   mutate(time = ifelse(hours_rounded < 1,"1h",NA)) %>%
   mutate(time = ifelse(hours_rounded >= 1 & hours_rounded < 2,"2h",time)) %>%
-  mutate(time = ifelse(hours_rounded >= 2 & hours < 3,"3h",time)) %>%
+  mutate(time = ifelse(hours_rounded >= 2 & hours_rounded < 3,"3h",time)) %>%
   mutate(time = ifelse(hours_rounded >= 3 & hours_rounded < 4,"4h",time)) %>%
   mutate(time = ifelse(hours_rounded >= 4 & hours_rounded < 5,"5h",time)) %>%
   mutate(time = ifelse(hours_rounded >= 5 & hours_rounded < 6,"6h",time)) %>%
   mutate(time = ifelse(hours_rounded >= 6 & hours_rounded <= 7 ,"7h",time)) %>%
-  group_by(ID,time) %>%
+  group_by(experiment,ID,time) %>%
   nest() %>%
   # drop_na("time") %>%
-  group_by(time) %>%
+  group_by(time,experiment) %>%
   sample_n(sample_number) %>%
   arrange(desc(ID)) %>%
   mutate(ID_number= 1:n()) %>%
   unnest(cols=c(data))
 
 
+bin_data_sampled %>%
+   group_by(time,experiment) %>%
+   summarise(n = n_distinct(ID))
+
+bin_data_sampled %>%
+   group_by(time,experiment) %>%
+   summarise(n = n_distinct(dataset_TrackID))
 
 bin_data_sampled %>%
    group_by(time) %>%
@@ -46,7 +62,7 @@ ggplot(bin_data_sampled, aes(x=angle,y=index),group=time)+
    stat_density_2d(aes(fill = ..ndensity..),contour=FALSE,geom="raster")+
    scale_color_gradient2(low = "cornflowerblue", mid = "white",
                          high = "brown2",midpoint=0,limits=c(-1,1),na.value="grey") +
-   facet_grid(~time)+
+   facet_wrap(vars(experiment,time),ncol=6) +
    scale_x_continuous(limits=c(-1,1),labels=c(-1,-0.5,0,0.5,1))+
    scale_y_continuous(trans = "reverse")+
    scale_fill_viridis(limits=c(0.01,1),na.value="black")+
@@ -58,113 +74,56 @@ ggsave(file.path(save_path,paste0("L2_averaged_all_angles",sample_number,"postur
 ```
 
 
-```{r, include=FALSE}
-
-bin_data_sampled_head <- bin_data_sampled %>%
-   filter(index %in% c(1,2,3,4,5)) %>%
-   drop_na("angle")
-```
-
 
 ```{r, include=FALSE}
 
-head_angles_1 <- readRDS(file="/Users/fpreuss/Desktop/behavior/daf2_head_sampled.rds") %>%
-   mutate(annotation = "daf2")
-head_angles_2 <- readRDS(file="/Users/fpreuss/Desktop/behavior/nofood_head_sampled.rds") %>%
-   mutate(annotation = "no food")
-head_angles_3 <- readRDS(file="/Users/fpreuss/Desktop/behavior/withfood_head_sampled.rds") %>%
-   mutate(annotation = "with food")
-
-bin_data_sampled_head <- rbind(
-   head_angles_1,
-   head_angles_2,
-   head_angles_3
-)
-
-bin_data_sampled_head %>%
-   group_by(hours_rounded,annotation) %>%
-   summarise(number_of_tracks=n_distinct(dataset_TrackID)) %>%
-   group_by(annotation) %>%
-   mutate(mean_number_of_tracks=mean(number_of_tracks))
-
-
-```
-
-```{r, include=FALSE}
-
-bin_data_sampled_head_abs <- bin_data_sampled_head %>%
+bin_data_sampled_head_abs <- bin_data_sampled %>%
    mutate(angle = abs(angle)) %>%
-   filter(index %in% c(2,3))
-
-# ggplot(bin_data_sampled_head_abs, aes(x=time, y=angle,group=time))+
-#    geom_bin2d(aes(fill = ..ndensity..))+
-#    scale_y_continuous(limits=c(0,1))+
-#    scale_fill_viridis(option = "inferno")+
-#    facet_wrap(~annotation)+
-#    theme_black()+
-#    theme(legend.position = "top")
-
-ggplot(bin_data_sampled_head_abs, aes(x=time, y=angle,group=time))+
-   geom_bin2d()+
-   scale_y_continuous(limits=c(0,1))+
-   scale_fill_distiller(palette= "Spectral") +
-   facet_wrap(~annotation)+
-   theme_black()+
-   theme(legend.position = "top")
+   filter(index %in% c(2,3,4,5,6)) %>%
+   filter(time %in% c("1h","2h","3h","4h","5h","6h"))
 
 
-ggplot(filter(bin_data_sampled_head_abs,annotation=="with food"), aes(x=time, y=angle,group=time))+
-   geom_bin2d()+
-   scale_y_continuous(limits=c(0,1))+
-   scale_fill_distiller(palette= "Spectral") +
-   facet_wrap(~annotation)+
-   theme_black()+
-   theme(legend.position = "top")
 
-# ggplot(bin_data_sampled_head_abs, aes(angle,color=time))+
-#    geom_density()+
-#    scale_x_continuous(limits=c(0,1))+
-#    facet_wrap(~annotation)
-# 
-# d <- bin_data_sampled_head_abs %>%
-#    group_by(annotation,time) %>%
-#    summarise(sum01= sum(angle<=0.1)/n_distinct(ID)*2,
-#              sum02= sum(angle<=0.2)/n_distinct(ID)*2,
-#              sum03= sum(angle<=0.3)/n_distinct(ID)*2,
-#              sum04= sum(angle<=0.4)/n_distinct(ID)*2,
-#              sum05= sum(angle<=0.5)/n_distinct(ID)*2) %>%
-#     gather(condition, measurement, sum01:sum05, factor_key=TRUE)
-#    
-   
-# ggplot(d,aes(x=time,y=measurement,fill=condition))+
-#    geom_boxplot()
+ggplot(bin_data_sampled_head_abs, aes(angle))+
+   geom_histogram(aes(y=..density..), colour="black", fill="grey")+
+   geom_density(alpha=.1, fill="#FF6666") +
+   scale_x_continuous(limits=c(0,1))+
+   # scale_fill_viridis(option = "inferno")+
+   facet_wrap(vars(experiment,time),ncol=6)
+   # theme_black()
+   # theme(legend.position = "top")
+
+ggsave(file.path(save_path,paste0("first_5_angles_distributions",sample_number,"postures",".png")),width=15,height=10)
 
 
-ggsave(file.path("/Users/fpreuss/Desktop/behavior/",paste0("head_averaged_over_all_angles_",sample_number,"postures",".png")),width=15,height=10)
+
 
 
 ```  
 
 ```{r, include=FALSE}
 
-filtered <- bin_data_sampled_head %>%
+filtered <- bin_data_sampled %>%
+   filter(index < 4) %>%
+   filter(time %in% c("1h","2h","3h","4h","5h","6h")) %>%
    mutate(angle_rounded = round(angle,1)) %>%
    filter(angle_rounded < 0.5 & angle_rounded > -0.5) %>%
-   group_by(index,time,angle_rounded,annotation) %>%
-   summarise(number = n_distinct(ID)) %>%
-   filter(index < 4)
+   group_by(index,time,angle_rounded,experiment) %>%
+   summarise(number = n_distinct(ID))
+   # filter(!experiment %in% c("empty"))
+
 
 ggplot(filtered, aes(x=angle_rounded, y=number,fill=as.character(index)))+
    geom_bar(stat="identity")+
    coord_polar()+
    scale_x_reverse()+
-   facet_wrap(vars(annotation,time),nrow =3)+
+   facet_wrap(vars(experiment,time),ncol =6)+
    scale_fill_brewer(palette="Greens")+
    theme_void()+
    theme(legend.position = "top",
          panel.background = element_rect(fill ="black"))
 
-# ggsave(file.path("/Users/fpreuss/Desktop/behavior/",paste0("head_averaged_over_all_angles_",sample_number,"postures",".png")),width=15,height=10)
+ggsave(file.path(save_path,paste0("head_averaged_over_all_angles_",sample_number,"postures",".png")),width=15,height=10)
 
 
 ```  
