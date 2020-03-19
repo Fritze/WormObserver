@@ -1,17 +1,22 @@
 ##set parameters here
 ```{r, include=FALSE}
+
+
 #pixel to mm conversion
 #this is with magnifaction 3.2
 conversion_factor <- 6.25
 
 #set parameters
-offset =8 #== 4 seconds
+#We record at 2fps
+offset =2 #== 1 seconds
 max_gaps = 0 
 duration = 20 #==10 seconds
-binning_factor = 8 #==4 seconds
+binning_factor = 20 #==10 seconds
 
 #conversion_factor,offset,binning_factor,max_gaps,duration
-dfp <- calculate_overview_statistics(imported_data,conversion_factor,offset,binning_factor,max_gaps,duration)
+dfp <- calculate_overview_statistics_per_bin(imported_data,conversion_factor,offset,binning_factor,max_gaps,duration)
+# dfp <- calculate_overview_statistics_per_track(imported_data,conversion_factor,offset,binning_factor,max_gaps,duration)
 
-saveRDS(dfp, file=file.path(target_folder_base,"2000305_Motion_7.RDS"))
+# saveRDS(dfp, file=file.path(target_folder_base,"2000305_Motion_7.RDS"))
 ```
+
