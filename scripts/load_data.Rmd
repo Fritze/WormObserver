@@ -20,8 +20,8 @@ list_of_datasets <- matrix(c(
   "2019-04-30_14-15-44", "L2",
   "2019-05-04_15-36-42", "L2",
   "2020-02-20_18-53-49", "N2 1:10 OP50 after 6h exit",
-  "2020-02-21_15-58-43", "N2 1:10 after 6h exit",
-  "2020-03-03_19-35-55", "N2 1:10 after 6h exit",
+  "2020-02-21_15-58-43", "N2 1:10 OP50 after 6h exit",
+  "2020-03-03_19-35-55", "N2 1:10 OP50 after 6h exit",
   "2020-02-26_18-31-08", "N2 empty after 6h exit",
   "2020-02-27_17-51-43", "N2 empty after 6h exit"
   ),byrow = TRUE,ncol=2)
