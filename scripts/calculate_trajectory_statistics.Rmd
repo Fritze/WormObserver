@@ -1,8 +1,10 @@
 ##set parameters here
 ```{r, include=FALSE}
 
+target_folder <- "/home/fpreuss/raid/timelapses/analysis/200318/raw_data"
+save_path <- "/home/fpreuss/raid/timelapses/analysis/200318"
 
-#pixel to mm conversion
+#pixel to µm conversion
 #this is with magnifaction 3.2
 conversion_factor <- 6.25
 
@@ -13,10 +15,19 @@ max_gaps = 0
 duration = 20 #==10 seconds
 binning_factor = 20 #==10 seconds
 
-#conversion_factor,offset,binning_factor,max_gaps,duration
-dfp <- calculate_overview_statistics_per_bin(imported_data,conversion_factor,offset,binning_factor,max_gaps,duration)
-# dfp <- calculate_overview_statistics_per_track(imported_data,conversion_factor,offset,binning_factor,max_gaps,duration)
+#list of .rds files in data folder
+files_to_process <- list.files(target_folder, ".rds",full.names = TRUE)
 
-# saveRDS(dfp, file=file.path(target_folder_base,"2000305_Motion_7.RDS"))
+#for each of these files calculate the centroid tracking statistics
+for (file in files_to_process){
+  imported_data <- readRDS(file)
+  annotation <- unique(imported_data$annotation)
+  annotation_underscored <- gsub(" ", "_", annotation)
+  centroid_tracking <- calculate_overview_statistics_per_bin(imported_data,conversion_factor,offset,binning_factor,max_gaps,duration)
+  # centroid_tracking <- calculate_overview_statistics_per_track(imported_data,conversion_factor,offset,binning_factor,max_gaps,duration)
+  created_file_path <- file.path(target_folder,paste0("2000319_",annotation_underscored,"_centroid_tracking.RDS"))
+  saveRDS(centroid_tracking, file=created_file_path)
+  cat(paste0("\n\ndataset ", file, " was processed\nand saved under ", created_file_path, "\n\n"))
+}
 ```
 
