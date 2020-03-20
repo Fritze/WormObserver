@@ -1,5 +1,5 @@
 
-##Plots1
+#Define locations and datasets to include
 ```{r, echo=FALSE}
 
 target_folder <- "/home/fpreuss/raid/timelapses/analysis/200318/data"
@@ -24,6 +24,7 @@ imported_data <- map_dfr(files_to_process,readRDS) %>%
     mutate(hours_rounded = ceiling(hours)) %>%
     #filter out first 30 mins
     filter(hours_rounded > 0.0) %>%
+    #take out one condition
     filter(!annotation %in% c("L2")) %>%
     # filter(!dataset_ID %in% c("2019-05-07_12-15-40")) %>%
     na.omit() %>%
@@ -32,11 +33,12 @@ imported_data <- map_dfr(files_to_process,readRDS) %>%
 
 #levels must be changed for ggplot to take new order into account
 imported_data$annotation = factor(imported_data$annotation, levels=order)
+
 unique(imported_data$annotation)
 ```
 
 
-##Plots1
+#Overview of tracks per dataset and mean track duration over time
 ```{r, echo=FALSE}
 
 downsampled_to <- 2
@@ -69,94 +71,6 @@ imported_data %>%
 ```
 
 
-## Plot grouped images for standard parameters
-```{r, echo=TRUE}
-
-
-
-params <- grep("p\\_.+",colnames(imported_data),value = TRUE)
-dfp_for_plotting <- imported_data %>%
-  ungroup()%>%
-  # filter(!dataset_ID %in% exps_out) %>%
-  mutate(dataset_ID = gsub("(.+)\\_.+","\\1",imported_data$dataset_ID))%>%
-  group_by(hours,dataset_ID,plate_type)%>%
-  unite("experiment", c("dataset_ID","worm_type", "plate_type"), sep= " ") %>%
-  group_by(experiment,hours,minutes,tp) %>%
-  summarise_at(.vars = params,
-               .funs = c(mean_per_minute="mean"))
-
-params <- grep("p\\_.+",colnames(dfp_for_plotting),value = TRUE)
-for (i in params){
-  print(ggplot(dfp_for_plotting, aes_string(x="hours",y=i))+
-          #geom_ribbon(aes(ymin =  median_angle_per_minute - iqr_angle_per_minute, ymax = median_angle_per_minute + iqr_angle_per_minute))+
-          geom_line(size=0.5)+
-          ggtitle(i)+
-          theme_classic()+
-          scale_x_continuous(breaks = seq(0, 8, 1),limits = c(0,8))+
-          facet_wrap(~experiment)
-        #ggsave(paste0(i,".png"))
-  )
-}
-
-
-```
-
-
-## Plot mean values for certain parameters
-### Plot either standard error or 95% confidence interval as error bars
-```{r, echo=TRUE}
-
-#This is just for selecting colors
-pal <- wes_palette("Darjeeling1",5)
-#Until how many hours
-show_until <- 9
-
-#select parameters to plot
-params <- c("p_perc_turn", "p_perc_pause", "p_perc_omega_turn")
-
-for (i in params){
-  data <- imported_data %>%
-      #calculate mean per rounded hour timepoint and condition (over all datasets)
-      group_by(annotation, hours_rounded) %>%
-      summarise(mean = mean(get(i), na.rm = TRUE),
-              sd = sd(get(i), na.rm = TRUE),
-              n = n()) %>%
-     mutate(se = sd / sqrt(n),
-           lower_ci = mean - qt(1 - (0.05 / 2), n - 1) * se,
-           upper_ci = mean + qt(1 - (0.05 / 2), n - 1) * se) %>%
-      group_by(annotation) %>%
-      #calculate the average number of tracks per annotation over all timepoints
-      mutate(mean_number_of_tracks_per_roundedtp_exptype = round(mean(n))) %>%
-      ungroup() %>%
-      mutate(annotation = paste0(annotation, "\n(", round(mean_number_of_tracks_per_roundedtp_exptype),")")) %>%
-      filter(hours_rounded <= show_until)
-  
-  ggplot(data,aes(x=hours_rounded,y=mean,color=annotation,group=annotation))+
-    geom_line(size=1.5)+
-    geom_point(color="black")+
-    geom_errorbar(width=.2, aes(ymin=mean-se, ymax=mean+se))+
-    geom_ribbon(aes(ymin=mean-se, ymax=mean+se), fill="darkgray",linetype = 0, alpha=0.2)+
-    ggtitle(paste0(i," with standard error of the mean"))+
-    scale_y_continuous(limits = c(0, (max(data$mean)+max(data$se))))+
-    scale_x_continuous(limits = c(0, show_until),breaks = seq(0, show_until, 1))+
-    xlab("hours") + ylab("relative occurence per track")+
-    theme_linedraw()+
-    theme(legend.direction="horizontal",
-          legend.position = "top",
-          strip.background = element_rect(colour = "black", fill = "white"),
-          strip.text.x = element_text(colour = "black", face = "bold"),
-          axis.text.x = element_text(size=20),
-          axis.text.y = element_text(size=20))+
-    scale_color_manual(values =pal)+
-    facet_wrap(~annotation,scales="free")+
-    ggsave(file.path(save_path,paste0(show_until,"h_",i,"_with_mean_line_with_error_of_the_mean",".png")),height=10,width=15)
-
-}
-
-
-
-```
-
 
 ## Plot histogram for velocity
 
@@ -188,12 +102,14 @@ imported_data %>%
 
 
 data <- imported_data %>%
+  #filter out samples below and above quantile threshold
   filter(p_mean_velocity <= quantile(p_mean_velocity, upper_quantile)) %>%
   filter(p_mean_velocity >= quantile(p_mean_velocity, lower_quantile)) %>%
   filter(hours_rounded <= show_until) %>%
   # scale velocity to mm/s
   mutate(p_mean_velocity = p_mean_velocity / 1000) %>%
   group_by(annotation, hours_rounded) %>%
+  #count tracks per hour per condition
   mutate(number_of_tracks_in_this_hour = n_distinct(dataset_ID,tp,TrackID)) %>%
   arrange(hours_rounded)
 
@@ -246,6 +162,7 @@ summary(imported_data$p_mean_angle)
 data <- imported_data %>%
   filter(hours_rounded <= show_until) %>%
   group_by(annotation, hours_rounded) %>%
+  #count tracks per hour per condition
   mutate(number_of_tracks_in_this_hour = n_distinct(dataset_ID,tp,TrackID)) %>%
   arrange(hours_rounded)
 
@@ -290,6 +207,7 @@ library(pals)
 data <- imported_data %>%
   filter(hours_rounded <= show_until) %>%
   group_by(annotation, hours_rounded) %>%
+  #count tracks per hour per condition
   mutate(number_of_tracks_in_this_hour = n_distinct(dataset_ID,tp,TrackID)) %>%
   # scale velocity to mm/s
   mutate(p_mean_velocity = p_mean_velocity / 1000) %>%
@@ -316,10 +234,7 @@ ggplot(data,aes(x = p_mean_angle, y = p_mean_velocity,color=dataset_ID))+
   ggsave(file.path(save_path,paste0("scatter_roaming_dwelling_heatmap_show_all_points_datasets_individually",".png")),height=35,width=35)
 
 ggplot(data,aes(x = p_mean_angle, y = p_mean_velocity))+
-  # stat_density_2d(aes(fill = ..ndensity..),contour=FALSE,geom="raster")+
-  # geom_point(colour="white",alpha=0.05)+
   geom_pointdensity()+
-  # scale_fill_viridis(option = "inferno",na.value="white")+
   scale_color_viridis(option = "inferno")+
   theme_classic()+
   ylab("velocity (mm/s)") + xlab("angular velocity (degree/s)")+
@@ -344,11 +259,13 @@ ggplot(data,aes(x = p_mean_angle, y = p_mean_velocity))+
 
 data <- imported_data %>%
   mutate(ratio = p_mean_velocity/p_mean_angle) %>%
+  #calculate ratio, this will give result in a diagonal (see binarized_not_log plot)
   mutate(behavioral_state=ifelse(ratio > 1, "roaming","dwelling")) %>%
   # scale velocity to mm/s
   mutate(p_mean_velocity = p_mean_velocity / 1000) %>%
   filter(hours_rounded <= show_until) %>%
   group_by(annotation, hours_rounded) %>%
+  #count tracks per hour per condition
   mutate(number_of_tracks_in_this_hour = n_distinct(dataset_ID,tp,TrackID)) %>%
   arrange(hours_rounded)
 
@@ -381,10 +298,13 @@ data_summarised <- data %>%
   #total counts
   group_by(annotation,hours_rounded,dataset_ID) %>%
   mutate(sum=sum(counts)) %>%
+  #relative occurence of beahvioral_state
   mutate(perc = counts/sum) %>%
+  #extract first timepoint percentage for every condition
   mutate(first = case_when(hours_rounded == 1  ~ perc)) %>%
   group_by(dataset_ID,behavioral_state) %>%
   fill(first, .direction="down") %>%
+  #normalize by first timepoint
   mutate(perc_norm = perc/first)
 
 ggplot(data_summarised,aes(x=as.character(hours_rounded),y=perc,fill=behavioral_state))+
