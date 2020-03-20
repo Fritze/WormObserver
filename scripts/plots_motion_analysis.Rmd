@@ -2,25 +2,37 @@
 ##Plots1
 ```{r, echo=FALSE}
 
-target_folder_base <- "/home/fpreuss/raid/timelapses/analysis/200305/motion"
-save_path <- "/home/fpreuss/raid/timelapses/analysis/200318/"
+target_folder <- "/home/fpreuss/raid/timelapses/analysis/200318/data"
+save_path <- "/home/fpreuss/raid/timelapses/analysis/200318/plots/"
 
-motion_1 <- readRDS(file=file.path(target_folder_base,"200213_Motion_1_1.RDS")) #N2 1:10 OP50
-motion_2 <- readRDS(file=file.path(target_folder_base,"200127_Motion_2.RDS")) #N2 empty
-motion_3 <- readRDS(file=file.path(target_folder_base,"200214_Motion_3_1.RDS")) #daf2 1:10 OP50
-motion_4 <- readRDS(file=file.path(target_folder_base,"200127_Motion_4.RDS")) #N2 1:5 OP50
-motion_5 <- readRDS(file=file.path(target_folder_base,"200305_Motion_6.RDS")) #after 6h on food 1:10 OP50
-motion_6 <- readRDS(file=file.path(target_folder_base,"200305_Motion_7.RDS")) #after 6h on food empty
+#list of centroid tracking .rds files in data folder
+files_to_process <- list.files(target_folder, "centroid_tracking.rds",full.names = TRUE, ignore.case = TRUE)
 
+order  <- c("N2 1:5 OP50",
+            "N2 1:10 OP50",
+            "N2 no food",
+            "N2 1:10 after 6h exit",
+            "N2 1:10 OP50 after 6h exit", ###
+            "N2 empty after 6h exit",
+            "daf2"
+            )
 
+imported_data <- map_dfr(files_to_process,readRDS) %>%
+    #round per half an hour
+    # mutate(hours_rounded= floor(hours * 2) / 2) %>%
+    #round per hour
+    mutate(hours_rounded = ceiling(hours)) %>%
+    #filter out first 30 mins
+    filter(hours_rounded > 0.0) %>%
+    filter(!annotation %in% c("L2")) %>%
+    # filter(!dataset_ID %in% c("2019-05-07_12-15-40")) %>%
+    na.omit() %>%
+    #custom order of conditions
+    left_join(tibble(annotation=order),by="annotation")
 
-imported_data <- rbind(motion_1,
-                       motion_2,
-                       motion_3,
-                       motion_4,
-                       motion_5,
-                       motion_6)
-
+#levels must be changed for ggplot to take new order into account
+imported_data$annotation = factor(imported_data$annotation, levels=order)
+unique(imported_data$annotation)
 ```
 
 
@@ -89,59 +101,6 @@ for (i in params){
 
 ```
 
-##Plot grouped images for standard parameters
-```{r, echo=TRUE}
-
-
-
-with_bacteria_1to10 <- c(#with bacteria
-  "2019-03-26_19-27-16",
-  "2019-03-27_18-24-47",
-  "2019-11-25_17-28-23")
-
-daf_2_1to10 <-c("2019-05-07_12-15-40", #daf2 dauer
-                  "2019-04-23_17-46-08")
-
-
-empty <- c("2019-03-25_18-10-06",
-                   "2019-11-18_18-43-57",
-                   "2019-11-20_17-29-55") #no food
-
-with_bacteria_1to5 <-c("2019-07-08_18-33-57", #1:5 OP50
-                   "2019-07-09_18-22-34") #1:5 OP50
-
-
-sixhonfood_1to10 <- c("2020-02-20_18-53-49",
-                   "2020-02-21_15-58-43",
-                   "2020-03-03_19-35-55" #after6h on food, 1:10 OP50
-                )
-
-sixhonfood_empty <- c("2020-02-26_18-31-08",
-                      "2020-02-27_17-51-43"
-                ) 
-
-
-```
-
-```{r, echo=TRUE}
-
-
-imported_data_grouped <- imported_data %>%
-    mutate(annotation = ifelse(dataset_ID %in% with_bacteria_1to10 , "1:10 OP50",NA)) %>%
-    mutate(annotation = ifelse(dataset_ID %in% daf_2_1to10 , "daf2 dauers",annotation)) %>%
-    mutate(annotation = ifelse(dataset_ID %in% empty, "N2 dauers no food",annotation)) %>%
-    # mutate(annotation = ifelse(dataset_ID %in% with_bacteria_1to5, "1:5 OP50",annotation)) %>%
-    mutate(annotation = ifelse(dataset_ID %in% sixhonfood_1to10, "6h on food, 1:10 OP50",annotation)) %>%
-    mutate(annotation = ifelse(dataset_ID %in% sixhonfood_empty, "6h on food, empty",annotation)) %>%
-    #round per half an hour
-    # mutate(hours_rounded= floor(hours * 2) / 2) %>%
-    #round per hour
-    mutate(hours_rounded = ceiling(hours)) %>%
-    #filter out first 30 mins
-    filter(hours_rounded > 0.0) %>%
-    na.omit()
-
-```
 
 ## Plot mean values for certain parameters
 ### Plot either standard error or 95% confidence interval as error bars
@@ -156,7 +115,7 @@ show_until <- 9
 params <- c("p_perc_turn", "p_perc_pause", "p_perc_omega_turn")
 
 for (i in params){
-  data <- imported_data_grouped %>%
+  data <- imported_data %>%
       #calculate mean per rounded hour timepoint and condition (over all datasets)
       group_by(annotation, hours_rounded) %>%
       summarise(mean = mean(get(i), na.rm = TRUE),
@@ -199,15 +158,14 @@ for (i in params){
 ```
 
 
-
-
 ## Plot histogram for velocity
 
 ```{r, echo=TRUE}
 
-
+library(jcolors)
 #This is just for selecting colors
 pal <- wes_palette("Darjeeling1",5)
+
 #Until how many hours
 show_until <- 9
 
@@ -218,10 +176,10 @@ upper_quantile <- 0.95
 lower_quantile <- 0.05
 
 #get overall statistics for mean track velocity
-summary(imported_data_grouped$p_mean_velocity)
+summary(imported_data$p_mean_velocity)
 
 #number of tracks not used for analysis
-imported_data_grouped %>%
+imported_data %>%
   group_by(annotation) %>%
   # summarise(upper_quantile = quantile(p_mean_velocity, upper_quantile))
   filter(p_mean_velocity > quantile(p_mean_velocity, upper_quantile)) %>%
@@ -229,13 +187,14 @@ imported_data_grouped %>%
          
 
 
-data <- imported_data_grouped %>%
-  mutate(p_mean_velocity = p_mean_velocity / 1000) %>%
+data <- imported_data %>%
   filter(p_mean_velocity <= quantile(p_mean_velocity, upper_quantile)) %>%
   filter(p_mean_velocity >= quantile(p_mean_velocity, lower_quantile)) %>%
   filter(hours_rounded <= show_until) %>%
+  # scale velocity to mm/s
+  mutate(p_mean_velocity = p_mean_velocity / 1000) %>%
   group_by(annotation, hours_rounded) %>%
-  mutate(number_of_tracks_in_this_hour = n()) %>%
+  mutate(number_of_tracks_in_this_hour = n_distinct(dataset_ID,tp,TrackID)) %>%
   arrange(hours_rounded)
 
 
@@ -250,14 +209,16 @@ data <- imported_data_grouped %>%
       legend.position = "top",
       strip.background = element_rect(colour = "white", fill = "white"),
       panel.spacing = unit(1, "lines"),
-      strip.text.x = element_text(size=15,colour = "black", face = "bold"),
+      strip.text.x = element_text(size=25,colour = "black", face = "bold"),
       axis.text.x = element_text(size=30),
       axis.title.x = element_text(size=25),
       axis.text.y = element_text(size=35),
       axis.title.y = element_text(size=25))+
-    scale_fill_manual(values=pal)+
-    scale_color_manual(values=pal)+
-    ggsave(file.path(save_path,paste0("histo_velocity_with_fit",".png")),height=20,width=49)
+    # scale_fill_manual(values=pal)+
+    # scale_color_manual(values=pal)+
+    scale_fill_jcolors(palette = "pal7")+
+    scale_color_jcolors(palette = "pal7")+
+    ggsave(file.path(save_path,paste0("histo_velocity_with_fit",".png")),height=35,width=35)
   
 
 
@@ -278,35 +239,37 @@ number_of_bins <- 50
 
 
 #get overall statistics for mean track velocity
-summary(imported_data_grouped$p_mean_angle)
+summary(imported_data$p_mean_angle)
 
         
 
-data <- imported_data_grouped %>%
+data <- imported_data %>%
   filter(hours_rounded <= show_until) %>%
   group_by(annotation, hours_rounded) %>%
-  mutate(number_of_tracks_in_this_hour = n()) %>%
+  mutate(number_of_tracks_in_this_hour = n_distinct(dataset_ID,tp,TrackID)) %>%
   arrange(hours_rounded)
 
 
   ggplot(data,aes(p_mean_angle,color=annotation,fill=annotation))+
     geom_histogram(bins=number_of_bins,aes(y=..density..),color="black",fill="black",alpha=0.1)+
     geom_density(alpha=0.3, size=1.5) +
-    xlab("mean angle (°)") + ylab("counts")+
+    xlab("angular velocity (degree/s)") + ylab("counts")+
     facet_wrap(vars(annotation,hours_rounded,number_of_tracks_in_this_hour),ncol=length(unique(data$hours_rounded)),scales="free_x")+
     theme_linedraw() +
     theme(legend.direction="horizontal",
       legend.position = "top",
       strip.background = element_rect(colour = "white", fill = "white"),
       panel.spacing = unit(1, "lines"),
-      strip.text.x = element_text(size=15,colour = "black", face = "bold"),
+      strip.text.x = element_text(size=25,colour = "black", face = "bold"),
       axis.text.x = element_text(size=30),
       axis.title.x = element_text(size=25),
       axis.text.y = element_text(size=35),
       axis.title.y = element_text(size=25))+
-    scale_fill_manual(values=pal)+
-    scale_color_manual(values=pal)+
-    ggsave(file.path(save_path,paste0("histo_angle_with_fit",".png")),height=20,width=49)
+    #scale_fill_manual(values=pal)+
+    #scale_color_manual(values=pal)+
+    scale_fill_jcolors(palette = "pal7")+
+    scale_color_jcolors(palette = "pal7")+
+    ggsave(file.path(save_path,paste0("histo_angle_with_fit",".png")),height=35,width=35)
   
 
 
@@ -322,51 +285,55 @@ data <- imported_data_grouped %>%
 show_until <- 9
 
 
+library(pals)
 
-
-data <- imported_data_grouped %>%
-  mutate(p_mean_velocity = p_mean_velocity / 1000) %>%
+data <- imported_data %>%
   filter(hours_rounded <= show_until) %>%
   group_by(annotation, hours_rounded) %>%
-  mutate(number_of_tracks_in_this_hour = n()) %>%
+  mutate(number_of_tracks_in_this_hour = n_distinct(dataset_ID,tp,TrackID)) %>%
+  # scale velocity to mm/s
+  mutate(p_mean_velocity = p_mean_velocity / 1000) %>%
   arrange(hours_rounded)
 
 
-ggplot(data,aes(x = p_mean_angle, y = p_mean_velocity))+
-  geom_point(colour="black",alpha=0.2)+
+ggplot(data,aes(x = p_mean_angle, y = p_mean_velocity,color=dataset_ID))+
+  geom_point(alpha=0.2)+
   theme_linedraw()+
-  ylab("mean velocity (mm/s)") + xlab("mean track angle (°)")+
+  ylab("velocity (mm/s)") + xlab("angular velocity (degree/s)")+
   scale_y_log10()+
   scale_x_continuous(limits=c(0,180))+
   theme(legend.direction="horizontal",
       legend.position = "top",
       strip.background = element_rect(colour = "white", fill = "white"),
       panel.spacing = unit(1, "lines"),
-      strip.text.x = element_text(size=15,colour = "black", face = "bold"),
+      strip.text.x = element_text(size=25,colour = "black", face = "bold"),
       axis.text.x = element_text(size=30),
       axis.title.x = element_text(size=45),
       axis.text.y = element_text(size=35),
       axis.title.y = element_text(size=45))+
+  scale_color_manual(values=as.vector(alphabet(26)))+
   facet_wrap(vars(annotation,hours_rounded,number_of_tracks_in_this_hour),ncol=length(unique(data$hours_rounded)),scales="free_x")+
-  ggsave(file.path(save_path,paste0("roaming_dwelling_heatmap_show_all_points",".png")),height=20,width=49)
+  ggsave(file.path(save_path,paste0("scatter_roaming_dwelling_heatmap_show_all_points_datasets_individually",".png")),height=35,width=35)
 
 ggplot(data,aes(x = p_mean_angle, y = p_mean_velocity))+
-  stat_density_2d(aes(fill = ..ndensity..),contour=FALSE,geom="raster")+
-  geom_point(colour="white",alpha=0.3)+
-  scale_fill_viridis(option = "inferno",na.value="white")+
+  # stat_density_2d(aes(fill = ..ndensity..),contour=FALSE,geom="raster")+
+  # geom_point(colour="white",alpha=0.05)+
+  geom_pointdensity()+
+  # scale_fill_viridis(option = "inferno",na.value="white")+
+  scale_color_viridis(option = "inferno")+
   theme_classic()+
-  ylab("mean velocity (mm/s)") + xlab("mean track angle (°)")+
+  ylab("velocity (mm/s)") + xlab("angular velocity (degree/s)")+
   scale_y_log10()+
   scale_x_continuous(limits=c(0,180))+
   theme(strip.background = element_rect(colour = "white", fill = "white"),
       panel.spacing = unit(1, "lines"),
-      strip.text.x = element_text(size=15,colour = "black", face = "bold"),
+      strip.text.x = element_text(size=25,colour = "black", face = "bold"),
       axis.text.x = element_text(size=30),
       axis.title.x = element_text(size=45),
       axis.text.y = element_text(size=35),
       axis.title.y = element_text(size=45))+
   facet_wrap(vars(annotation,hours_rounded,number_of_tracks_in_this_hour),ncol=length(unique(data$hours_rounded)),scales="free_x")+
-  ggsave(file.path(save_path,paste0("roaming_dwelling_heatmap_show_all_points_and_density",".png")),height=20,width=49)
+  ggsave(file.path(save_path,paste0("scatter_roaming_dwelling_heatmap_show_all_points_and_density",".png")),height=35,width=35)
 
 
 ```
@@ -375,20 +342,20 @@ ggplot(data,aes(x = p_mean_angle, y = p_mean_velocity))+
 
 
 
-data <- imported_data_grouped %>%
+data <- imported_data %>%
   mutate(ratio = p_mean_velocity/p_mean_angle) %>%
   mutate(behavioral_state=ifelse(ratio > 1, "roaming","dwelling")) %>%
+  # scale velocity to mm/s
   mutate(p_mean_velocity = p_mean_velocity / 1000) %>%
   filter(hours_rounded <= show_until) %>%
   group_by(annotation, hours_rounded) %>%
-  mutate(number_of_tracks_in_this_hour = n()) %>%
+  mutate(number_of_tracks_in_this_hour = n_distinct(dataset_ID,tp,TrackID)) %>%
   arrange(hours_rounded)
 
-ggplot(data,aes(x = p_mean_angle, y = p_mean_velocity,color=behavioral_state))+
-  geom_point(alpha=0.5)+
+binarized <- ggplot(data,aes(x = p_mean_angle, y = p_mean_velocity,color=behavioral_state))+
+  geom_point(alpha=0.05)+
   theme_linedraw()+
-  ylab("mean velocity (mm/s)") + xlab("mean track angle (°)")+
-  scale_y_log10()+
+  ylab("velocity (mm/s)") + xlab("angular velocity (degree/s)")+
   scale_x_continuous(limits=c(0,180))+
   theme(legend.direction="horizontal",
       legend.position = "top",
@@ -399,27 +366,35 @@ ggplot(data,aes(x = p_mean_angle, y = p_mean_velocity,color=behavioral_state))+
       axis.title.x = element_text(size=45),
       axis.text.y = element_text(size=35),
       axis.title.y = element_text(size=45))+
-  facet_wrap(vars(annotation,hours_rounded,number_of_tracks_in_this_hour),ncol=length(unique(data$hours_rounded)),scales="free_x")+
-  ggsave(file.path(save_path,paste0("roaming_dwelling_heatmap_binarized",".png")),height=20,width=49)
+  facet_wrap(vars(annotation,hours_rounded,number_of_tracks_in_this_hour),ncol=length(unique(data$hours_rounded)),scales="free_x")
+
+binarized + ggsave(file.path(save_path,paste0("scatter_roaming_dwelling_heatmap_binarized_not_log",".png")),height=35,width=35)
+binarized + scale_y_log10() + ggsave(file.path(save_path,paste0("scatter_roaming_dwelling_heatmap_binarized",".png")),height=35,width=35)
+
+pal <- wes_palette("Darjeeling1",5)[c(3,5)]
 
 
-data <- data %>%
+data_summarised <- data %>%
+  #counts per behavioral state
   group_by(annotation,hours_rounded,behavioral_state,dataset_ID) %>%
   summarise(counts=n()) %>%
+  #total counts
   group_by(annotation,hours_rounded,dataset_ID) %>%
   mutate(sum=sum(counts)) %>%
-  mutate(perc = counts/sum)
+  mutate(perc = counts/sum) %>%
+  mutate(first = case_when(hours_rounded == 1  ~ perc)) %>%
+  group_by(dataset_ID,behavioral_state) %>%
+  fill(first, .direction="down") %>%
+  mutate(perc_norm = perc/first)
 
-ggplot(data,aes(x=as.character(hours_rounded),y=perc,fill=behavioral_state,color=behavioral_state))+
-      geom_boxplot(outlier.shape = NA)+
-      geom_point(position=position_dodge(width=0.75),aes(group=behavioral_state),color="black",alpha=0.75)+
-      scale_y_continuous(limits = c(0,1))+
+ggplot(data_summarised,aes(x=as.character(hours_rounded),y=perc,fill=behavioral_state))+
+      geom_boxplot(lwd=1.75)+
+      scale_fill_manual(values =pal)+
+      geom_point(position=position_dodge(width=0.75),aes(group=behavioral_state),color="red",alpha=0.75,size=2)+
       xlab("hours") + ylab("Relative occurence of \nbehavioral state")+
       facet_wrap(annotation ~ .)+
       theme_linedraw()+
       theme(legend.direction="vertical")+
-      scale_fill_manual(values =pal)+
-      scale_color_manual(values=pal)+
       theme(legend.direction="horizontal",
           legend.position = "top",
           strip.background = element_rect(colour = "white", fill = "white"),
@@ -428,9 +403,34 @@ ggplot(data,aes(x=as.character(hours_rounded),y=perc,fill=behavioral_state,color
           axis.text.x = element_text(size=30),
           axis.title.x = element_text(size=45),
           axis.text.y = element_text(size=30),
-          axis.title.y = element_text(size=45))+
+          axis.title.y = element_text(size=45),
+          legend.key.size = unit(2.5, "cm"))+
       facet_wrap(vars(annotation),scales="free")+
-      ggsave(file.path(save_path,paste0("roaming_dwelling_relative",".png")),height=10,width=15)
+      ggsave(file.path(save_path,paste0("scatter_roaming_dwelling_relative",".png")),height=20,width=20)
+
+
+
+ggplot(data_summarised,aes(x=as.character(hours_rounded),y=perc_norm,fill=behavioral_state))+
+      geom_boxplot(lwd=1.75)+
+      geom_point(position=position_dodge(width=0.75),aes(group=behavioral_state),color="red",alpha=0.75)+
+      # scale_x_continuous(breaks = )
+      xlab("hours") + ylab("Relative occurence of \nbehavioral state")+
+      facet_wrap(annotation ~ .) +
+      theme_linedraw()+
+      theme(legend.direction="vertical")+
+      scale_fill_manual(values =pal)+
+      theme(legend.direction="horizontal",
+          legend.position = "top",
+          strip.background = element_rect(colour = "white", fill = "white"),
+          panel.spacing = unit(1, "lines"),
+          strip.text.x = element_text(size=15,colour = "black", face = "bold"),
+          axis.text.x = element_text(size=30),
+          axis.title.x = element_text(size=45),
+          axis.text.y = element_text(size=30),
+          axis.title.y = element_text(size=45),
+          legend.key.size = unit(2.5, "cm"))+
+      facet_wrap(vars(annotation),scales="free")+
+      ggsave(file.path(save_path,paste0("scatter_roaming_dwelling_relative_to_1h",".png")),height=20,width=20)
 ```
 
 
