@@ -121,7 +121,7 @@ params_statistics <- function(input_data,how_to){
     input_data %>%
       na.omit() %>%
       #this will be computed on a "per track basis"
-      group_by(TrackID, tp, minutes, hours,dataset_ID,file_name,worm_type,plate_type,Duration_of_track) %>%
+      group_by(annotation,TrackID, tp, minutes, hours,dataset_ID,file_name,worm_type,plate_type,Duration_of_track) %>%
       mutate(p_mean_angle = mean(angle),
              p_sd_local_angle = sd(angle),
              p_displacement = first(Track_displacement*conversion_factor),
@@ -136,7 +136,7 @@ params_statistics <- function(input_data,how_to){
     input_data %>%
       na.omit() %>%
       #this will be computed on a "per track basis"
-      group_by(TrackID, tp, minutes, hours,dataset_ID,file_name,worm_type,plate_type,Duration_of_track) %>%
+      group_by(annotation,TrackID, tp, minutes, hours,dataset_ID,file_name,worm_type,plate_type,Duration_of_track) %>%
       summarise(p_mean_angle = mean(angle),
                 p_sd_local_angle=sd(angle),
                 p_displacement=first(Track_displacement*conversion_factor),
@@ -151,7 +151,7 @@ params_statistics <- function(input_data,how_to){
     input_data %>%
       na.omit() %>%
       # rest will be computed on a "per bin basis"
-      group_by(TrackID, tp, minutes, hours,dataset_ID,file_name,worm_type,plate_type,Duration_of_track,binning) %>%
+      group_by(annotation,TrackID, tp, minutes, hours,dataset_ID,file_name,worm_type,plate_type,Duration_of_track,binning) %>%
       # classify now every frame as a certain behavioral class while binning
       # pause if velocity very low
       mutate(state= if_else(velocity < 0.005,"pause","straight")) %>%
@@ -175,7 +175,7 @@ params_statistics <- function(input_data,how_to){
     input_data %>%
       na.omit() %>%
       # rest will be computed on a "per bin basis"
-      group_by(TrackID, tp, minutes, hours,dataset_ID,file_name,worm_type,plate_type,Duration_of_track,binning) %>%
+      group_by(annotation,TrackID, tp, minutes, hours,dataset_ID,file_name,worm_type,plate_type,Duration_of_track,binning) %>%
       # classify now every frame as a certain behavioral class while binning
       # pause if velocity very low
       mutate(state= if_else(velocity < 0.005,"pause","straight")) %>%
