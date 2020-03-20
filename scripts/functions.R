@@ -95,10 +95,10 @@ data_filtering <- function(data_input,conversion_factor, offset,binning_factor, 
     mutate(seconds=frame / downsampled_to) %>%
     # create vectors for measuring angle
     # normally: vector one points to position t-1 and vector two points to position t+1
-    mutate(x_lag=location_x - lag(location_x,n=offset/2), y_lag = location_y -lag(location_y, n=offset/2)) %>%
-    mutate(x_lead=lead(location_x, n=offset/2)-location_x, y_lead=lead(location_y, n=offset/2)-location_y) %>%
+    mutate(x_lag=lag(location_x,n=offset/2) - location_x, y_lag = lag(location_y, n=offset/2) - location_y) %>%
+    mutate(x_lead=lead(location_x, n=offset/2) - location_x, y_lead=lead(location_y, n=offset/2) - location_y) %>%
     # calculate the angle and convert to degrees
-    mutate(angle=suppressWarnings(as.numeric(mapply(angle,x_lag,y_lag,x_lead,y_lead)))*180/pi) %>%
+    mutate(angle=suppressWarnings(180 - (as.numeric(mapply(angle,x_lag,y_lag,x_lead,y_lead)))*180/pi)) %>%
     # mutate(angle=suppressWarnings(as.numeric(mapply(angle2,x_lag,y_lag,x_lead,y_lead)))*(180/pi)) %>%
     # measure distance between current point and 1 second before
     mutate(local_distance=suppressWarnings(as.numeric(mapply(distance,lag(location_x,n=offset),lag(location_y,n=offset),location_x,location_y)))) %>%
