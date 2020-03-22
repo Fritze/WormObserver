@@ -367,10 +367,10 @@ data_binarized_only_roaming <-data_binarized %>%
   select(hours_rounded, annotation, p_mean_velocity)
 
 ggplot(data_binarized_only_roaming, aes(y=p_mean_velocity, x=as.character(hours_rounded)))+
-  geom_violin(lwd=1.75,fill="lightgrey")+
+  geom_violin(lwd=1.75)+
   geom_boxplot(aes(fill=annotation),width=0.2,outlier.alpha = 0.3,outlier.size = 2,lwd=1.75)+
   theme_linedraw()+
-  labs(x="hours",y="velocity (mm/s)")+
+  labs(x="hours",y="Roaming velocity (mm/s)")+
   theme(legend.direction="horizontal",
         legend.position = "top",
         strip.background = element_rect(colour = "white", fill = "white"),
@@ -392,7 +392,7 @@ ggplot(data_binarized_only_roaming, aes(y=p_mean_velocity, x=as.character(hours_
 data_binarized_only_roaming %>%
   filter(hours_rounded %in% c(1,6)) %>%
   ggplot(., aes(y=p_mean_velocity, x=as.character(hours_rounded)))+
-  geom_violin(lwd=1.75,fill="lightgrey")+
+  geom_violin(lwd=1.75)+
   geom_boxplot(aes(fill=annotation),width=0.2,outlier.alpha = 0.3,outlier.size = 2,lwd=1.75)+
   geom_signif(comparisons = list(c("1", "6")),
             test="wilcox.test",
@@ -400,7 +400,7 @@ data_binarized_only_roaming %>%
             textsize=10,
             size=2) +
   theme_linedraw()+
-  labs(x="hours",y="velocity (mm/s)")+
+  labs(x="hours",y="Roaming velocity (mm/s)")+
   scale_y_continuous(limits=c(0,0.21))+
   theme(legend.direction="horizontal",
         legend.position = "top",
