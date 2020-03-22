@@ -156,9 +156,9 @@ params_statistics <- function(input_data,how_to){
       group_by(annotation,TrackID, tp, minutes, hours,dataset_ID,file_name,worm_type,plate_type,Duration_of_track,binning) %>%
       # classify now every frame as a certain behavioral class while binning
       # pause if velocity very low
-      mutate(state= if_else(velocity < 0.005,"pause","straight")) %>%
+      mutate(state= if_else(velocity < 0.01,"pause","straight")) %>%
       # if path angle is over 120 than turn
-      mutate(turn_parameter_based = if_else(angle > 90,"turn","no")) %>%
+      mutate(turn_parameter_based = if_else(angle > 75,"turn","no")) %>%
       mutate(state=if_else((turn_parameter_based == "turn" & state != "pause"), "turn",state)) %>%
       #for every bin do majority vote
       mutate(state_binned = names(table(state))[which.max(table(state))]) %>%
@@ -216,7 +216,7 @@ calculate_overview_statistics_per_bin <-  function(data,conversion_factor,offset
 #will also add the chosen parameters for offset, max gaps duration and binning factor to every row
 calculate_overview_statistics_per_track <-  function(data,conversion_factor,offset,binning_factor,max_gaps,duration) {
   data_filtering(data, conversion_factor, offset, binning_factor, max_gaps,duration) %>%
-    params_statistics_per_track(., "summarise_per_track") %>%
+    params_statistics(., "summarise_per_track") %>%
     mutate(offset = offset,
            max_gaps = max_gaps,
            duration = duration,
