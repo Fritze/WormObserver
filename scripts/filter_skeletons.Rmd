@@ -1,89 +1,68 @@
 #Filter skeleton
 ```{r, include=FALSE}
 
-target_folder_base <- "/media/ella/raid5/timelapses/analysis/200305/posture"
-save_path <- "/media/ella/raid5/timelapses/analysis/200127/posture/plots"
+target_folder<-"/home/fpreuss/raid/timelapses/analysis/200318/data/posture"
+save_path <- "/home/fpreuss/raid/timelapses/analysis/200318/data/posture"
+
+#Define the minimum number of consecutive frames for a posture (with head) to be taken into account
+min_frames <- 20
 
 
 suffix <- "_with_headext_reordered.rds"
 
-datasets <- c(
-  "2019-03-25_18-10-06",#no food
-  "2019-11-18_18-43-57",#no food
-   "2019-11-20_17-29-55",#no food
-  "2019-03-26_19-27-16",#with food
-  "2019-03-27_18-24-47",#with food
-  "2019-11-25_17-28-23",#with food
-  "2019-04-23_17-46-08",#daf2
-  "2019-05-07_12-15-40",#daf2
-  "2020-02-20_18-53-49",#6honfood1:10
-  ###"2020-02-21_15-58-43"#6honfood1:10
+list_of_datasets <- matrix(c(
+  "2019-03-26_19-27-16", "N2 1:10 OP50",
+  "2019-03-27_18-24-47", "N2 1:10 OP50",
+  "2019-11-25_17-28-23", "N2 1:10 OP50",
+  "2019-07-08_18-33-57", "N2 1:5 OP50",
+  "2019-07-09_18-22-34", "N2 1:5 OP50",
+  ###"2019-11-11_16-17-33", "N2 1:5 OP50",
+  ###"2019-03-25_18-10-06", "N2 no food",
+  "2019-11-18_18-43-57", "N2 no food",
+  "2019-11-20_17-29-55", "N2 no food",
+  "2019-04-23_17-46-08", "daf2",
+  "2019-05-07_12-15-40", "daf2",
+  "2019-04-30_14-15-44", "L2",
+  "2019-05-04_15-36-42", "L2",
+  "2020-02-20_18-53-49", "N2 1:10 OP50 after 6h exit",
+  "2020-02-21_15-58-43", "N2 1:10 OP50 after 6h exit"
+  ###"2020-03-03_19-35-55", "N2 1:10 OP50 after 6h exit",
+  ###"2020-02-26_18-31-08", "N2 empty after 6h exit",
+  ###"2020-02-27_17-51-43", "N2 empty after 6h exit",
+  ###"2020-02-28_17-38-15", "N2 empty after 6h exit"
+  ),byrow = TRUE,ncol=2)
+
+colnames(list_of_datasets) <- c("dataset_ID", "annotation")
+
+nested_list_of_datasets <- list_of_datasets %>%
+  as.data.frame(.) %>%
+  nest(data=c(dataset_ID))
+
+for (row in 1:nrow(nested_list_of_datasets)){
+  file_name <-paste0(as.character(pull(unnest(nested_list_of_datasets[row,2],cols=c(data)))),suffix)
+  annotation <- as.character(pull(nested_list_of_datasets[row,1]))
+  file_locations <- map_chr(file_name, function(x){list.files(path=target_folder,pattern=x, full.names = TRUE)})
+  skeleton_data_filtered <- file_locations %>%
+    map_df(.,function(x) readRDS(x)) %>%
+    mutate(annotation = annotation) %>%
+    group_by(dataset_ID,tp,TrackID,frame) %>%
+    #only postures that have a "YES"
+    filter(any(is_head=="YES")) %>%
+    mutate(ID = paste0(dataset_ID, "_",tp,"_",TrackID,"_",frame)) %>%
+    mutate(dataset_TrackID = paste0(dataset_ID,"_",tp,"_",TrackID)) %>%
+    mutate(minutes = 10 + ((tp-1)*8+(tp-1)*0)) %>%
+    mutate(hours= minutes/60) %>%
+    #round per hour
+    mutate(hours_rounded = ceiling(hours)) %>%
+    group_by(dataset_TrackID,tp) %>%
+    mutate(TrackCheck_cleaned = replace_f(TrackCheck, 26*frames)) %>%
+    drop_na("TrackCheck_cleaned") %>%
+    ungroup()
   
-)
+  annotation_underscored <- gsub(" ", "_", annotation)
+  created_file_path <- file.path(save_path,paste0("200322_", annotation_underscored ,"_minimum_",min_frames, "_frames", "_skeletons_filtered.rds"))
+  saveRDS(skeleton_data_filtered, file = created_file_path)
+  cat(paste0("\n\ndatasets ",paste(unique(skeleton_data_filtered$dataset_ID), collapse=" & "), " were filtered \nand saved under: ", created_file_path))
 
-files <- paste0(datasets, suffix)
-
-posture_1 <- readRDS(file=file.path(target_folder_base,files[1]))
-posture_2 <- readRDS(file=file.path(target_folder_base,files[2]))
-posture_3 <- readRDS(file=file.path(target_folder_base,files[3]))
-posture_4 <- readRDS(file=file.path(target_folder_base,files[4]))
-posture_5 <- readRDS(file=file.path(target_folder_base,files[5]))
-posture_6 <- readRDS(file=file.path(target_folder_base,files[6]))
-posture_7 <- readRDS(file=file.path(target_folder_base,files[7]))
-posture_8 <- readRDS(file=file.path(target_folder_base,files[8]))
-posture_9 <- readRDS(file=file.path(target_folder_base,files[9]))
-posture_10 <- readRDS(file=file.path(target_folder_base,files[10]))
-
-
-# posture_1 <-NULL
-# posture_2 <- NULL
-# posture_3 <- NULL
-# posture_4 <- NULL
-# posture_5 <- NULL
-# posture_6 <- NULL
-# posture_7 <- NULL
-# posture_8 <- NULL
-# posture_9 <-NULL
-# posture_10 <- NULL
-
-
-data_skeleton_with_headext <- rbind(
-  posture_1,
-  posture_2,
-  posture_3,
-  posture_4,
-  posture_5,
-  posture_6,
-  posture_7,
-  posture_8,
-  posture_9,
-  posture_10
-)
-
-```
-
-```{r, include=FALSE}
-frames <- 10
-
-skeleton_data_filtered <- data_skeleton_with_headext %>%
-  group_by(dataset_ID,tp,TrackID,frame) %>%
-  #only postures that have a "YES"
-  filter(any(is_head=="YES")) %>%
-  mutate(ID = paste0(dataset_ID, "_",tp,"_",TrackID,"_",frame)) %>%
-  mutate(dataset_TrackID = paste0(dataset_ID,"_",tp,"_",TrackID)) %>%
-  mutate(minutes = 10 + ((tp-1)*8+(tp-1)*0)) %>%
-  mutate(hours= minutes/60) %>%
-  mutate(hours_rounded= ceiling(hours* 2) / 2) %>%
-  group_by(dataset_TrackID,tp) %>%
-  mutate(TrackCheck_cleaned = replace_f(TrackCheck, 26*frames)) %>%
-  drop_na("TrackCheck_cleaned") %>%
-  filter(hours_rounded <= 6) %>%
-  ungroup()
-
-skeleton_data_filtered %>%
-  group_by(hours_rounded) %>%
-  summarise(n = n_distinct(dataset_TrackID))
-
-
-saveRDS(skeleton_data_filtered, file=file.path(target_folder_base,"200305_Skeletons_filtered.RDS"))
+}
 ```
