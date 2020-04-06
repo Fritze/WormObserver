@@ -1,12 +1,37 @@
+```{r, include=FALSE}
+
+target_folder<-"/home/fpreuss/raid/timelapses/analysis/200318/data/posture"
+save_path <- "/home/fpreuss/raid/timelapses/analysis/200318/plots/posture"
+
+
+files_to_process <- list.files(target_folder,"skeletons_filtered.rds", full.names = TRUE, ignore.case = TRUE)
+files_to_process <- files_to_process[!grepl("L2|exit|daf2|1:10",files_to_process)]
+files_to_process_annotations <- gsub(".+\\/\\d+\\_(.+)\\_minimum.+","\\1", files_to_process)
+
+
+skeleton_data_filtered <- files_to_process %>%
+  map_df(., function(x) readRDS(x)) %>%
+  group_by(dataset_ID,tp,TrackID,frame) %>%
+  #all angles have to be between pi and -pi
+  mutate(angle = ifelse(angle > pi & is.na(is_end), 2 * pi - angle,angle)) %>%
+  mutate(angle = ifelse(angle < -pi & is.na(is_end), -2 * pi - angle,angle)) %>%
+  mutate(mean_angle = mean(angle, na.rm = TRUE)) %>%
+  ungroup()
+
+
+# 
+# plot <- ggplot(skeleton_data_filtered,aes(angle))+
+#   geom_histogram(binwidth=0.01)
+# 
+# 
+# plot
+```
 
 
 ```{r, include=FALSE}
-# target_folder_base <- "/media/ella/raid5/timelapses/analysis/200213"
-# skeleton_data_filtered <- readRDS(file.path(target_folder_base,"200305_Skeletons_filtered.RDS"))
-# dataset_name <- unique(skeleton_data_filtered$dataset_ID)
 
 #transpose - rows: posture IDs, -columns: angles
-angle_data_cluster <- skeleton_data_filtered_named %>%
+angle_data_cluster <- skeleton_data_filtered %>%
   dcast(ID ~ index,value.var = "angle")
 
 #make IDs the rowname so that this column is not part of the clustering data
@@ -16,31 +41,35 @@ angle_data_cluster <- select(angle_data_cluster,-ID)
 #take out first and last angle
 angle_data_cluster <-angle_data_cluster[,2:(ncol(angle_data_cluster)-1)]
 
-head(angle_data_cluster)
 
 ```
 
 
 ```{r, include=FALSE}
 
-angle_data_cluster_test <- sample_n(angle_data_cluster, 10000)
+
+head(angle_data_cluster)
+angle_data_cluster_test <- sample_n(angle_data_cluster, 15000)
 
 n = nrow(angle_data_cluster_test)
-kmax = 400
+kmax = 100
 totwss <- NULL
 
 
-# kmfit = list() # create and empty list
-for (i in seq(100,kmax,by=20)){
-  kclus = kmeans(angle_data_cluster_test,centers=i,iter.max=1000,algorithm = "Lloyd")
+
+for (i in seq(10,kmax,by=10)){
+  kclus = kmeans(angle_data_cluster_test,centers=i,nstart=5,iter.max = 1000,algorithm = "Lloyd")
   totwss <- c(totwss, kclus$tot.withinss)
 }
 
 
-rsq = 1-(totwss*(n-1))/(totwss[1]*(n-seq(100,kmax,by=20)))
+rsq = 1-(totwss*(n-1))/(totwss[1]*(n-seq(10,kmax,by=10)))
 
-plot(seq(100,kmax,by=20),rsq,xlab="Number of clusters",ylab="Adjusted R-squared",pch=20,cex=2)
-plot(seq(100,kmax,by=20),totwss, pch=20, cex=2)
+kclus
+#measure of the total variance in the data set that is explained by the clustering.
+# saveRDS(target_folder, )
+plot(seq(10,kmax,by=10),rsq,xlab="Number of clusters",ylab="Adjusted R-squared",pch=20,cex=2)
+plot(seq(10,kmax,by=10),totwss, pch=20, cex=2)
 
 
 ```
@@ -48,12 +77,13 @@ plot(seq(100,kmax,by=20),totwss, pch=20, cex=2)
 #calculate clusters
 #choose right number of centers!
 ```{r, include=FALSE}
+centers <- 100
 
-cluster <- kmeans(angle_data_cluster,centers=100,iter.max = 1000,algorithm = "Lloyd")
+cluster <- kmeans(angle_data_cluster,centers=centers,nstart=5,iter.max = 1000,algorithm = "Lloyd")
 
 groups <- as.character(cluster$cluster)
 
-angle_data_clustered <- skeleton_data_filtered  %>%
+skeleton_data_clustered <- skeleton_data_filtered  %>%
   mutate(ID = paste0(dataset_ID, "_",tp,"_",TrackID,"_",frame)) %>%
   dcast(.,ID ~ index,value.var = "angle") %>%
   select(ID) %>%
@@ -61,256 +91,9 @@ angle_data_clustered <- skeleton_data_filtered  %>%
   mutate(clusterID = groups) %>%
   inner_join(skeleton_data_filtered, by="ID")
 
-saveRDS(angle_data_clustered, file=file.path(save_path,"200306_Skeletons_filtered_clustered.RDS"))
-
+skeletons_filtered_clustered_filepath <- file.path(target_folder,paste0("200330_",paste(files_to_process_annotations,collapse = "_"),"_skeletons_filtered_clustered.RDS"))
+saveRDS(skeleton_data_clustered, file=skeletons_filtered_clustered_filepath)
+clustering_filepath <- file.path(target_folder,paste0("200330_",paste(files_to_process_annotations,collapse = "_"),"_clustering.RDS"))
+saveRDS(cluster, file=file.path(target_folder,paste0("200330_",paste(files_to_process_annotations,collapse = "_"),"_clustering.RDS")))
 ```
 
-#if previously saved clustering
-```{r, include=FALSE}
-
-target_folder_base <- "/media/ella/raid5/timelapses/analysis/200213"
-angle_data_clustered <- readRDS(file.path(target_folder_base,"200214_Skeletons_filtered_clustered.RDS"))
-
-```
-
-#plot ranked postures
-```{r, include=FALSE}
-save_path <- "/media/ella/raid5/timelapses/analysis/200213"
-
-chosen_exps_1 <- c(
-  "2019-03-26_19-27-16",
-  "2019-03-27_18-24-47",
-  "2019-11-25_17-28-23")#with bacteria
-
-chosen_exps_2 <- c("2019-03-25_18-10-06",
-                   "2019-11-18_18-43-57",
-                   "2019-11-20_17-29-55") #no food
-
-
-
-freq_postures_anno <- angle_data_clustered %>%
-  filter(dataset_ID %in% chosen_exps_1 | dataset_ID %in% chosen_exps_2) %>%
-  mutate(annotation = ifelse(dataset_ID %in% chosen_exps_1, "N2 dauers w. food",NA)) %>%
-  mutate(annotation = ifelse(dataset_ID %in% chosen_exps_2, "N2 dauers no food",annotation))
-
-freq_postures_w_food <- freq_postures_anno %>%
-  filter(annotation == "N2 dauers w. food") %>%
-  mutate(clusterID = as.numeric(clusterID)) %>%
-  group_by(clusterID) %>%
-  summarise(counts = n()) %>%
-  mutate(total = sum(counts)) %>%
-  mutate(perc = counts/total * 100) %>% 
-  arrange(desc(perc)) %>%
-  mutate(rank = 1:n())
-
-freq_postures_no_food <- freq_postures_anno %>%
-  filter(annotation == "N2 dauers no food") %>%
-  mutate(clusterID = as.numeric(clusterID)) %>%
-  group_by(clusterID) %>%
-  summarise(counts = n()) %>%
-  mutate(total = sum(counts)) %>%
-  mutate(perc = counts/total * 100) %>% 
-  arrange(desc(perc)) %>%
-  mutate(rank = 1:n())
-
-
-p <- ggplot(freq_postures, aes(x=rank, y=perc))+
-  geom_bar(stat="identity",fill="white") +
-  theme_black()
-p
-ggsave(file.path(save_path,paste0("nofood_and_food_100_postures_ranked",".png")),width=20,height=11)
-```
-
-
-#Calculate relative occurence of postures per timepoint and plot this as a heatmap
-```{r, include=FALSE}
-
-
-angle_data_postures <- angle_data_clustered %>%
-  filter(dataset_ID %in% chosen_exps_1 | dataset_ID %in% chosen_exps_2) %>%
-  mutate(annotation = ifelse(dataset_ID %in% chosen_exps_1, "N2 dauers w. food",NA)) %>%
-  mutate(annotation = ifelse(dataset_ID %in% chosen_exps_2, "N2 dauers no food",annotation)) %>%
-  group_by(ID) %>%
-  mutate(dataset_TrackID =  paste0(dataset_ID,"_",tp,"_",TrackID)) %>%
-  summarise(clusterID = first(clusterID),dataset_TrackID = first(dataset_TrackID),minutes=first(minutes),annotation=first(annotation),hours_rounded = first(hours_rounded))
-  
-angle_data_postures_red <- angle_data_postures %>%
-  group_by(clusterID,hours_rounded,annotation) %>%
-  mutate(number_of_cluster_members_per_tp=n_distinct(ID)) %>%
-  group_by(hours_rounded,annotation) %>%
-  mutate(postures_per_tp=n_distinct(ID)) %>%
-  mutate(tracks_per_tp=n_distinct(dataset_TrackID)) %>%
-  mutate(perc = number_of_cluster_members_per_tp/postures_per_tp) %>%
-  group_by(clusterID,annotation,hours_rounded) %>%
-  summarise(number_of_cluster_members_per_tp = first(number_of_cluster_members_per_tp),postures_per_tp = first(postures_per_tp),tracks_per_tp = first(tracks_per_tp),perc=first(perc))
-  
-angle_data_postures_norm <- angle_data_postures_red %>%
-  group_by(clusterID,annotation) %>%
-  mutate(rM = rollmean(perc, 4, fill=NA)) %>%
-  mutate(perc_norm = (perc-mean(perc))/sd(perc)) %>%
-  mutate(rM_norm = (rM-mean(rM,na.rm=TRUE)/sd(rM,na.rm=TRUE)))
-
-
-  # group_by(clusterID,minutes,annotation) %>%
-  # summarise(number_of_cluster_members_per_tp = first(number_of_cluster_members_per_tp),postures_per_tp= first(postures_per_tp),tracks_per_tp = first(tracks_per_tp),perc = first(perc),perc_norm=first(perc_norm),rM = first(rM))
-
-```
-
-```{r, include=FALSE}
-
-
-cluster_clusters <- angle_data_postures_norm  %>%
-  filter(annotation == "N2 dauers no food") %>%
-  dcast(clusterID ~ minutes,value.var = "perc_norm")
-
-rownames(cluster_clusters) <- cluster_clusters$clusterID
-cluster_clusters <- select(cluster_clusters,-clusterID)
-
-
-
-cll <- hclust(dist(cluster_clusters, method = "euclidean"), method = "average")
-ordering <- cll$order
-
-```
-
-```{r, include=FALSE}
-
-# angle_data_postures_norm_filtered <- filter(angle_data_postures_norm,clusterID %in% freq_postures$clusterID)
-
-ggplot(filter(angle_data_postures_norm,annotation=="N2 dauers w. food"),aes(x=factor(clusterID,levels=freq_postures_no_food$clusterID),y=hours_rounded))+
-  geom_tile(aes(fill=perc_norm))+
-  theme_classic()+
-  scale_fill_distiller(palette = "PiYG",limits=c(-1,1) * max(abs(angle_data_postures_norm$perc_norm)))+
-  labs(x="posture IDs",y = "hours") +
-  theme_black()+
-  theme(axis.text.y = element_text(size = 7,colour="white"),
-        axis.text.x = element_text(size = 5,colour="white"),
-        legend.position = "right",legend.direction='horizontal')+
-  coord_equal()
-
-ggsave(file.path(save_path,paste0("with_food2_freq_heatmap_percent_all_postures_per_dataset_new",".png")),width=20,height=13)
-
-
-ggplot(filter(angle_data_postures_norm,annotation=="N2 dauers no food"),aes(x=factor(clusterID,levels=freq_postures_no_food$clusterID),y=hours_rounded))+
-  geom_tile(aes(fill=perc_norm))+
-  theme_classic()+
-  scale_fill_distiller(palette = "PiYG",limits=c(-1,1) * max(abs(angle_data_postures_norm$perc_norm)))+
-  labs(x="posture IDs",y = "hours") +
-  theme_black()+
-  theme(axis.text.y = element_text(size = 7,colour="white"),
-        axis.text.x = element_text(size = 5,colour="white"),
-        legend.position = "right",legend.direction='horizontal')+
-  coord_equal()
-
-ggsave(file.path(save_path,paste0("no_food2_freq_heatmap_percent_all_postures_per_dataset_new",".png")),width=20,height=13)
-
-```
-
-#Visualize individual clusters
-```{r, include=FALSE}
-clustertotest <- "14"
-
-cluster_ID_list_sampled <- angle_data_clustered %>%
-  filter(clusterID %in% clustertotest) %>%
-  select(ID) %>%
-  distinct() %>%
-  sample_n(10) %>%
-  pull()
-
-#cluster_ID_list_sampled
-clustered_skeleton_list <- skeleton_data_filtered %>%
-  filter(ID %in% cluster_ID_list_sampled)
-
-
-ggplot(clustered_skeleton_list, aes(x=X,y=Y,colour=angle))+
-      geom_point(size=0.25) +
-      geom_path(size=0.025) +
-      # geom_point(aes(fill=angle_1)) +
-      # transition_states(frame,transition_length = 0.1,state_length = 0.2) +
-      # ease_aes('linear') + 
-      #geom_text(aes(label=round(angle_1,3)),color="white",size=3,hjust=2, vjust=1)+
-      geom_point(data=clustered_skeleton_list[which(clustered_skeleton_list$is_head == "YES"), ], aes(x=X, y=Y), shape=17, stroke=1, ,colour = "gold", size=1) +
-      scale_x_continuous(limits=c(-10,70)) +
-      scale_y_continuous(expan = c(0, 0),limits=c(70,-10),trans="reverse") +
-      facet_wrap(~ ID,nrow=25,ncol=35)+
-      theme_black()+
-      scale_color_gradient2(low = "cornflowerblue", mid = "white",
-                         high = "brown2",midpoint=0,limits=c(-1,1),na.value="grey") +
-      coord_equal() +
-      theme(legend.position = "none",
-            axis.title=element_blank(),
-            axis.ticks=element_blank(),
-            axis.text=element_blank(),
-            axis.line=element_blank(),
-            strip.text.x = element_text(colour = 'white',size=3))+
-      guides(fill=guide_legend(title="Angle (rad)"))
-
-
-
-ggsave(file.path(save_path,paste0("withfood_example_skeletons_",clustertotest,".png")))
-
-```
-
-
-
-```{r, include=FALSE}
-
-ggplot(filter(dd, clusterID %in% c("15","40","5","70","82","45")),aes(x=tp,y=factor(clusterID,levels=level_order),fill=perc_norm))+
-  geom_tile()+
-  theme_classic()+
-  scale_fill_gradientn(colours = pal)+
-  theme_black()+
-  theme(axis.text.y = element_text(size = 5,colour="white"))
-
-```
-```{r, include=FALSE}
-test_skeleton_list <- angle_data_clustered %>%
-  filter(clusterID == 32)
-
-yo <- unique(test_skeleton_list$ID)[1:10]
-
-
-test_skeleton <- angle_data_clustered %>%
-  filter(ID %in% yo)
-
-ggplot(test_skeleton, aes(x=angle,y=index,colour=angle))+
-      geom_path(size=1,lineend = "round") +
-      geom_point(size=0.5)+
-      scale_x_continuous(limits=c(-1.5,1.5)) +
-      facet_wrap(~ ID)+
-      theme_black()+
-      scale_color_gradient2(low = "cornflowerblue", mid = "white",
-                         high = "brown2",midpoint=0,limits=c(-1,1),na.value="grey") +
-      theme(legend.position = "none",
-            axis.title=element_blank(),
-            axis.ticks=element_blank(),
-            axis.text=element_blank(),
-            axis.line=element_blank(),
-            strip.text.x = element_text(colour = 'white',size=5))+
-      guides(fill=guide_legend(title="Angle (rad)"))
-
-
-```
-
-
-#Cluster
-```{r, include=FALSE}
-#Elbow Method for finding the optimal number of clusters
-set.seed(123)
-# Compute and plot wss for k = 2 to k = 15.
-k.max <- 200
-data <- angle_data_cluster
-#Get total within-clusters sum of squares for each k
-wss <- sapply(seq(10,k.max,by=10), 
-              function(k){kmeans(data,centers=k,iter.max = 1000,algorithm = "Lloyd")$tot.withinss})
-
-#make data table of results
-wss_table <- data.frame(cbind(wss,seq(10,k.max,by=10)))
-
-#plot
-ggplot(wss_table, aes(V2, wss))+
-  geom_point(color="white")+
-  geom_path(color="white")+
-  labs(x="Number of clusters K", y="Total within-clusters sum of squares")+
-  theme_black()
-```
