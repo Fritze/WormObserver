@@ -26,6 +26,8 @@ for (file in files_to_process){
   imported_data <- readRDS(file)
   annotation <- unique(imported_data$annotation)
   annotation_underscored <- gsub(" ", "_", annotation)
+  
+  
   #calculate centroid tracking statistics per bin
   centroid_tracking_bins <- calculate_overview_statistics_per_bin(imported_data,conversion_factor,offset,binning_factor,max_gaps,duration)
   created_file_path <- file.path(target_folder,paste0("2000319_",annotation_underscored,"_centroid_tracking_bins.RDS"))
