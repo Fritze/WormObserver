@@ -15,7 +15,6 @@ library("readr")
 library("purrr")
 library("viridis")
 library("png")
-library("grid")
 library("RColorBrewer")
 library("shiny")
 library("shinyWidgets")
@@ -23,8 +22,8 @@ library("ggridges")
 library("gganimate")
 library("ggbeeswarm")
 library("ggsci")
-library("ggExtra")
 library("ggpointdensity")
+library("patchwork")
 library("reshape2")
 library("pracma")
 library("zoo")
@@ -73,6 +72,27 @@ replace_f <- function(x,y){
   subs$values[subs$lengths < y] <- NA
   inverse.rle(subs)
 }
+
+#function to estimate the worm posture based on list of angles
+estimate_positions_from_angles <- function(input_data) {
+  #for every skeleton (therefore this function has to be preceded by group_by(ID))
+  n <- nrow(input_data)
+  #we go from the end of the worm to it's head
+  for(i in (n-1):1) {
+    #add previous angle to current angle
+    input_data$new_angle[i] <- input_data$new_angle[i+1] + input_data$angle[i]
+    #calculate new position
+    input_data$X[i] <- (input_data$X[i+1] + cos(input_data$new_angle[i])) 
+    input_data$Y[i] <- (input_data$Y[i+1] + sin(input_data$new_angle[i]))
+  }
+  #additional part to ensure that x axis is always the major axis
+  if(max(input_data$Y) > max(input_data$X)){
+    input_data[(ncol(input_data)-1):ncol(input_data)] <- input_data[ncol(input_data):(ncol(input_data)-1)]
+  }
+  #we end with a dataframe
+  input_data <- input_data
+}
+
 
 myPalette <- colorRampPalette(rev(brewer.pal(11, "Spectral")))
 
@@ -990,6 +1010,74 @@ skeleton_head_estimate <- function(data) {
 # 
 #                
 # }
+#this function takes a skeleton and will orient it in a way
+#so that: head is on 0 and majority of points is above 0 (i.e. big bulges are pointing upwards)
+turn_worm <- function(input_data){
+  #looking for the end close to X=0
+  only_ends <- input_data[c(1,nrow(input_data)),]
+  #Defining X and Y postions for this end
+  X_left <- min(only_ends$X)
+  Y_left <- pull(only_ends[only_ends$X == X_left,"Y"])
+  #Defining X and Y positions for the other end
+  X_other <- max(only_ends$X)
+  Y_other <- pull(only_ends[only_ends$X == X_other,"Y"])
+  
+  #diagonal going from left end to right end
+  #this defines the new x-axis
+  c <- distance(X_left,Y_left,X_other,Y_other)
+  a <- Y_other - Y_left
+  #calculating the angle by which we have to turn the coordinate system
+  angle_t <- asin(a/c)
+  
+  input_data <- input_data %>%
+    mutate(angle_theta = angle_t) %>%
+    #turn the coordinate system
+    mutate(new_X = X * cos(angle_theta) + Y * sin(angle_theta)) %>%
+    mutate(new_Y = Y * cos(angle_theta) - X * sin(angle_theta)) %>%
+    #align left end to X = 0
+    mutate(new_X = new_X - min(new_X)) %>%
+    mutate(new_Y = new_Y - min(new_Y)) %>%
+    #diagonal for scaling of X and Y positions
+    #we do a shift operation: minimal X and Y positions are new 0
+    #and a scale operation: dividing by the diagonal (the "size" of the image)
+    mutate(diagonal=sqrt(max(new_X)-min(new_X)*(max(new_X)-min(new_X)) + (max(new_Y)-min(new_Y))*(max(new_Y)-min(new_Y)))) %>%
+    mutate(new_X_scaled = (new_X - min(new_X))/diagonal)  %>%
+    mutate(new_Y_scaled = (new_Y - min(new_Y))/diagonal) %>%
+    select(!c(new_X,new_Y,angle_theta,diagonal))
+  
+  #if the end close to X=0 is not a head, we want to turn everything by 180° since we want head on X=0
+  #check if X_left index is higher than X_other index
+  if(pull(only_ends[only_ends$X == X_left,"index"]) > pull(only_ends[only_ends$X == X_other,"index"])){
+    # print("turn")
+    input_data <- input_data %>%
+      #angle 180°
+      mutate(angle_t2 = pi) %>%
+      mutate(new_X_scaled_temp = new_X_scaled) %>%
+      mutate(new_Y_scaled_temp = new_Y_scaled) %>%
+      #turn 180°
+      mutate(new_X_scaled = new_X_scaled_temp * cos(angle_t2) + new_Y_scaled_temp * sin(angle_t2)) %>%
+      mutate(new_Y_scaled = new_Y_scaled_temp * cos(angle_t2) - new_X_scaled_temp * sin(angle_t2)) %>%
+      #set min(X) to 0
+      mutate(new_X_scaled = new_X_scaled + abs(min(new_X_scaled))) %>%
+      select(!c(new_X_scaled_temp,new_Y_scaled_temp,angle_t2))
+    input_data <- input_data
+  }
+  
+  #to better compare we want majority of points to be above 0 (e.g. bulges)
+  #this is a mirroring operation and won't account for dorsal ventral orientation
+  if(mean(input_data$new_Y_scaled) < 0){
+    # print("mirror")
+    input_data <- input_data %>%
+      mutate(new_Y_scaled = -new_Y_scaled)
+    input_data <- input_data
+  }
+  
+  input_data$Y <- input_data$new_Y_scaled
+  input_data$X <- input_data$new_X_scaled
+  input_data <- select(input_data,-c(new_X_scaled,new_Y_scaled))
+  input_data <- input_data
+}
+
 
 
 ###########################################################
