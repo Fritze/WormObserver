@@ -1,0 +1,377 @@
+
+#Select files to load
+#We need the clustering file containing the mean positions of each cluster as well as the skeletons filtered file with clusters attached
+```{r, include=FALSE}
+
+target_folder<-"/home/fpreuss/raid/timelapses/analysis/200318/data/posture"
+save_path <- "/home/fpreuss/raid/timelapses/analysis/200318/plots/posture"
+
+
+skeletons_filtered_clustered_filepath <- list.files(path = target_folder,pattern="200330.+skeletons_filtered_clustered.RDS",ignore.case = TRUE, full.names = TRUE)
+clustering_filepath <- list.files(path = target_folder,pattern="200330.+clustering.RDS",ignore.case = TRUE, full.names = TRUE)
+
+
+cluster <- readRDS(clustering_filepath)
+skeleton_data_clustered <- readRDS(skeletons_filtered_clustered_filepath)
+```
+
+
+#calculate relative occurence of clusters
+#also calculate different ordering vectors (based on posture frequency or similarity)
+```{r, include=FALSE}
+
+#add clusters to initial skeleton dataset that was used for kmeans clustering
+#also calculate relative occurences of postures (i.e. clusters) both total and per annotation
+freq_postures <- skeleton_data_clustered %>%
+  mutate(clusterID = as.numeric(clusterID)) %>%
+  #select only relevant columns
+  select(clusterID,annotation) %>%
+  #do this now for every clusterID and annotation independently
+  group_by(clusterID, annotation) %>%
+  summarise(counts_annotation = n()) %>%
+  #do this now for every annotation independently
+  group_by(annotation) %>%
+  #occurences of all clusters together == total_annotation
+  mutate(total_annotation = sum(counts_annotation)) %>%
+  mutate(perc_annotation = counts_annotation/total_annotation * 100) %>%
+  group_by(clusterID) %>%
+  mutate(counts_all = sum(counts_annotation)) %>%
+  mutate(total_all = sum(total_annotation)) %>%
+  ungroup() %>%
+  mutate(perc_all = counts_all/total_all * 100)
+
+#plot histogram of postures ordered by overall occurence
+freq_postures_overall <- freq_postures %>%
+  group_by(clusterID,perc_all) %>%
+  summarise() %>%
+  arrange(desc(perc_all)) %>%
+  ungroup() %>%
+  mutate(rank_all = 1:n())
+
+ggplot(freq_postures_overall,aes(x=rank_all,y=perc_all))+
+  geom_col()+
+  labs(x="Posture Rank", y="Probability (%)")+
+  theme_linedraw()
+  
+
+#order by overall occurence
+order_overall <- freq_postures_overall$clusterID
+
+#order by occurence in respective dataset
+order_1to5 <- freq_postures %>%
+  filter(annotation == "N2 1:5 OP50") %>%
+  group_by(clusterID,perc_annotation) %>%
+  summarise() %>%
+  arrange(desc(perc_annotation)) %>%
+  ungroup() %>%
+  mutate(rank_all = 1:n()) %>%
+  pull(clusterID)
+
+order_nofood <- freq_postures %>%
+  filter(annotation == "N2 no food") %>%
+  group_by(clusterID,perc_annotation) %>%
+  summarise() %>%
+  arrange(desc(perc_annotation)) %>%
+  ungroup() %>%
+  mutate(rank_all = 1:n()) %>%
+  pull(clusterID)
+  
+  
+#order by order in hclust dendrogram (taking kmeans centers as inputs for hierarichal clustering)
+order_hclust <- hclust(dist(cluster$centers, method = "euclidean"), method = "average")$order
+
+
+#Take centers from kmeans clustering and estimate posture from list of angles starting from kmeans cluster centers
+skeleton_angle_cluster_centers <- melt(cluster$centers) %>%
+  rename("clusterID" = Var1, "index" = Var2, "angle" = value) %>%
+  arrange(clusterID) %>%
+  left_join(tibble(clusterID=order_overall),by="clusterID") %>%
+  mutate(new_angle=0, X=1, Y=1) %>%
+  group_by(clusterID) %>%
+  #estimate the positions for each clusterID independently
+  group_modify(~ estimate_positions_from_angles(.x)) %>%
+  #turn the coordinates so that the worm's orientations are similar
+  group_modify(~ turn_worm(.x))
+
+#levels must be changed for ggplot to take new order into account
+skeleton_angle_cluster_centers$clusterID = factor(skeleton_angle_cluster_centers$clusterID, levels=order_overall)
+```
+
+
+
+```{r, include=FALSE}
+
+plot_posture_examples <- function(data_to_plot,X,Y){
+  ggplot(data_to_plot, aes_string(x=X,y=Y,color="angle"))+
+  geom_point(size=1) +
+  geom_path(size=3,lineend = "round") +
+  theme_void()+
+  coord_fixed(ratio = 1)+
+  scale_color_gradient2(low = "deepskyblue", mid = "lavender",
+                       high = "deeppink",midpoint=0,limits=c(-1,1),na.value="grey") +
+  # scale_color_viridis(option = "plasma",limits=c(-1,1))+
+  theme(plot.title = element_text(face = "bold"))
+  
+}
+
+#levels must be changed for ggplot to take new order into account
+skeleton_angle_cluster_centers$clusterID = factor(skeleton_angle_cluster_centers$clusterID, levels=order_overall)
+
+plot_posture_examples(skeleton_angle_cluster_centers, "X","Y") +
+  geom_point(data=filter(skeleton_angle_cluster_centers,index == 2), aes(X,Y),color="orange",size=5,shape=17) +
+  facet_wrap(vars(clusterID),ncol=5) +
+  theme(strip.text.x = element_text(size = 20,face="bold"))+
+  ggsave(file.path(save_path,paste0("posture_angle_centers",".png")),height=20,width=15)
+
+```
+
+
+
+
+```{r, include=FALSE}
+
+
+# for (i in seq(1,100)){
+#   
+#   clusterID_to_plot <- i
+#   
+#   #select 10 example skeletons of that particular posture
+#   skeleton_data_subset <- skeleton_data_clustered %>%
+#     filter(clusterID == clusterID_to_plot) %>%
+#     group_by(ID) %>%
+#     nest() %>%
+#     ungroup() %>%
+#     sample_n(10) %>%
+#     unnest(cols=c(data)) %>%
+#     group_by(ID) %>%
+#     group_modify(~ turn_worm(.x))
+#   
+#   #select posture to plot
+#   skeleton_angle_cluster_centers_subset <- skeleton_angle_cluster_centers %>%
+#     filter(clusterID == clusterID_to_plot) %>%
+#     group_by(clusterID) %>%
+#     group_modify(~ turn_worm(.x))
+#     
+#   
+#   plot_corresponding_cluster_mean <- plot_posture_examples(skeleton_angle_cluster_centers_subset) + 
+#     geom_point(data=filter(skeleton_angle_cluster_centers_subset,index == 2), aes(new_X_scaled,new_Y_scaled),color="orange",size=8,shape=16) +
+#     ggtitle(paste0("Posture ", clusterID_to_plot))
+#   
+#   plots_ground_truth_examples <- plot_posture_examples(skeleton_data_subset) + 
+#     geom_point(data=filter(skeleton_data_subset,index == 2), aes(new_X_scaled,new_Y_scaled),color="orange",size=8,shape=16) +
+#     facet_wrap(vars(ID), ncol=5) +
+#     ggtitle(paste0("Skeletons classified as posture ", clusterID_to_plot))+
+#     theme(legend.position = "none")
+# 
+#   (plot_corresponding_cluster_mean /
+#   plots_ground_truth_examples) +
+#      plot_layout(heights = c(1, 5)) +
+#      ggsave(file.path(save_path,paste0("plot_posture_",clusterID_to_plot,".png")),height=10,width=20)
+# 
+# }
+
+
+
+```
+
+#Plot every frame of a random track
+#plotted will be the original skeleton (with original X and Y location), as well as 
+```{r, include=FALSE}
+
+#list of all tracks
+list_of_tracks <- unique(skeleton_data_clustered$dataset_TrackID)
+
+#select a random track from this list
+random_track <- sample(list_of_tracks,1)
+
+                                      
+#subset random track and turn the skeletons
+skeleton_data_clustered_subset <- skeleton_data_clustered %>%
+  filter(dataset_TrackID == random_track) %>%
+  group_by(ID) %>%
+  #keep old X and Y positions (before turning) to compare when plotting
+  mutate(X_original = X, Y_original = Y) %>%
+  group_modify(~ turn_worm(.x))
+  
+
+
+#plot all frames from list of frames of the random track
+for (i in unique(skeleton_data_clustered_subset$frame)){
+   
+  selected_frame <- i 
+  #temporary subset (only skeleton of selected frame)
+  skeleton_data_clustered_subset_temp <- skeleton_data_clustered_subset %>%
+    filter(frame == selected_frame)
+  
+  #clusterID of selected skeleton
+  clusterID_to_plot <- unique(skeleton_data_clustered_subset_temp$clusterID)
+  #corresponding cluster center
+  skeleton_angle_cluster_centers_temp <- skeleton_angle_cluster_centers %>%
+    filter(clusterID == clusterID_to_plot)
+  
+  #plot raw with old X and Y coordinates
+  plot_raw <- plot_posture_examples(skeleton_data_clustered_subset_temp, "X_original", "Y_original")+
+   geom_point(data=filter(skeleton_data_clustered_subset_temp,index == 2), aes_string("X_original","Y_original"),color="orange",size=8,shape=16) + 
+    theme(plot.caption = element_text(vjust = -3),
+          legend.position = "none")+
+    ggtitle(paste0("Raw ", random_track,", frame ", selected_frame))
+    
+  #plot turned worm
+  plots_alligned <- plot_posture_examples(skeleton_data_clustered_subset_temp,"X","Y") +
+    geom_point(data=filter(skeleton_data_clustered_subset_temp,index == 2), aes(X,Y),color="orange",size=5,shape=16) +
+    ggtitle(paste0("Alligned"))+
+    theme(plot.caption = element_text(vjust = -3),
+          legend.position = "none")
+  
+  #plot corresponding cluster center
+  plot_corresponding_cluster_mean <- plot_posture_examples(skeleton_angle_cluster_centers_temp,"X","Y") +
+    geom_point(data=filter(skeleton_angle_cluster_centers_temp,index == 2), aes_string("X","Y"),color="orange",size=5,shape=16) +
+    ggtitle(paste0("Posture ", clusterID_to_plot))+
+    theme(plot.caption = element_text(vjust = -3),
+          legend.position = "none")
+  
+  #bring all together
+  ((plot_raw + plot_spacer()) |
+    plots_alligned/
+    plot_corresponding_cluster_mean) +
+    plot_layout(heights = unit(c(6,1,8,8), c('cm', 'cm','cm','cm')))+
+    # plot_layout(widths=c(1,3,3), heights = c(1,3, 3))
+     ggsave(file.path(save_path,paste0("posture_frame",selected_frame,".png")),height=15,width=10)
+
+}
+
+```
+
+
+#Calculate relative occurence of postures per timepoint and plot this as a heatmap
+```{r, include=FALSE}
+
+angle_data_postures <-  skeleton_data_clustered %>%
+  #round to half hour steps
+  mutate(hours_rounded = ceiling(minutes/60*2)/2) %>%
+  mutate(dataset_TrackID =  paste0(dataset_ID,"_",tp,"_",TrackID)) %>%
+  ###
+  # group_by(annotation,dataset_TrackID,hours_rounded) %>%
+  # nest() %>%
+  # group_by(annotation,hours_rounded) %>%
+  # sample_n(80) %>%
+  # unnest(cols=c(data)) %>%
+  ## group_by(annotation,hours_rounded,dataset_TrackID) %>%
+  ## summarise(n_tracks = n_distinct(dataset_TrackID),n_total = n())
+  # group_by(annotation,ID,dataset_TrackID,hours_rounded) %>%
+  # nest() %>%
+  # group_by(annotation,hours_rounded,dataset_TrackID) %>%
+  ## summarise(n=n_distinct(ID))
+  # sample_n(20) %>%
+  # unnest(cols=c(data)) %>%
+  # group_by(annotation,hours_rounded) %>%
+  # summarise(n_tracks = n_distinct(dataset_TrackID),n_postures = n_distinct(ID))
+  ###
+  #reduce dataset
+  group_by(ID,clusterID,annotation,hours_rounded,dataset_TrackID) %>%
+  summarise() %>%
+  #do this for every clusterID, timepoint and annotation
+  group_by(clusterID,hours_rounded,annotation) %>%
+  #number of clusters per timepoint and experiment
+  mutate(number_of_cluster_members_per_tp=n_distinct(ID)) %>%
+  arrange(clusterID) %>%
+  #do this for every timepoint and annotation
+  group_by(hours_rounded,annotation) %>%
+  #total number of postures per timepoint and annotation
+  mutate(postures_per_tp=n_distinct(ID)) %>%
+  #total number of tracks per timepoint and annotation
+  mutate(tracks_per_tp=n_distinct(dataset_TrackID)) %>%
+  #percentage
+  mutate(perc = number_of_cluster_members_per_tp/postures_per_tp) %>%
+  group_by(clusterID,annotation,hours_rounded,number_of_cluster_members_per_tp,postures_per_tp,tracks_per_tp,perc) %>%
+  summarise() %>%
+  #do this for every cluster and experiment  (i.e. over all timepoints)
+  group_by(clusterID,annotation) %>%
+  mutate(sd_perc = sd(perc)) %>%
+  mutate(rM = rollmean(perc, 3, fill=NA)) %>%
+  mutate(sd_rM = sd(rM,na.rm = TRUE)) %>%
+  mutate(mean_perc = mean(perc)) %>%
+  mutate(mean_rM = mean(rM, na.rm=TRUE)) %>%
+  mutate(perc_norm = (perc-mean_perc)/sd_perc) %>%
+  mutate(rM_norm = (rM-mean_rM)/sd_rM) %>%
+  ungroup()
+  
+```
+
+```{r, include=FALSE}
+library(stringr)
+
+
+plot_posture_heatmap <- function(data_to_plot,order){
+  ggplot(data_to_plot,aes(x=factor(clusterID,levels=order),y=hours_rounded))+
+  theme_classic()+
+  labs(x="posture IDs",y = "hours",fill="Z-score") +
+  scale_x_discrete(guide = guide_axis(n.dodge = 2)) +
+  theme(axis.text.y = element_text(size = 30,face = "bold"),
+        axis.text.x = element_text(size = 30),
+        axis.title.x = element_text(size=45),
+        axis.title.y = element_text(size=45),
+        strip.text = element_text(size=45),
+        legend.text=element_text(size=50),
+        legend.title = element_text(size=50),
+        legend.key.size = unit(2, "cm"),
+        legend.position = "right",
+        legend.direction='vertical')+
+  coord_equal()
+}
+
+
+annotations <- c(unique(angle_data_postures$annotation))
+normalizations <- c("perc_norm","rM_norm")
+
+
+for (a in annotations){
+  for (n in normalizations){
+  temporal_clustering <- angle_data_postures %>%
+    filter(str_detect(annotation, a)) %>%
+    na.omit() %>%
+    dcast(clusterID ~ hours_rounded,value.var = n) %>%
+    tibble::column_to_rownames(var = "clusterID")
+  
+  temporal_clustering <- temporal_clustering[order(as.numeric(rownames(temporal_clustering))),,drop=FALSE]
+  ordering <- hclust(dist(temporal_clustering, method = "euclidean"), method = "average")$order
+  
+  heatmap_data_to_plot <- angle_data_postures %>%
+    filter(str_detect(annotation, a)) %>%
+    rename(normalization =  matches(n))
+  
+  heatmap <- plot_posture_heatmap(heatmap_data_to_plot,ordering) +
+    geom_tile(aes(fill=normalization))+
+    scale_fill_distiller(palette = "Spectral",limits=c(-1,1) * max(abs(select(heatmap_data_to_plot,normalization))))+
+    facet_wrap(vars(annotation),ncol=1)
+
+  #levels must be changed for ggplot to take new order into account
+  skeleton_angle_cluster_centers$clusterID = factor(skeleton_angle_cluster_centers$clusterID, levels=ordering)
+  
+  skeletons <- plot_posture_examples(skeleton_angle_cluster_centers, "X","Y") +
+    geom_point(data=filter(skeleton_angle_cluster_centers,index == 2), aes(X,Y),color="orange",size=5,shape=17) +
+    facet_wrap(vars(clusterID),ncol=5) +
+    theme(strip.text.x = element_text(size = 20,face="bold"))
+  
+  heatmap /
+    skeletons + 
+    plot_layout(widths = c(1,8),heights = c(1,8)) +
+    ggsave(file.path(save_path,paste0("200331_heatmap_",a,"_",n,".png")),width=40,height=30)
+  }
+}
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
