@@ -1,0 +1,43 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r, include=FALSE}
+conversion_factor <- 6.25
+min_frames <- 10
+
+tic()
+data <- imported_data  %>%
+  filter(dataset_ID == a_dataset) %>%
+  filter(tp %in% c(1:10)) %>%
+  group_by(dataset_ID,tp,TrackID) %>%
+  group_modify(~ skeleton_direction(.x)) %>%
+  group_by(dataset_ID, tp,TrackID,frame) %>%
+  group_modify(~ skeleton_frame(.x),keep=TRUE) %>%
+  group_modify(~ skeleton_head(.x)) %>%
+  mutate(distance_to_latest_head = NA) %>%
+  group_by(dataset_ID, tp,TrackID) %>%
+  mutate(head_to_be_estimated = ifelse(grepl("downsampled|unclear",status),"YES","NO" )) %>%
+  group_modify(~ skeleton_head_estimate(.x)) %>%
+  group_by(dataset_ID, tp,TrackID,frame) %>%
+  group_modify(~ skeleton_reorder(.x)) %>%
+  group_by(dataset_ID,tp,TrackID,frame) %>%
+  filter(any(is_head=="YES")) %>%
+  group_by(dataset_ID,TrackID,tp) %>%
+  mutate(TrackCheck_cleaned = replace_f(TrackCheck, 26*min_frames)) %>%
+  drop_na("TrackCheck_cleaned") %>%
+  ungroup() %>%
+  group_by(dataset_ID,tp,TrackID,frame) %>%
+  #all angles have to be between pi and -pi
+  mutate(angle = ifelse(angle > pi & is.na(is_end), 2 * pi - angle,angle)) %>%
+  mutate(angle = ifelse(angle < -pi & is.na(is_end), -2 * pi - angle,angle)) %>%
+  ungroup()
+
+toc()
+
+```
+
+```{r, include=FALSE}
+files_to_process
+```

@@ -18,7 +18,7 @@ binning_factor = 20 #==10 seconds
 #list of .rds files in data folder
   
 files_to_process <- list.files(target_folder, "raw_data.rds", full.names = TRUE, ignore.case = TRUE)
-files_processed <- list.files(target_folder, "centroid", full.names = TRUE, ignore.case = TRUE)
+
 
 number_files_to_process <- length(files_to_process) * 2
 #for each of these files calculate the centroid tracking statistics

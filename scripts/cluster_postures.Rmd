@@ -5,95 +5,107 @@ save_path <- "/home/fpreuss/raid/timelapses/analysis/200318/plots/posture"
 
 
 files_to_process <- list.files(target_folder,"skeletons_filtered.rds", full.names = TRUE, ignore.case = TRUE)
-files_to_process <- files_to_process[!grepl("L2|exit|daf2|1:10",files_to_process)]
-files_to_process_annotations <- gsub(".+\\/\\d+\\_(.+)\\_minimum.+","\\1", files_to_process)
+
+
+```
+
+
+```{r, include=FALSE}
 
 
 skeleton_data_filtered <- files_to_process %>%
-  map_df(., function(x) readRDS(x)) %>%
-  group_by(dataset_ID,tp,TrackID,frame) %>%
-  #all angles have to be between pi and -pi
-  mutate(angle = ifelse(angle > pi & is.na(is_end), 2 * pi - angle,angle)) %>%
-  mutate(angle = ifelse(angle < -pi & is.na(is_end), -2 * pi - angle,angle)) %>%
-  mutate(mean_angle = mean(angle, na.rm = TRUE)) %>%
-  ungroup()
-
-
-# 
-# plot <- ggplot(skeleton_data_filtered,aes(angle))+
-#   geom_histogram(binwidth=0.01)
-# 
-# 
-# plot
-```
-
-
-```{r, include=FALSE}
+  map_df(., function(x) readRDS(x))
 
 #transpose - rows: posture IDs, -columns: angles
 angle_data_cluster <- skeleton_data_filtered %>%
-  dcast(ID ~ index,value.var = "angle")
-
-#make IDs the rowname so that this column is not part of the clustering data
-rownames(angle_data_cluster) <- angle_data_cluster$ID
-angle_data_cluster <- select(angle_data_cluster,-ID)
-
-#take out first and last angle
-angle_data_cluster <-angle_data_cluster[,2:(ncol(angle_data_cluster)-1)]
+  dcast(ID ~ index,value.var = "angle") %>%
+  #make IDs the rowname so that this column is not part of the clustering data
+  tibble::column_to_rownames(var = "ID") %>%
+  #take out first and last angle
+  select(-c(1,ncol(.)))
 
 
-```
-
-
-```{r, include=FALSE}
-
-
-head(angle_data_cluster)
-angle_data_cluster_test <- sample_n(angle_data_cluster, 15000)
-
-n = nrow(angle_data_cluster_test)
-kmax = 100
-totwss <- NULL
-
-
-
-for (i in seq(10,kmax,by=10)){
-  kclus = kmeans(angle_data_cluster_test,centers=i,nstart=5,iter.max = 1000,algorithm = "Lloyd")
-  totwss <- c(totwss, kclus$tot.withinss)
-}
-
-
-rsq = 1-(totwss*(n-1))/(totwss[1]*(n-seq(10,kmax,by=10)))
-
-kclus
-#measure of the total variance in the data set that is explained by the clustering.
-# saveRDS(target_folder, )
-plot(seq(10,kmax,by=10),rsq,xlab="Number of clusters",ylab="Adjusted R-squared",pch=20,cex=2)
-plot(seq(10,kmax,by=10),totwss, pch=20, cex=2)
-
-
-```
 
 #calculate clusters
 #choose right number of centers!
-```{r, include=FALSE}
-centers <- 100
 
-cluster <- kmeans(angle_data_cluster,centers=centers,nstart=5,iter.max = 1000,algorithm = "Lloyd")
+centers <- 150
 
-groups <- as.character(cluster$cluster)
+cluster <- kmeans(angle_data_cluster,centers=centers,nstart = 5,iter.max = 1000,algorithm = "Lloyd")
 
-skeleton_data_clustered <- skeleton_data_filtered  %>%
-  mutate(ID = paste0(dataset_ID, "_",tp,"_",TrackID,"_",frame)) %>%
-  dcast(.,ID ~ index,value.var = "angle") %>%
-  select(ID) %>%
-  #add groups
-  mutate(clusterID = groups) %>%
-  inner_join(skeleton_data_filtered, by="ID")
 
-skeletons_filtered_clustered_filepath <- file.path(target_folder,paste0("200330_",paste(files_to_process_annotations,collapse = "_"),"_skeletons_filtered_clustered.RDS"))
+cluster_centers <- melt(cluster$centers) %>%
+  rename("clusterID" = Var1, "index" = Var2, "angle" = value) %>%
+    arrange(clusterID) %>%
+  mutate(new_angle=0, X=1, Y=1) %>%
+  group_by(clusterID) %>%
+  #estimate the positions for each clusterID independently
+  group_modify(~ estimate_positions_from_angles(.x)) %>%
+  #turn the coordinates so that the worm's orientations are similar
+  group_modify(~ turn_worm(.x)) %>%
+  select(-new_angle) %>%
+  ungroup()
+
+
+cluster_centers_reduced <- cluster_centers %>%  
+  #create mirrored posture
+  mutate(angle_mirror = -angle) %>%
+  #for every posture (i.e. clusterID)
+  group_by(clusterID) %>%
+  mutate(posture = clusterID) %>%
+  #compare this posture to all others and identify the mirrored version
+  group_modify(~ diff_to_angle(.x,cluster_centers)) %>%
+  ungroup() %>%
+  select(-posture) %>%
+  #identify pairs (same difference)
+  group_by(difference) %>%
+  #the smaller clusterID of the pair will be the newID
+  mutate(newID = min(clusterID)) %>%
+  group_by(newID,index) %>%
+  #newIDs allows to seperate both postures that have been regrouped with common
+  mutate(newID_sub = 1:n()) %>%
+  mutate(clusterID = as.character(clusterID)) %>%
+  arrange(newID) %>%
+  ungroup() %>%
+  #now replace newID (which corresponds to the smaller old ClusterID) with a new number
+  #so that all postures are numbered straight with no gaps
+  mutate(newID = as.integer(as.factor(newID)))
+
+
+#this gives out an overview image of all postures (with mirrored corresponding ones)
+plot_posture_examples(cluster_centers_reduced, "X","Y") +
+  geom_point(data=filter(cluster_centers_reduced,index == 2), aes(X,Y),color="orange",size=3,shape=17) +
+  facet_wrap(vars(newID,newID_sub),ncol=4) +
+  theme(strip.text.x = element_text(size = 20,face="bold"))+
+  ggsave(file.path(save_path,paste0("posture_angle_centers_mirrorExamples",".png")),height=49,width=10)
+
+#a dataframe with the clusterID (old as put out by kmeans) and the skeleton ID (from rownames of angle_data_cluster dataframe)
+skeletonIDs_with_postures <- data.frame(clusterID = as.character(cluster$cluster), ID = rownames(angle_data_cluster),stringsAsFactors = FALSE)
+
+
+
+skeleton_data_clustered <- cluster_centers_reduced %>%
+  group_by(clusterID,newID) %>%
+  summarise() %>%
+  arrange(newID) %>%
+  #this is only a list of old clusterIDs (as of kmeans) and corresponing new IDs
+  select(clusterID,newID) %>%
+  #now join this list with the list of all skeleton IDs and their corresponding (old) clusterIDs
+  inner_join(skeletonIDs_with_postures,by="clusterID") %>%
+  #add skeleton features for every skeleton ID
+  left_join(skeleton_data_filtered,by="ID") %>%
+  ungroup()
+
+
+annotations <- c(unique(skeleton_data_filtered$annotation))
+files_to_process_annotations <- paste(annotations,collapse="_")
+
+cluster_centers_reduced_filepath <- file.path(target_folder,paste0("200417_",paste(files_to_process_annotations,collapse = "_"),"_cluster_centers_reduced.RDS"))
+saveRDS(cluster_centers_reduced, file=cluster_centers_reduced_filepath)
+skeletons_filtered_clustered_filepath <- file.path(target_folder,paste0("200417_",paste(files_to_process_annotations,collapse = "_"),"_skeletons_filtered_clustered.RDS"))
 saveRDS(skeleton_data_clustered, file=skeletons_filtered_clustered_filepath)
-clustering_filepath <- file.path(target_folder,paste0("200330_",paste(files_to_process_annotations,collapse = "_"),"_clustering.RDS"))
-saveRDS(cluster, file=file.path(target_folder,paste0("200330_",paste(files_to_process_annotations,collapse = "_"),"_clustering.RDS")))
+clustering_filepath <- file.path(target_folder,paste0("200417_",paste(files_to_process_annotations,collapse = "_"),"_clustering.RDS"))
+saveRDS(cluster, file=clustering_filepath)
+
 ```
 
