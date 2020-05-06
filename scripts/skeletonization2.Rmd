@@ -1,123 +1,108 @@
 ```{r message=FALSE, include=FALSE}
 
 
-
 target_folder <- "/home/fpreuss/raid/timelapses/analysis/200318/data"
 save_path_plots <- "/home/fpreuss/raid/timelapses/analysis/200318/plots/posture/moving_skeletons/"
 
-conversion_factor <- 6.25
-min_frames <- 10
+conversion_f <- 6.25
+
 
 #list of .rds files in data folder
 files_to_process <- list.files(target_folder, "raw_data.rds", full.names = TRUE, ignore.case = TRUE)
 #define which .rds files to exclude
-files_to_process <- grep("daf2|L2|1:10",files_to_process,value = TRUE,invert=TRUE)
+# files_to_process <- grep("daf2|L2|1:10",files_to_process,value = TRUE,invert=TRUE)
+files_to_process <- grep("no_food",files_to_process,value = TRUE)
 
 #load .rds with all experimental replicates
 for (file in files_to_process){
   cat(paste0("\n\nimporting file: ", file))
-  imported_data <- readRDS(file)
-  annotation <- unique(imported_data$annotation)
-  annotation_underscored <- gsub(" ", "_", annotation)
+  data <- readRDS(file)
+  
+  annotation <- data %>%
+    distinct(annotation) %>%
+    pull(annotation)
+  
+  
+  cat(paste0("\nWorking on ",annotation, " files."))
+  
 
-  datasets_loaded <- unique(imported_data$dataset_ID)
-  cat(paste0(annotation, " files loaded."))
+  #do the skeletonization for each timepoint individually
+  for (timepoint in 1:70){
 
-  #do the skeletonization for each dataset individually
-  for (a_dataset in datasets_loaded){
-    cat(paste0("\nprocessing ", a_dataset))
+
+    cat(paste0("\n\nprocessing timepoint ", timepoint))
       
-    #tic()
-    data <- imported_data  %>%
-        #only rows from that experimental replicate
-        filter(dataset_ID == a_dataset) %>%
-        group_by(dataset_ID,tp,TrackID) %>%
-        #guess direction from centroid movement for every Track
-        group_modify(~ skeleton_direction(.x)) %>%
-        group_by(dataset_ID, tp,TrackID,frame) %>%
-        #skeletonization independently for every frame (this step takes time as skeletonization is happening one after the other)
-        group_modify(~ skeleton_frame(.x),keep=TRUE) %>%
-        #guess head by chosing end pixel pointing in the moving direction (see above)
-        group_modify(~ skeleton_head(.x)) %>%
-        mutate(distance_to_latest_head = NA) %>%
-        group_by(dataset_ID, tp,TrackID) %>%
-        mutate(head_to_be_estimated = ifelse(grepl("downsampled|unclear",status),"YES","NO" )) %>%
-        #head estimation based on head in closest frame
-        group_modify(~ skeleton_head_estimate(.x)) %>%
-        group_by(dataset_ID, tp,TrackID,frame) %>%
-        #reorder so that head is always index == 1
-        group_modify(~ skeleton_reorder(.x)) %>%
-        #only keep skeletons where a head was detected or estimated
-        group_by(dataset_ID,tp,TrackID,frame) %>%
-        filter(any(is_head=="YES")) %>%
-        #keep only tracks that have skeletons with head for a minimum amount of time (defined by min_frames)
-        group_by(dataset_ID,TrackID,tp) %>%
-        mutate(TrackCheck_cleaned = replace_f(TrackCheck, 26*min_frames)) %>%
-        drop_na("TrackCheck_cleaned") %>%
-        ungroup() %>%
-        group_by(dataset_ID,tp,TrackID,frame) %>%
-        #all angles have to be between pi and -pi
-        mutate(angle = ifelse(angle > pi & is.na(is_end), 2 * pi - angle,angle)) %>%
-        mutate(angle = ifelse(angle < -pi & is.na(is_end), -2 * pi - angle,angle)) %>%
-        ungroup() %>%
-        mutate(annotation = annotation)
+    data_skeletonized <- data %>%
+      filter(tp == timepoint) %>%
+      group_by(dataset_ID,tp,TrackID) %>%
+      #guess direction from centroid movement for every Track
+      group_modify(~ skeleton_direction(.x)) %>%
+      group_by(dataset_ID, tp,TrackID,frame) %>%
+      #skeletonization independently for every frame (this step takes time as skeletonization is happening one after the other)
+      group_modify(~ skeleton_frame(.x),keep=TRUE) %>%
+      #guess head by chosing end pixel pointing in the moving direction (see above)
+      group_modify(~ skeleton_head(.x)) %>%
+      mutate(distance_to_latest_head = NA) %>%
+      group_by(dataset_ID, tp,TrackID) %>%
+      mutate(head_to_be_estimated = ifelse(grepl("downsampled|unclear",status),"YES","NO" )) %>%
+      #head estimation based on head in closest frame
+      group_modify(~ skeleton_head_estimate(.x)) %>%
+      group_by(dataset_ID, tp,TrackID,frame) %>%
+      #reorder so that head is always index == 1
+      group_modify(~ skeleton_reorder(.x)) %>%
+      group_by(dataset_ID,tp,TrackID,frame) %>%
+      #all angles have to be between pi and -pi
+      mutate(angle = ifelse(angle > pi & is.na(is_end), 2 * pi - angle,angle)) %>%
+      mutate(angle = ifelse(angle < -pi & is.na(is_end), -2 * pi - angle,angle)) %>%
+      ungroup() %>%
+      mutate(annotation = annotation) %>%
+      mutate(conversion_factor = conversion_f)
     #toc()
       
         
-    cat("skeletonization and head estimation done. now saving.")
-    created_file_path <- file.path(target_folder,"posture",paste0("200421_",a_dataset,"_with_headext_reordered.rds"))
-    saveRDS(data, file = created_file_path)
-    cat(paste0("dataset: ",a_dataset, " was skeletonized, filtered \nand saved under: ", created_file_path))
+    cat("\nskeletonization and head estimation done. now saving.")
+    created_file_path <- file.path(target_folder,"posture",paste0("200428_",annotation,"_timepoint_",timepoint,"_skeletonized.rds"))
+    saveRDS(data_skeletonized, file = created_file_path)
+    cat(paste0("\ndataset: ",annotation," timepoint ",timepoint, " was skeletonized, filtered \nand saved under: ", created_file_path))
     
-  #   cat("\nNow plotting example moving skeletons.")
-  #   
-  #   data_for_plotting <- data 
-  # 
-  #   all_frames <- data_for_plotting %>%
-  #     group_by(frame) %>%
-  #     distinct(frame) %>%
-  #     pull(frame) %>%
-  #     sort()
-  # 
-  #   all_tps <- data_for_plotting %>%
-  #     group_by(tp) %>%
-  #     distinct(tp) %>%
-  #     pull(tp) %>%
-  #     sort()
-  # 
-  #   for (t in all_tps){
-  #     data_for_plotting_temp <- data_for_plotting %>%
-  #     filter(tp == t)
-  # 
-  #     for (i in all_frames){
-  #       ggplot(data_for_plotting_temp)+
-  #         # geom_path(aes(x=location_x, y=location_y,group=TrackID), linetype = 2,alpha=0.5)+
-  #         theme(legend.position = "none")+
-  #         theme_void()+
-  #         theme(aspect.ratio = 1024/1024)+
-  #         coord_cartesian(ylim=c(0, 1023))+
-  #         scale_x_continuous(expand = c(0, 0), limits= c(0,1023))+
-  #         scale_y_continuous(expand = c(0, 0),trans="reverse", limits= c(1023,0))+
-  #         geom_point(data=filter(data_for_plotting_temp,frame==i),aes(location_x+X,location_y+Y,color=angle),size=0.5)+
-  #         # geom_path(data=filter(data_for_plotting_temp,frame==i),aes(location_x+X,location_y+Y,color=angle,group=TrackID),size=1)+
-  #         geom_point(data=filter(data_for_plotting_temp,frame==i & is_head== "YES"),aes(location_x+X,location_y+Y),color="orange",size=2,shape=17)+
-  #         scale_color_gradient2(low = "deepskyblue", mid = "lavender",
-  #                                 high = "deeppink",midpoint=0,limits=c(-1,1),na.value="grey") +
-  #         theme(legend.position = "none")+
-  #         # geom_label_repel(data=filter(data_for_plotting_temp,frame==i & is_head== "YES"),aes(location_x+X,location_y+Y,label = TrackID),
-  #         #           size=2.5,
-  #         #           box.padding   = 0.2, 
-  #         #           point.padding = 0.5,
-  #         #           segment.color = 'grey50'
-  #         #           ) +
-  #         ggtitle(paste0(data_for_plotting_temp$dataset_ID, "_",t)) +
-  #         ggsave(file.path(save_path_plots,paste0("Moving_skeletons_dataset_",a_dataset,"_tp_",t,"_frame_",i,".png")),width=6,height=6)
-  #     }
-  #   }
-  # cat("\nPlotting done.")
+
+    
   }
 }
 ```
 
+```{r message=FALSE, include=FALSE}
+
+target_folder <- "/home/fpreuss/raid/timelapses/analysis/200318/data/posture/skeletonized/"
+
+min_frames <- 10
+
+#list of .rds files in data folder
+files_to_process <- list.files(target_folder, "skeletonized.rds", full.names = TRUE, ignore.case = TRUE)
+files_to_process_annotations <- unique(gsub(".+\\_(.+)_timepoint.+","\\1",files_to_process))
 
 
+for (annotation in files_to_process_annotations){
+  
+  cat(paste0("\n\nprocessing: ",annotation))
+  
+  data <- grep(annotation,files_to_process,value=TRUE) %>%
+      map_df(.,function(x) readRDS(x)) %>%
+      #only keep skeletons where a head was detected or estimated
+      group_by(dataset_ID,tp,TrackID,frame) %>%
+      filter(any(is_head=="YES")) %>%
+      #keep only tracks that have skeletons with head for a minimum amount of time (defined by min_frames)
+      group_by(dataset_ID,TrackID,tp) %>%
+      mutate(TrackCheck_cleaned = replace_f(TrackCheck, 26*min_frames)) %>%
+      drop_na("TrackCheck_cleaned") %>%
+      ungroup()
+
+  cat("\nskeleton filtering done. now saving.")
+  created_file_path <- file.path(target_folder,paste0("200506_",annotation,"_skeletonized_filtered.rds"))
+  saveRDS(data, file = created_file_path)
+  cat(paste0("\ndataset: ",annotation," was filtered \nand saved under: ", created_file_path))
+
+}
+
+
+```
