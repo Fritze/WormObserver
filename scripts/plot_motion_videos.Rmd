@@ -1,0 +1,151 @@
+
+#load the skeletoized data
+```{r message=FALSE, include=FALSE}
+
+target_folder <- "/home/fpreuss/raid/timelapses/analysis/200318/data/posture/skeletonized/"
+
+#list of .rds files in data folder
+files_to_process <- list.files(target_folder, "skeletonized_filtered.rds", full.names = TRUE, ignore.case = TRUE)
+files_to_process_annotations <- unique(gsub(".+\\_(.+)_skeletonized_filtered.rds","\\1",files_to_process))
+
+data <- files_to_process %>%
+    map_df(.,function(x) readRDS(x))
+
+```
+
+
+#select experiment type, dataset and timepoints to process
+#we also set a minimum track length ("minimal_track_length" variable) and select a fixed number of random tracks (defined by "numbers_of_displayed_tracls" variable)
+```{r message=FALSE, include=FALSE}
+target_folder <- "/home/fpreuss/raid/timelapses/analysis/200318/plots/posture/moving_skeletons/"
+
+#what is the conversion factor ? how many µm equals one pixel
+conversion_factor <- 6.25
+
+#select which annotation (==type of experiment)
+selected_annotation <- files_to_process_annotations[1]
+dataset_IDs <- data %>%
+  filter(annotation %in% selected_annotation) %>%
+  ungroup() %>%
+  distinct(dataset_ID) %>%
+  pull(dataset_ID)
+#select which dataset
+selected_dataset_ID <- dataset_IDs[1]
+
+
+#select which timepoints
+selected_timepoint <- 1:10
+#only tracks longer than 30 sec (if 2fps)
+minimal_track_length <- 60
+#How many tracks are shown?
+numbers_of_displayed_tracks <- 30
+
+#calculate track angle and velocity for the selected data
+angle_and_velocity <- data %>%
+  filter(dataset_ID == selected_dataset_ID) %>%
+  filter(tp %in% selected_timepoint) %>%
+  group_by(dataset_ID,tp,TrackID,frame) %>%
+  summarise(location_x = first(location_x),location_y = first(location_y)) %>%
+  group_by(dataset_ID,tp,TrackID) %>%
+  mutate(x_lag=lag(location_x,n=1) - location_x, y_lag = lag(location_y, n=1) - location_y) %>%
+  mutate(x_lead=lead(location_x, n=1) - location_x, y_lead=lead(location_y, n=1) - location_y) %>%
+  # calculate the angle and convert to degrees
+  mutate(angle_track = suppressWarnings(180 - (as.numeric(mapply(angle,x_lag,y_lag,x_lead,y_lead)))*180/pi)) %>%
+  # measure distance between current point and 1 second before
+  mutate(local_distance=suppressWarnings(as.numeric(mapply(distance,lag(location_x,n=2),lag(location_y,n=2),location_x,location_y)))) %>%
+  # this will result in velocity based on local distance (µm/s)
+  mutate(velocity = local_distance*conversion_factor/2) %>%
+  select(angle_track,velocity,frame)
+
+#append track angle and velocity to data
+data_for_plotting <- data %>%
+  filter(dataset_ID == selected_dataset_ID) %>%
+  filter(tp %in% selected_timepoint) %>%
+  group_by(dataset_ID,tp,TrackID) %>%
+  mutate(track_length = last(frame)-first(frame)) %>%
+  mutate(first_location_x = first(location_x),first_location_y = first(location_y)) %>%
+  mutate(location_x_centered = location_x-first_location_x, location_y_centered = location_y-first_location_y) %>%
+  left_join(angle_and_velocity,by=c("dataset_ID","tp","TrackID","frame")) %>%
+  mutate(ID = paste0(dataset_ID,"_",tp,"_",TrackID)) %>%
+  filter(track_length > minimal_track_length) %>%
+  ungroup()
+  
+
+ 
+#sample random tracks
+#how many tracks is defined by "numbers_of_displayed_track" variable
+data_for_plotting_sub <- data_for_plotting %>%
+ distinct(ID) %>%
+ sample_n(numbers_of_displayed_tracks) %>%
+ left_join(data_for_plotting, by="ID")
+
+#plot the sampled tracks at their original location
+ggplot(data_for_plotting_sub)+
+    geom_path(aes(x=location_x, y=location_y,group=ID,color=ID))+
+    theme(aspect.ratio = 1024/1024)+
+    scale_x_continuous(expand = c(0, 0), limits= c(0,1023))+
+    scale_y_continuous(expand = c(0, 0),trans="reverse", limits= c(1023,0))+
+    theme_void()+
+    theme(legend.position = "none")+
+    theme(legend.text = element_text(colour="white", size = 16, face = "bold"))+
+    theme(legend.title = element_text(colour="white", size = 16, face = "bold"))+
+    ggsave(file.path(target_folder,paste0(selected_dataset_ID,"_","timepoints_",min(selected_timepoint),"-",max(selected_timepoint),"_all_tracks",".png")),height = 30,width= 30,units = "cm",bg="black",dpi=150)
+
+#plot the sampled tracks at their centered location
+ggplot(data_for_plotting_sub)+
+    geom_path(aes(x=location_x_centered, y=location_y_centered,group=ID,color=ID))+
+    theme(aspect.ratio = 1024/1024)+
+    scale_x_continuous(limits= c(-1023,1023))+
+    scale_y_continuous(limits= c(-1023,1023))+
+    theme_void()+
+    theme(legend.position = "none")+
+    ggsave(file.path(target_folder,paste0(selected_dataset_ID,"_","timepoint_",min(selected_timepoint),"-",max(selected_timepoint),"_all_tracks_centered",".png")),height = 30,width= 30,units = "cm",bg="black",dpi=150)
+
+
+```
+
+#plot all frames with skeletons in their original location
+```{r message=FALSE, include=FALSE}
+
+frames <- sort(unique(data_for_plotting_sub$frame))
+for (selected_frame in frames){
+  
+  data_for_plotting_temp <- data_for_plotting_sub %>%
+    filter(frame == selected_frame)
+  
+  ggplot(data_for_plotting_temp)+
+    theme(aspect.ratio = 1024/1024)+
+    coord_cartesian(ylim=c(0, 1023))+
+    scale_x_continuous(expand = c(0, 0), limits= c(0,1023))+
+    scale_y_continuous(expand = c(0, 0),trans="reverse", limits= c(1023,0))+
+    geom_point(data=filter(data_for_plotting_temp,frame==selected_frame),aes(location_x+X,location_y+Y,color=angle),size=0.5)+
+    geom_point(data=filter(data_for_plotting_temp,frame==selected_frame & is_head== "YES"),aes(location_x+X,location_y+Y),color="orange",size=4,shape=17)+
+    scale_color_gradient2(low = "deepskyblue", mid = "lavender",
+                          high = "deeppink",midpoint=0,limits =c(-1,1),na.value="grey")+
+    theme_void()+
+    theme(legend.position = "none")+
+    ggsave(file.path(target_folder,paste0(selected_annotation,"_","timepoints_",min(selected_timepoint),"-",max(selected_timepoint),"_frame_",selected_frame,".png")),height = 30,width= 30,units = "cm",bg="black",dpi=150)
+}
+
+```
+
+
+#plot all frames with skeletons in their centered location
+```{r message=FALSE, include=FALSE}
+
+frames <- sort(unique(data_for_plotting_sub$frame))
+for (selected_frame in frames){
+  ggplot(data_for_plotting_sub)+
+    theme(aspect.ratio = 1024/1024)+
+    scale_x_continuous(limits= c(-1024/2,1024/2))+
+    scale_y_continuous(limits= c(-1024/2,1024/2))+
+    geom_point(data=filter(data_for_plotting_sub,frame==selected_frame),aes(location_x_centered+X,location_y_centered+Y,color=angle),size=0.5)+
+    geom_point(data=filter(data_for_plotting_sub,frame==selected_frame & is_head== "YES"),aes(location_x_centered+X,location_y_centered+Y),color="orange",size=4,shape=17)+
+    scale_color_gradient2(low = "deepskyblue", mid = "lavender",
+                          high = "deeppink",midpoint=0,limits =c(-1,1),na.value="grey")+
+    theme_void()+
+    theme(legend.position = "none")+
+    ggsave(file.path(target_folder,paste0(selected_annotation,"_","timepoints_",min(selected_timepoint),"-",max(selected_timepoint),"_frame_",selected_frame,"_centered.png")),height = 30,width= 30,units = "cm",bg="black",dpi=150)
+}
+  
+```
