@@ -1,10 +1,10 @@
 ```{r, include=FALSE}
 
-target_folder<-"/home/fpreuss/raid/timelapses/analysis/200318/data/posture"
+target_folder<-"/home/fpreuss/raid/timelapses/analysis/200318/data/posture/skeletonized/"
 save_path <- "/home/fpreuss/raid/timelapses/analysis/200318/plots/posture"
 
 
-files_to_process <- list.files(target_folder,"skeletons_filtered.rds", full.names = TRUE, ignore.case = TRUE)
+files_to_process <- list.files(target_folder,"skeletonized_filtered.rds", full.names = TRUE, ignore.case = TRUE)
 
 
 ```
@@ -12,9 +12,9 @@ files_to_process <- list.files(target_folder,"skeletons_filtered.rds", full.name
 
 ```{r, include=FALSE}
 
-
 skeleton_data_filtered <- files_to_process %>%
-  map_df(., function(x) readRDS(x))
+  map_df(., function(x) readRDS(x)) %>%
+  mutate(ID = paste0(dataset_ID, "_",tp,"_",TrackID,"_",frame))
 
 #transpose - rows: posture IDs, -columns: angles
 angle_data_cluster <- skeleton_data_filtered %>%
