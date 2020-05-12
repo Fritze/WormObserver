@@ -3,23 +3,22 @@
 #We need the clustering file containing the mean positions of each cluster as well as the skeletons filtered file with clusters attached
 ```{r, include=FALSE}
 
-target_folder<-"/home/fpreuss/raid/timelapses/analysis/200318/data/posture"
-save_path <- "/home/fpreuss/raid/timelapses/analysis/200318/plots/posture"
+target_folder<-"/home/fpreuss/raid/timelapses/analysis/200318/data/posture/skeletonized"
+save_path <- "/home/fpreuss/raid/timelapses/analysis/200318/plots/posture/heatmaps"
 
 
-skeletons_filtered_clustered_filepath <- list.files(path = target_folder,pattern="200417.+skeletons_filtered_clustered.RDS",ignore.case = TRUE, full.names = TRUE)
-clustering_filepath <- list.files(path = target_folder,pattern="200417.+clustering.RDS",ignore.case = TRUE, full.names = TRUE)
-cluster_centers_reduced_filepath <- list.files(path = target_folder,pattern="200417.+_cluster_centers_reduced.RDS",ignore.case = TRUE, full.names = TRUE)
+skeletons_filtered_clustered_filepath <- list.files(path = target_folder,pattern="200428.+skeletons_filtered_clustered.RDS",ignore.case = TRUE, full.names = TRUE)
+clustering_filepath <- list.files(path = target_folder,pattern="200428.+clustering.RDS",ignore.case = TRUE, full.names = TRUE)
+cluster_centers_reduced_filepath <- list.files(path = target_folder,pattern="200428.+_cluster_centers_reduced.RDS",ignore.case = TRUE, full.names = TRUE)
 
 cluster <- readRDS(clustering_filepath)
-cluster_centers_reduced <- readRDS(clusters_centers_reduced_filepath)
+cluster_centers_reduced <- readRDS(cluster_centers_reduced_filepath)
 skeleton_data_clustered <- readRDS(skeletons_filtered_clustered_filepath)
 ```
 
 
 
 #calculate relative occurence of clusters
-#also calculate different ordering vectors (based on posture frequency or similarity)
 ```{r, include=FALSE}
 
 #add clusters to initial skeleton dataset that was used for kmeans clustering
@@ -67,6 +66,21 @@ order_overall <- freq_postures_overall$newID
 #Plot every frame of a random track
 #plotted will be the original skeleton (with original X and Y location), as well as the alligned skeleton and the corresponding posture
 ```{r, include=FALSE}
+
+save_path_comparison <- "/home/fpreuss/raid/timelapses/analysis/200318/plots/posture/postures_comparison_plots"
+
+plot_posture_examples <- function(data_to_plot,X,Y){
+  ggplot(data_to_plot, aes_string(x=X,y=Y,color="angle"))+
+    geom_point(size=0.75) +
+    geom_path(size=2,lineend = "round") +
+    theme_void()+
+    coord_fixed(ratio = 1)+
+    scale_color_gradient2(low = "deepskyblue", mid = "lavender",
+                          high = "deeppink",midpoint=0,limits=c(-1,1),na.value="grey") +
+    # scale_color_viridis(option = "plasma",limits=c(-1,1))+
+    theme(plot.title = element_text(face = "bold"))
+  
+}
 
 #list of all tracks
 list_of_tracks <- skeleton_data_clustered %>%
@@ -131,7 +145,7 @@ for (i in unique(skeleton_data_clustered_subset$frame)){
     plot_corresponding_cluster_mean) +
     plot_layout(heights = unit(c(6,1,8,8), c('cm', 'cm','cm','cm')))+
     # plot_layout(widths=c(1,3,3), heights = c(1,3, 3))
-     ggsave(file.path(save_path,paste0("posture_frame",selected_frame,".png")),height=15,width=10)
+     ggsave(file.path(save_path_comparison,paste0("posture_frame",selected_frame,".png")),height=15,width=10)
 
 }
 
@@ -142,10 +156,11 @@ for (i in unique(skeleton_data_clustered_subset$frame)){
 ```{r, include=FALSE}
 
 angle_data_postures_first <-  skeleton_data_clustered %>%
+  mutate(minutes = 10 + ((tp-1)*8+(tp-1)*0)) %>%
   #round to half hour steps
-  # mutate(hours_rounded = ceiling(minutes/60*2)/2) %>%
+  mutate(hours_rounded = ceiling(minutes/60*2)/2) %>%
   #round to full hour steps
-  mutate(hours_rounded = ceiling(minutes/60)) %>%
+  # mutate(hours_rounded = ceiling(minutes/60)) %>%
   mutate(dataset_TrackID =  paste0(dataset_ID,"_",tp,"_",TrackID)) %>%
   ###
   # group_by(annotation,dataset_TrackID,hours_rounded) %>%
@@ -212,7 +227,9 @@ angle_data_postures <- angle_data_postures_first %>%
   mutate(rM_norm = (rM-mean_rM)/sd_rM) %>%
   ungroup() %>%
   filter(hours_rounded <= 9) %>%
-  arrange(newID,hours_rounded,annotation)
+  arrange(newID,hours_rounded,annotation) %>%
+  group_by(hours_rounded,annotation) %>%
+  mutate(tracks_per_hours_rounded = first(tracks_per_tp))
 
 #Posture quantified over time per dataset_ID (i.e. per experiment replicate)
 angle_data_postures_per_dataset <- angle_data_postures_first %>%  
@@ -289,17 +306,32 @@ for (a in annotations){
   #normaliazion column will be the one for the current normalization
   heatmap_data_to_plot <- angle_data_postures %>%
     filter(annotation == a) %>%
-    rename(normalization =  all_of(n))
+    rename(normalization =  all_of(n)) %>%
+    ungroup() %>%
+    mutate(hours_rounded_w_numbers = paste0(hours_rounded, " (",tracks_per_hours_rounded,")"))
   
   #generate heatmap
-  heatmap <- plot_posture_heatmap(heatmap_data_to_plot,ordering) +
+  heatmap <- ggplot(heatmap_data_to_plot,aes(x=factor(newID,levels=ordering),y=hours_rounded_w_numbers))+
+    theme_classic()+
+    labs(x="posture IDs",y = "hours",fill="Z-score") +
+    scale_x_discrete(guide = guide_axis(n.dodge = 2)) +
+    theme(axis.text.y = element_text(size = 30,face = "bold"),
+        axis.text.x = element_text(size = 30),
+        axis.title.x = element_text(size=45),
+        axis.title.y = element_text(size=45),
+        strip.text = element_text(size=45),
+        legend.text=element_text(size=50),
+        legend.title = element_text(size=50),
+        legend.key.size = unit(2, "cm"),
+        legend.position = "right",
+        legend.direction='vertical')+
+    coord_equal()+
     geom_tile(aes(fill=normalization))+
-    scale_fill_distiller(type = "div",limits=c(-1,1) * max(abs(select(heatmap_data_to_plot,normalization))))+
-    # scale_fill_distiller(palette="PiYG",limits=c(-1,1) * max(abs(select(heatmap_data_to_plot_per_dataset,normalization_per_dataset))))+
-    scale_y_continuous(breaks=seq(1,max(heatmap_data_to_plot$hours_rounded),2))
-  
+    scale_fill_distiller(type = "div",limits=c(-1,1) * max(abs(select(heatmap_data_to_plot,normalization))))
+    
   #generate heatmap data per dataset
   heatmap_data_to_plot_per_dataset <- angle_data_postures_per_dataset %>%
+    ungroup() %>%
     filter(annotation == a)  %>%
     rename(normalization_per_dataset =  paste0(all_of(n),"_per_dataset"))
   
@@ -309,7 +341,7 @@ for (a in annotations){
     # scale_fill_distiller(palette="PiYG",limits=c(-1,1) * max(abs(select(heatmap_data_to_plot_per_dataset,normalization_per_dataset))))+
     facet_wrap(vars(dataset_ID),ncol=1)+
     scale_y_continuous(breaks=seq(1,max(heatmap_data_to_plot_per_dataset$hours_rounded),2))+
-    ggsave(file.path(save_path,paste0("200407_heatmap_",a,"_",n,"_per_dataset",".png")),width=40,height=30)
+    ggsave(file.path(save_path,paste0("200511_heatmap_",a,"_",n,"_per_dataset",".png")),width=40,height=30)
   
   #levels must be changed for ggplot to take new order into account
   cluster_centers_reduced$newID = factor(cluster_centers_reduced$newID, levels=ordering)
@@ -322,24 +354,15 @@ for (a in annotations){
   
   heatmap /
     skeletons + 
-    plot_layout(widths = c(1,8),heights = c(1,8)) +
-    ggsave(file.path(save_path,paste0("200417_heatmap_",a,"_",n,".png")),width=40,height=30)
+    plot_layout(widths = c(1,4),heights = c(1,4))+
+    ggsave(file.path(save_path,paste0("200511_heatmap_",a,"_",n,".png")),width=40,height=30)
   
-  
-  
+ 
   }
 }
 
 
 ```
-
-
-
-
-
-
-
-
 
 
 
