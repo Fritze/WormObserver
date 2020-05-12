@@ -4,14 +4,14 @@
 target_folder <- "/home/fpreuss/raid/timelapses/analysis/200318/data"
 save_path_plots <- "/home/fpreuss/raid/timelapses/analysis/200318/plots/posture/moving_skeletons/"
 
-conversion_f <- 6.25
+conversion_factor <- 6.25
 
 
 #list of .rds files in data folder
 files_to_process <- list.files(target_folder, "raw_data.rds", full.names = TRUE, ignore.case = TRUE)
 #define which .rds files to exclude
 # files_to_process <- grep("daf2|L2|1:10",files_to_process,value = TRUE,invert=TRUE)
-files_to_process <- grep("no_food",files_to_process,value = TRUE)
+files_to_process <- grep("1:10",files_to_process,value = TRUE)
 
 #load .rds with all experimental replicates
 for (file in files_to_process){
@@ -56,7 +56,7 @@ for (file in files_to_process){
       mutate(angle = ifelse(angle < -pi & is.na(is_end), -2 * pi - angle,angle)) %>%
       ungroup() %>%
       mutate(annotation = annotation) %>%
-      mutate(conversion_factor = conversion_f)
+      mutate(conversion_factor = conversion_factor)
     #toc()
       
         
