@@ -69,7 +69,8 @@ cluster_centers_reduced <- cluster_centers %>%
   ungroup() %>%
   #now replace newID (which corresponds to the smaller old ClusterID) with a new number
   #so that all postures are numbered straight with no gaps
-  mutate(newID = as.integer(as.factor(newID)))
+  mutate(newID = as.integer(as.factor(newID))) %>%
+  select(-c(angle_mirror,difference))
 
 
 #this gives out an overview image of all postures (with mirrored corresponding ones)
