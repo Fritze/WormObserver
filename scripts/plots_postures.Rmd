@@ -248,6 +248,16 @@ angle_data_postures_per_dataset <- angle_data_postures_first %>%
 
 ```
 
+
+
+#Plot heatmaps for relative occurence of posture
+#for each dataset will be ploted:
+#  Heatmap combining all datasets with posture overview (in right order after hierarchical clustering of temporally resolved frequencies)
+#  Individual heatmaps for each dataset
+#  All of the two above with different ways of calculating frequencies:
+#  1- frequency
+#  2- frequency, normalized (z-score)
+#  3- frequency, normalized (z-score) with rolling mean
 ```{r, include=FALSE}
 
 
@@ -364,7 +374,86 @@ for (a in annotations){
 
 ```
 
+#calculate ngrams
+#i.e. which posters occur often together in a sequence
+```{r, include=FALSE}
+
+save_path <- "/home/fpreuss/raid/timelapses/analysis/200318/plots/posture/syntax/"
+
+library(tidytext)
+
+#reduce skeleton_data_clustered for one row per track
+postures_per_track <- skeleton_data_clustered %>%
+  group_by(annotation,dataset_ID,tp,TrackID,frame,ID,newID) %>%
+  summarise()
+
+#if same posture occurs in two subsequent frames, these are collapsed to one row
+postures_per_track <- postures_per_track[cumsum(rle(postures_per_track$newID)$lengths),] %>%
+  group_by(annotation,dataset_ID,tp,TrackID) %>%
+  #all postures of one track (within dataset and tp) to one row
+  summarise(postures = paste(newID, collapse = ' '))
+
+#calculate ngrams individually for each track (within dataset and tp)
+posture_trigrams <- postures_per_track %>%
+  group_by(annotation,dataset_ID,tp,TrackID) %>%
+  unnest_tokens(trigrams, postures, token = "ngrams", n = 3) %>%
+  ungroup()
+
+#counting frequency of postures
+posture_trigrams_stats <- posture_trigrams %>%
+  mutate(minutes = 10 + ((tp-1)*8+(tp-1)*0)) %>%
+  #round to half hour steps
+  mutate(hours_rounded = ceiling(minutes/60*2)/2) %>%
+  #count number of unique trigrams per dataset and hours_rounded
+  group_by(annotation,dataset_ID,hours_rounded) %>%
+  mutate(total_trigrams_per_dataset_per_hours_rounded = n_distinct(trigrams)) %>%
+  #absolute occurences of one trigram per unique dataset and hours_rounded
+  group_by(annotation,dataset_ID, hours_rounded,total_trigrams_per_dataset_per_hours_rounded, trigrams) %>%
+  summarise(occurences_trigram=n()) %>%
+  #relative occurence of one trigram per unique dataset and hours_rounded
+  mutate(freq_trigram_per_dataset = occurences_trigram/total_trigrams_per_dataset_per_hours_rounded) %>%
+  #same is calculated now over datasets just by annotation (i.e. type of experiment)
+  group_by(annotation, hours_rounded,trigrams) %>%
+  mutate(trigram_per_hours_rounded = sum(occurences_trigram)) %>%
+  mutate(total_trigrams_per_hours_rounded = sum(total_trigrams_per_dataset_per_hours_rounded)) %>%
+  #relative occurence of one trigram per hours_rounded
+  mutate(freq_trigram = trigram_per_hours_rounded/total_trigrams_per_hours_rounded) %>%
+  select(annotation, hours_rounded,trigrams,dataset_ID, everything()) %>%
+  group_by(annotation,hours_rounded) %>%
+  #highest freq_trigram across datasets per hours_rounded (within one experiment type)
+  filter(freq_trigram == max(freq_trigram)) %>%
+  #if two trigrams have the same relative frequency (over all datasets), take only first one
+  slice(1) %>%
+  #split trigram
+  group_by(annotation,hours_rounded) %>%
+  separate(trigrams, c("p1", "p2", "p3"), sep = " ") %>%
+  gather(trigram_position, posture, p1:p3) %>%
+  mutate(posture=as.numeric(posture)) %>%
+  group_by(annotation,hours_rounded,trigram_position,posture,total_trigrams_per_hours_rounded,trigram_per_hours_rounded,freq_trigram) %>%
+  summarise()
+
+posture_trigrams_w_postures <- posture_trigrams_stats %>%
+  #add cluster centers for each trigram
+  left_join(cluster_centers_reduced,by=c("posture" = "newID")) %>%
+  filter(newID_sub == 1) %>%
+  select(-c(clusterID, angle_mirror, mirroredID,difference, newID_sub)) %>%
+  arrange(annotation, hours_rounded,trigram_position,freq_trigram) %>%
+  mutate(ID = paste(annotation, hours_rounded,trigram_position,posture,sep="\n"))
+ 
+#make order consistent
+posture_trigrams_w_postures$ID <- factor(posture_trigrams_w_postures$ID, levels=sort(unique(posture_trigrams_w_postures$ID)))
 
 
 
-
+ggplot(posture_trigrams_w_postures, aes(x=X,y=Y,color=angle))+
+  geom_point(size=2) +
+  geom_path(size=1,lineend = "round") +
+  theme_void()+
+  coord_fixed(ratio = 1)+
+  scale_color_gradient2(low = "deepskyblue", mid = "lavender",
+                          high = "deeppink",midpoint=0,limits=c(-1,1),na.value="grey") +
+  geom_point(data=filter(posture_trigrams_w_postures,index == 2), aes(X,Y),color="orange",size=5,shape=17) +
+  facet_wrap(vars(ID),ncol=3) +
+  ggsave(file.path(save_path,paste0("trigrams_per_annotation",".png")),width=10,height=40)
+  
+```
