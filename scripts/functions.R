@@ -3,7 +3,7 @@
 
 # packages to load
 
-library("plyr")
+# library("plyr")
 library("dplyr")
 library("tidyr")
 library("ggplot2")
@@ -19,8 +19,8 @@ library("shiny")
 library("shinyWidgets")
 library("ggridges")
 library("gganimate")
-library("ggbeeswarm")
-library("ggsci")
+# library("ggbeeswarm")
+# library("ggsci")
 library("ggpointdensity")
 library("patchwork")
 library("reshape2")
