@@ -1,5 +1,5 @@
 
-#load the skeletoized data
+#load the skeletonized data
 ```{r message=FALSE, include=FALSE}
 
 target_folder <- "/home/fpreuss/raid/timelapses/analysis/200318/data/posture/skeletonized/"
