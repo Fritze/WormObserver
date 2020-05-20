@@ -7,22 +7,21 @@ target_folder_base <- ("/home/fpreuss/raid/timelapses")
 save_path <- "/home/fpreuss/raid/timelapses/analysis/200318/data/"
 
 list_of_datasets <- matrix(c(
-  # "2019-03-26_19-27-16", "N2 1:10 OP50",
-  # "2019-03-27_18-24-47", "N2 1:10 OP50",
-  # "2019-11-25_17-28-23", "N2 1:10 OP50",
-  # "2019-07-08_18-33-57", "N2 1:5 OP50",
-  # "2019-07-09_18-22-34", "N2 1:5 OP50",
-  # "2019-11-11_16-17-33", "N2 1:5 OP50",
-  # "2019-03-25_18-10-06", "N2 no food",
-  # "2019-11-18_18-43-57", "N2 no food",
-  # "2019-11-20_17-29-55", "N2 no food",
-  # "2019-04-23_17-46-08", "daf2",
-  # "2019-05-07_12-15-40", "daf2",
-  # "2019-04-30_14-15-44", "L2",
-  # "2019-05-04_15-36-42", "L2",
-  # "2020-02-20_18-53-49", "N2 1:10 OP50 after 6h exit",
-  # "2020-02-21_15-58-43", "N2 1:10 OP50 after 6h exit",
-  # "2020-03-03_19-35-55", "N2 1:10 OP50 after 6h exit",
+  "2019-03-26_19-27-16", "N2 1:10 OP50",
+  "2019-03-27_18-24-47", "N2 1:10 OP50",
+  "2019-07-08_18-33-57", "N2 1:5 OP50",
+  "2019-07-09_18-22-34", "N2 1:5 OP50",
+  "2019-11-11_16-17-33", "N2 1:5 OP50",
+  "2019-03-25_18-10-06", "N2 no food",
+  "2019-11-18_18-43-57", "N2 no food",
+  "2019-11-20_17-29-55", "N2 no food",
+  "2019-04-23_17-46-08", "daf2",
+  "2019-05-07_12-15-40", "daf2",
+  "2019-04-30_14-15-44", "L2",
+  "2019-05-04_15-36-42", "L2",
+  "2020-02-20_18-53-49", "N2 1:10 OP50 after 6h exit",
+  "2020-02-21_15-58-43", "N2 1:10 OP50 after 6h exit",
+  "2020-03-03_19-35-55", "N2 1:10 OP50 after 6h exit",
   "2020-02-26_18-31-08", "N2 empty after 6h exit",
   "2020-02-27_17-51-43", "N2 empty after 6h exit",
   "2020-02-28_17-38-15", "N2 empty after 6h exit"
@@ -78,7 +77,7 @@ for (row in 1:nrow(nested_list_of_datasets)){
 
   #list zip files in target_folder_analysis
   find_zip_files <- function(target_folder_analysis){
-    files <- sort(as.numeric(gsub("(\\d+)\\..+","\\1",list.files(target_folder_analysis,pattern=".zip"))))[1:70]
+    files <- sort(as.numeric(gsub("(\\d+)\\..+","\\1",list.files(target_folder_analysis,pattern=".zip"))))
     file.path(target_folder_analysis,paste0(files, ".csv.zip"))
   }
   
@@ -96,14 +95,13 @@ for (row in 1:nrow(nested_list_of_datasets)){
     inner_join(., worm_type, by = c("dataset_ID" = "dataset")) %>%
     mutate(timestep_length = ifelse(timepoint_length > timestep_length, 0,timestep_length-timepoint_length)) %>%
     mutate(minutes = time_elapsed + ((tp-1)*timepoint_length+(tp-1)*timestep_length)) %>%
-    mutate(hours= minutes/60) %>%
     na.omit() %>%
     mutate(annotation = annotation)
   
   
   
     annotation_underscored <- gsub(" ", "_", annotation)
-    created_file_path <- file.path(save_path,paste0("200319_", annotation_underscored, "_raw_data.rds"))
+    created_file_path <- file.path(save_path,paste0("200520_", annotation_underscored, "_raw_data.rds"))
     saveRDS(imported_data, file = created_file_path)
     cat(paste0("\n\ndatasets ",paste(unique(imported_data$dataset_ID), collapse=" & "), " were processed \nand saved under: ", created_file_path))
   
