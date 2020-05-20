@@ -16,7 +16,6 @@ duration = 20 #==10 seconds
 binning_factor = 20 #==10 seconds
 
 #list of .rds files in data folder
-  
 files_to_process <- list.files(target_folder, "raw_data.rds", full.names = TRUE, ignore.case = TRUE)
 
 
