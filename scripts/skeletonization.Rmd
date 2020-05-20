@@ -1,145 +1,108 @@
 ```{r message=FALSE, include=FALSE}
 
 
-for(a_dataset in target_folder_general){
-  target_folder_general <- a_dataset
-  target_folder_analysis <- file.path(target_folder_base,target_folder_general, "analysis")
-  metadata_file <- list.files(file.path(target_folder_base,target_folder_general),pattern=".+\\_metadata.txt$", full.names = TRUE)
-  metadata <- data.frame(sapply(metadata_file, function (x) read.delim(x,header=FALSE,check.names = FALSE)))
-  colnames(metadata) <- metadata_file
-  colnames(metadata) <- as.character(gsub(".+\\/", "",colnames(metadata)))
-  colnames(metadata) <- as.character(gsub("_metadata.txt", "",colnames(metadata)))
-  
-  time_elapsed <- apply(metadata,2, function(x) as.numeric(gsub(".+\\s([0-9]+).*", "\\1",x[grepl("Time elapsed.+\\:\\s(.+)",x)])))
-  time_elapsed <- as.data.frame(time_elapsed)
-  time_elapsed$dataset <- colnames(metadata)
-  
-  
-  #timepoint length, in minutes
-  #attention to divide everything by 60, because this value is entered in seconds
-  timepoint_length <- apply(metadata,2, function(x) as.numeric(gsub(".+\\:\\s(.+)", "\\1",x[grepl("Timepoint length\\:\\s(.+)\\.",x)])))/60
-  timepoint_length <- as.data.frame(timepoint_length)
-  timepoint_length$dataset <- colnames(metadata)
-  
-  
-  #timestep, in minutes
-  timestep_length <- apply(metadata,2, function(x) as.numeric(gsub(".+every(.+)minutes\\.", "\\1",x[grepl(".+every(.+)minutes\\.",x)])))
-  timestep_length <- as.data.frame(timestep_length)
-  timestep_length$dataset <- colnames(metadata)
-  
-  #plate type
-  plate_type <- apply(metadata,2, function(x) gsub(".+\\,(.+)\\,.+", "\\1",x[grepl("Timelapse plate type\\:",x)]))
-  plate_type <- as.data.frame(plate_type)
-  plate_type$dataset <- colnames(metadata)
-  
-  #worm type
-  worm_type <- apply(metadata,2, function(x) gsub(".+\\:\\s(.+)", "\\1",x[grepl("Used line\\:",x)]))
-  worm_type <- as.data.frame(worm_type)
-  worm_type$dataset <- colnames(metadata)
+target_folder <- "/home/fpreuss/raid/timelapses/analysis/200318/data"
+save_path_plots <- "/home/fpreuss/raid/timelapses/analysis/200318/plots/posture/moving_skeletons/"
 
-  #list zip files in target_folder_analysis
-  find_zip_files <- function(target_folder_analysis){
-    files <- sort(as.numeric(gsub("(\\d+)\\..+","\\1",list.files(target_folder_analysis,pattern=".zip"))))[1:70]
-    file.path(target_folder_analysis,paste0(files, ".csv.zip"))
-  }
-  
-  
-  
-  imported_data <-  unlist(map(target_folder_analysis,find_zip_files)) %>%
-    map_df(.,function(x) read_csv(x, col_types=cols(),col_names=TRUE) %>% mutate(file_name=x)) %>%
-    mutate(dataset_ID = gsub(".+\\/([0-9]+\\-[0-9]+\\-[0-9]+\\_[0-9]+\\-[0-9]+\\-[0-9]+)\\/.+", "\\1",file_name)) %>%
-    #replace all whitespaces in column names with "_"
-    rename_all(list(~gsub("\\s", "_",.))) %>%
-    inner_join(., time_elapsed,by = c("dataset_ID" = "dataset")) %>%
-    inner_join(., timepoint_length,by = c("dataset_ID" = "dataset")) %>%
-    inner_join(., timestep_length,by = c("dataset_ID" = "dataset")) %>%
-    inner_join(., plate_type, by = c("dataset_ID" = "dataset")) %>%
-    inner_join(., worm_type, by = c("dataset_ID" = "dataset")) %>%
-    mutate(timestep_length = ifelse(timepoint_length > timestep_length, 0,timestep_length-timepoint_length)) %>%
-    mutate(minutes = time_elapsed + ((tp-1)*timepoint_length+(tp-1)*timestep_length)) %>%
-    mutate(hours= minutes/60) %>%
-    na.omit()
-  
-  
-  
-  #downsampled to for conversion
-  downsampled_fps <- unique(na.omit(imported_data$downsampled_to))
+conversion_factor <- 6.25
 
 
-# }
+#list of .rds files in data folder
+files_to_process <- list.files(target_folder, "raw_data.rds", full.names = TRUE, ignore.case = TRUE)
+#define which .rds files to exclude
+# files_to_process <- grep("daf2|L2|1:10",files_to_process,value = TRUE,invert=TRUE)
+files_to_process <- grep("1:10",files_to_process,value = TRUE)
 
-
-#Skeletonize and estimate heads where possible
-# ```{r message=FALSE, include=FALSE}
-# 
-  datasets_loaded <- unique(imported_data$dataset_ID)
-
-
-# for (a_dataset in datasets_loaded){
-  a_dataset_filepath <- file.path(target_folder_base,a_dataset)
-  print(paste0("processing ", a_dataset))
-  tic()
-  #looks like future and furrr makes this 8x faster (?)
-  data_skeleton <- imported_data  %>%
-    filter(dataset_ID == a_dataset) %>%
-    group_by(dataset_ID,tp,TrackID) %>%
-    nest() %>%
-    mutate(m = map(data,skeleton_direction)) %>%
-    select(dataset_ID,tp,TrackID,m) %>%
-    unnest() %>%
-    group_by(dataset_ID, tp,TrackID,frame) %>%
-    nest() %>%
-    group_by(dataset_ID, tp,TrackID,frame) %>%
-    mutate(mf =map(data,skeleton_frame,dataset_ID,tp,TrackID,frame)) %>%
-    select(dataset_ID,tp,TrackID,frame,mf) %>%
-    unnest() %>%
-    group_by(dataset_ID,tp,TrackID,frame) %>%
-    nest() %>%
-    mutate(mh = map(data,skeleton_head)) %>%
-    select(dataset_ID,tp,TrackID,frame,mh) %>%
-    unnest() %>%
-    select(-ends_with("1"))
-  toc()
-  print("skeletonization done. now extend head by looking at neighbouring frames.")
-  #save(data_skeleton, file = file.path(target_folder_analysis,target_folder_general,"_with_head.rds"))
-  #data_skeleton <- readRDS(file.path(target_folder_analysis,target_folder_general,"_with_head.rds"))
-  tic()
-  data_skeleton_with_headext <- data_skeleton %>%
-    mutate(head_detected = ifelse(grepl("downsampled | unclear",status),"not yet","NO" )) %>%
-    mutate(distance_to_latest_head = NA) %>%
-    group_by(dataset_ID, tp,TrackID) %>%
-    nest() %>%
-    group_by(dataset_ID, tp,TrackID) %>%
-    mutate(mhe = map(data,skeleton_head_estimate)) %>%
-    select(dataset_ID,tp,TrackID,mhe) %>%
-    unnest(cols=c(mhe))
-  toc()
-  print("head extension done. now reorder indexes so that head is always index 1.")
-  #save(data_skeleton_headext, file = file.path(target_folder_analysis,target_folder_general,"_with_headext.rds"))
+#load .rds with all experimental replicates
+for (file in files_to_process){
+  cat(paste0("\n\nimporting file: ", file))
+  data <- readRDS(file)
   
-  #data_skeleton_with_headext <- readRDS(file.path(target_folder_analysis,target_folder_general,"_with_headext.rds"))
+  annotation <- data %>%
+    distinct(annotation) %>%
+    pull(annotation)
+  
+  
+  cat(paste0("\nWorking on ",annotation, " files."))
+  
+
+  #do the skeletonization for each timepoint individually
+  for (timepoint in 1:70){
+
+
+    cat(paste0("\n\nprocessing timepoint ", timepoint))
+      
+    data_skeletonized <- data %>%
+      filter(tp == timepoint) %>%
+      group_by(dataset_ID,tp,TrackID) %>%
+      #guess direction from centroid movement for every Track
+      group_modify(~ skeleton_direction(.x)) %>%
+      group_by(dataset_ID, tp,TrackID,frame) %>%
+      #skeletonization independently for every frame (this step takes time as skeletonization is happening one after the other)
+      group_modify(~ skeleton_frame(.x),keep=TRUE) %>%
+      #guess head by chosing end pixel pointing in the moving direction (see above)
+      group_modify(~ skeleton_head(.x)) %>%
+      mutate(distance_to_latest_head = NA) %>%
+      group_by(dataset_ID, tp,TrackID) %>%
+      mutate(head_to_be_estimated = ifelse(grepl("downsampled|unclear",status),"YES","NO" )) %>%
+      #head estimation based on head in closest frame
+      group_modify(~ skeleton_head_estimate(.x)) %>%
+      group_by(dataset_ID, tp,TrackID,frame) %>%
+      #reorder so that head is always index == 1
+      group_modify(~ skeleton_reorder(.x)) %>%
+      group_by(dataset_ID,tp,TrackID,frame) %>%
+      #all angles have to be between pi and -pi
+      mutate(angle = ifelse(angle > pi & is.na(is_end), 2 * pi - angle,angle)) %>%
+      mutate(angle = ifelse(angle < -pi & is.na(is_end), -2 * pi - angle,angle)) %>%
+      ungroup() %>%
+      mutate(annotation = annotation) %>%
+      mutate(conversion_factor = conversion_factor)
+    #toc()
+      
+        
+    cat("\nskeletonization and head estimation done. now saving.")
+    created_file_path <- file.path(target_folder,"posture",paste0("200428_",annotation,"_timepoint_",timepoint,"_skeletonized.rds"))
+    saveRDS(data_skeletonized, file = created_file_path)
+    cat(paste0("\ndataset: ",annotation," timepoint ",timepoint, " was skeletonized, filtered \nand saved under: ", created_file_path))
     
-  skeleton_reorder <- function(data){
-      if(!is.na(data[nrow(data),"is_head"])){
-        data$index <- nrow(data):1
-        data
-      } else {
-        data <- data
-      }
-  }
+
     
-  tic()
-  data_skeleton_with_headext_reordered <- data_skeleton_with_headext %>%
-    group_by(dataset_ID, tp,TrackID,frame) %>%
-    nest() %>%
-    mutate(mr = map(data,skeleton_reorder)) %>%
-    select(dataset_ID,tp,TrackID,frame,mr) %>%
-    unnest()
-  toc()
-  print("head reordering done. now saving.")
-  saveRDS(data_skeleton_with_headext_reordered, file = file.path(a_dataset_filepath,paste0(a_dataset,"_with_headext_reordered.rds")))
+  }
 }
 ```
 
+```{r message=FALSE, include=FALSE}
+
+target_folder <- "/home/fpreuss/raid/timelapses/analysis/200318/data/posture/skeletonized/"
+
+min_frames <- 10
+
+#list of .rds files in data folder
+files_to_process <- list.files(target_folder, "skeletonized.rds", full.names = TRUE, ignore.case = TRUE)
+files_to_process_annotations <- unique(gsub(".+\\_(.+)_timepoint.+","\\1",files_to_process))
 
 
+for (annotation in files_to_process_annotations){
+  
+  cat(paste0("\n\nprocessing: ",annotation))
+  
+  data <- grep(annotation,files_to_process,value=TRUE) %>%
+      map_df(.,function(x) readRDS(x)) %>%
+      #only keep skeletons where a head was detected or estimated
+      group_by(dataset_ID,tp,TrackID,frame) %>%
+      filter(any(is_head=="YES")) %>%
+      #keep only tracks that have skeletons with head for a minimum amount of time (defined by min_frames)
+      group_by(dataset_ID,TrackID,tp) %>%
+      mutate(TrackCheck_cleaned = replace_f(TrackCheck, 26*min_frames)) %>%
+      drop_na("TrackCheck_cleaned") %>%
+      ungroup()
+
+  cat("\nskeleton filtering done. now saving.")
+  created_file_path <- file.path(target_folder,paste0("200506_",annotation,"_skeletonized_filtered.rds"))
+  saveRDS(data, file = created_file_path)
+  cat(paste0("\ndataset: ",annotation," was filtered \nand saved under: ", created_file_path))
+
+}
+
+
+```
