@@ -1,0 +1,42 @@
+##set parameters here
+```{r, include=FALSE}
+
+
+target_folder <- "/home/fpreuss/raid/timelapses/analysis/200318/data"
+
+
+#list of .rds files in data folder
+files_to_process <- list.files(target_folder, "raw_data.rds", full.names = TRUE, ignore.case = TRUE)
+
+
+file <- files_to_process[1]
+imported_data <- NULL
+#for each of these files calculate the centroid tracking statistics
+for (file in files_to_process){
+  imported_data_temp <- readRDS(file) %>%
+    group_by(annotation,dataset_ID, tp,minutes,TrackID) %>%
+    summarise(size=mean(Size),major=mean(Major),minor=mean(Minor))
+  imported_data <- rbind(imported_data, imported_data_temp)  
+}
+
+```
+
+
+```{r, include=FALSE}
+
+save_path <- file.path("/home/fpreuss/raid/timelapses/analysis/200318/plots/")
+library("ggridges")
+
+data_to_plot <- imported_data %>%
+  mutate(hours = minutes / 60) %>%
+  mutate(hours_rounded= floor(hours * 2) / 2)
+
+  
+ggplot(data_to_plot,aes(x = major*minor,y = as.character(hours_rounded), fill=stat(x))) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01) +
+  facet_wrap(vars(annotation,dataset_ID),ncol=2,scales="free")+
+  scale_fill_viridis()+
+  theme_linedraw()+
+  ggsave(file.path(save_path,paste0("size_plots",".png")),height=20,width=15)
+
+```
