@@ -2,14 +2,16 @@
 ```{r, include=FALSE}
 
 #Set the location folder of the raw data (of all experiments you want to plot)
-base_folder <- "/home/fpreuss/raid/timelapses/analysis/200612/"
-target_folder <- file.path(base_folder,"data")
-save_path <- file.path(base_folder,"plots")
+base_path <- "/home/fpreuss/raid/timelapses/analysis/200612/"
 
 ```
 
 #load files
 ```{r, include=FALSE}
+
+target_path <- file.path(base_path,"data")
+save_path <- file.path(base_path,"plots")
+
 #list of .rds files in data folder
 files_to_process <- list.files(target_folder, "raw_data.rds", full.names = TRUE, ignore.case = TRUE)
 
