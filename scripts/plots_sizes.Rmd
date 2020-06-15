@@ -1,19 +1,24 @@
-##set parameters here
+#set parameters here
 ```{r, include=FALSE}
 
+#Set the location folder of the raw data (of all experiments you want to plot)
+base_folder <- "/home/fpreuss/raid/timelapses/analysis/200612/"
+target_folder <- file.path(base_folder,"data")
+save_path <- file.path(base_folder,"plots")
 
-target_folder <- "/home/fpreuss/raid/timelapses/analysis/200318/data"
+```
 
-
+#load files
+```{r, include=FALSE}
 #list of .rds files in data folder
 files_to_process <- list.files(target_folder, "raw_data.rds", full.names = TRUE, ignore.case = TRUE)
 
 
-file <- files_to_process[1]
 imported_data <- NULL
-#for each of these files calculate the centroid tracking statistics
+#load all .rds files and append to one data frame ('imported_data')
 for (file in files_to_process){
   imported_data_temp <- readRDS(file) %>%
+    #calculate average size, major and minor axis BY TRACK
     group_by(annotation,dataset_ID, tp,minutes,TrackID) %>%
     summarise(size=mean(Size),major=mean(Major),minor=mean(Minor))
   imported_data <- rbind(imported_data, imported_data_temp)  
@@ -21,22 +26,55 @@ for (file in files_to_process){
 
 ```
 
-
+#create plots
 ```{r, include=FALSE}
 
-save_path <- file.path("/home/fpreuss/raid/timelapses/analysis/200318/plots/")
 library("ggridges")
 
+
+for(a in unique(imported_data$annotation)){
+  # new data frame with hours rounded by half hour
+  data_to_plot <- imported_data %>%
+    filter(annotation == a) %>%
+    mutate(hours = minutes / 60) %>%
+    mutate(hours_rounded= floor(hours * 2) / 2)
+  
+
+  #all datasets individually,per annotation
+  ggplot(data_to_plot,aes(x = size ,y = factor(as.character(hours_rounded), level = unique(hours_rounded)), fill=stat(x))) +
+    geom_density_ridges_gradient(scale = 1) +
+    scale_x_continuous(limits = c(0, max(data_to_plot$size)))+
+    # scale_y_continuous(limits=c(0, max(data_to_plot$hours_rounded)))+
+    facet_wrap(vars(annotation,dataset_ID),ncol=1,scales="free_x")+
+    scale_fill_viridis()+
+    theme_linedraw()+
+    labs(x="Size (px)",y="time (hours)")+
+    theme(strip.background = element_rect(colour = "white", fill = "white"),
+      strip.text.x = element_text(size=20,colour = "black", face = "bold"),
+      axis.text.x = element_text(size=15),
+      axis.title.x = element_text(size=20),
+      axis.text.y = element_text(size=15),
+      axis.title.y = element_text(size=20))+
+    ggsave(file.path(save_path,paste0("size_plots_individual_",a,".png")),height=30,width=10)
+  }
+  
+#all annotations grouped
 data_to_plot <- imported_data %>%
   mutate(hours = minutes / 60) %>%
   mutate(hours_rounded= floor(hours * 2) / 2)
 
-  
-ggplot(data_to_plot,aes(x = major*minor,y = as.character(hours_rounded), fill=stat(x))) +
-  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01) +
-  facet_wrap(vars(annotation,dataset_ID),ncol=2,scales="free")+
+ggplot(data_to_plot,aes(x = size ,y = factor(as.character(hours_rounded), level = unique(hours_rounded)), fill=stat(x))) +
+  geom_density_ridges_gradient(scale = 1) +
+  facet_wrap(vars(annotation),ncol=3,scales="free")+
   scale_fill_viridis()+
+  labs(x="Size (px)",y="time (hours)")+
   theme_linedraw()+
-  ggsave(file.path(save_path,paste0("size_plots",".png")),height=20,width=15)
+      theme(strip.background = element_rect(colour = "white", fill = "white"),
+      strip.text.x = element_text(size=25,colour = "black", face = "bold"),
+      axis.text.x = element_text(size=20),
+      axis.title.x = element_text(size=25),
+      axis.text.y = element_text(size=20),
+      axis.title.y = element_text(size=25))+
+  ggsave(file.path(save_path,paste0("size_plots_per_annotation",".png")),height=40,width=40)
 
 ```
