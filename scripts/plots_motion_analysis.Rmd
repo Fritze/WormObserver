@@ -1,12 +1,19 @@
   
 #Define locations and datasets to include
-  
 ```{r, echo=FALSE}
 #bins or tracks?
 average <- "bins"
   
-target_folder <- "/home/fpreuss/raid/timelapses/analysis/200318/data/centroids/"
-save_path <- file.path("/home/fpreuss/raid/timelapses/analysis/200318/plots/centroids",average)
+base_path <- "/home/fpreuss/raid/timelapses/analysis/200612"
+
+
+```
+
+```{r, echo=FALSE}
+
+target_path <- file.path(base_path,"data")
+save_path <- file.path(base_path,"plots",average)
+dir.create(save_path)
   
 #list of centroid tracking .rds files in data folder
 files_to_process <- list.files(target_folder, paste0("centroid_tracking_",average,".rds"),full.names = TRUE, ignore.case = TRUE)
@@ -15,12 +22,15 @@ order  <- c("N2 1:5 OP50",
             "N2 1:10 OP50",
             "N2 no food",
             "N2 1:10 after 6h exit",
-            "N2 1:10 OP50 after 6h exit", ###
+            "N2 1:10 OP50 after 6h exit",
             "N2 empty after 6h exit",
-            "daf2"
+            "daf2",
+            "Agar",
+            "N2 RT no food"
             )
   
 imported_data <- map_dfr(files_to_process,readRDS) %>%
+    mutate(hours = minutes / 60) %>%
     #round per half an hour
     # mutate(hours_rounded= floor(hours * 2) / 2) %>%
     #round per hour
@@ -29,24 +39,23 @@ imported_data <- map_dfr(files_to_process,readRDS) %>%
     filter(hours_rounded > 0.0) %>%
     #take out one condition
     filter(!annotation %in% c("L2")) %>%
-    # filter(!dataset_ID %in% c("2019-05-07_12-15-40")) %>%
     na.omit() %>%
     #custom order of conditions
     left_join(tibble(annotation=order),by="annotation")
   
 #levels must be changed for ggplot to take new order into account
 imported_data$annotation = factor(imported_data$annotation, levels=order)
-  
+
+
 ```
   
   
 ```{r, echo=TRUE}
   
-  
 #Until how many hours
 show_until <- 9
   
-  
+
 library(pals)
   
 data <- imported_data %>%
@@ -57,26 +66,34 @@ data <- imported_data %>%
   # scale velocity to mm/s
   mutate(p_mean_velocity = p_mean_velocity / 1000) %>%
   arrange(hours_rounded)
+
+for (a in unique(data$annotation)){ 
+  data_to_plot <- data %>%
+    filter(annotation == a)
   
-#all points colored by dataset
-ggplot(data,aes(x = p_mean_angle, y = p_mean_velocity,color=dataset_ID))+
-  geom_point(alpha=0.2)+
-  theme_linedraw()+
-  ylab("velocity (mm/s)") + xlab("angular velocity (degree/s)")+
-  scale_y_log10()+
-  scale_x_continuous(limits=c(0,180))+
-  theme(legend.direction="horizontal",
-      legend.position = "top",
-      strip.background = element_rect(colour = "white", fill = "white"),
-      panel.spacing = unit(1, "lines"),
-      strip.text.x = element_text(size=25,colour = "black", face = "bold"),
-      axis.text.x = element_text(size=30),
-      axis.title.x = element_text(size=45),
-      axis.text.y = element_text(size=35),
-      axis.title.y = element_text(size=45))+
-  scale_color_manual(values=as.vector(alphabet(26)))+
-  facet_wrap(vars(annotation,hours_rounded,number_of_tracks_in_this_hour),ncol=length(unique(data$hours_rounded)),scales="free_x")+
-  ggsave(file.path(save_path,paste0("scatter_roaming_dwelling_heatmap_show_all_points_datasets_individually",".png")),height=35,width=35)
+  #all points colored by dataset
+  ggplot(data_to_plot,aes(x = p_mean_angle, y = p_mean_velocity))+
+    geom_point(alpha=0.15)+
+    theme_linedraw()+
+    ylab("velocity (mm/s)") + xlab("angular velocity (degree/s)")+
+    scale_y_log10()+
+    scale_x_continuous(limits=c(0,180))+
+    theme(legend.direction="horizontal",
+        legend.position = "top",
+        strip.background = element_rect(colour = "white", fill = "white"),
+        panel.spacing = unit(1, "lines"),
+        strip.text.x = element_text(size=25,colour = "black", face = "bold"),
+        axis.text.x = element_text(size=30),
+        axis.title.x = element_text(size=45),
+        axis.text.y = element_text(size=35),
+        axis.title.y = element_text(size=45))+
+    facet_wrap(vars(annotation,dataset_ID,hours_rounded),ncol=length(unique(data$hours_rounded)),scales="free_x")+
+    ggsave(file.path(save_path,paste0("scatter_roaming_dwelling_datasets_per_annotation_",a,".png")),height=25,width=30)
+}
+```
+
+```{r, echo=TRUE}
+
 
 #point density with number of neighbours
 ggplot(data,aes(x = p_mean_angle, y = p_mean_velocity))+
@@ -172,6 +189,8 @@ data_binarized_summarized <- data_binarized %>%
 ```
 
 ```{r, echo=TRUE}
+library(jcolors)
+
 data_summarised <- data_binarized %>%
   #counts per behavioral state
   group_by(annotation,hours_rounded,behavioral_state,dataset_ID) %>%
@@ -244,33 +263,6 @@ ggplot(data_summarised_sub,aes(x=as.character(hours_rounded),y=perc))+
       ggsave(file.path(save_path,paste0("box_roaming_dwelling_relative_sub",".png")),height=10,width=10)
 
 
-#####cut off
-
-ggplot(data_summarised_sub,aes(x=as.character(hours_rounded),y=perc))+
-      geom_boxplot(aes(fill=annotation),color="white",width=0.2,outlier.alpha = 0.3,outlier.size = 1,lwd=0.5)+
-      scale_fill_jcolors(palette = "pal7")+
-      scale_color_jcolors(palette = "pal7")+
-      geom_point(position=position_dodge(width=0.75),aes(group=behavioral_state),color="red",alpha=0.75,size=2)+
-      xlab("hours") + ylab("Relative occurence of \nbehavioral state")+
-      scale_y_continuous(limits=c(0,0.5))+
-      facet_wrap(annotation ~ .)+
-      theme_black()+
-      theme(
-        legend.direction="horizontal",
-        legend.position = "top",
-        strip.background = element_rect(colour = "white", fill = "white"),
-        panel.spacing = unit(1, "lines"),
-        strip.text.x = element_text(size=15,colour = "black", face = "bold"),
-        axis.text.x = element_text(size=30),
-        axis.title.x = element_text(size=45),
-        axis.text.y = element_text(size=30),
-        axis.title.y = element_text(size=45),
-        axis.ticks=element_line(size=1.5),
-        axis.ticks.length=unit(0.25,"cm"),
-        legend.key.size = unit(2.5, "cm"))+
-      facet_wrap(vars(annotation),scales="free_x")+
-      ggsave(file.path(save_path,paste0("box_roaming_dwelling_relative_sub_cut",".png")),height=10,width=10)
-  
 ```
   
   
