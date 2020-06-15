@@ -3,28 +3,45 @@
 ```{r, include=FALSE}
 
 #define data paths
-target_folder_base <- ("/home/fpreuss/raid/timelapses")
-save_path <- "/home/fpreuss/raid/timelapses/analysis/200318/data/"
+base_path <- "/home/fpreuss/raid/timelapses"
+
+```
+
+```{r, include=FALSE}
+
+save_path <- file.path(base_path, "200612","data")
+dir.create(save_path)
+
+
 
 list_of_datasets <- matrix(c(
   "2019-03-26_19-27-16", "N2 1:10 OP50",
   "2019-03-27_18-24-47", "N2 1:10 OP50",
-  "2019-07-08_18-33-57", "N2 1:5 OP50",
-  "2019-07-09_18-22-34", "N2 1:5 OP50",
-  "2019-11-11_16-17-33", "N2 1:5 OP50",
-  "2019-03-25_18-10-06", "N2 no food",
-  "2019-11-18_18-43-57", "N2 no food",
-  "2019-11-20_17-29-55", "N2 no food",
-  "2019-04-23_17-46-08", "daf2",
-  "2019-05-07_12-15-40", "daf2",
-  "2019-04-30_14-15-44", "L2",
-  "2019-05-04_15-36-42", "L2",
-  "2020-02-20_18-53-49", "N2 1:10 OP50 after 6h exit",
-  "2020-02-21_15-58-43", "N2 1:10 OP50 after 6h exit",
-  "2020-03-03_19-35-55", "N2 1:10 OP50 after 6h exit",
-  "2020-02-26_18-31-08", "N2 empty after 6h exit",
-  "2020-02-27_17-51-43", "N2 empty after 6h exit",
-  "2020-02-28_17-38-15", "N2 empty after 6h exit"
+  "2020-05-20_16-24-01", "N2 1:10 OP50",
+  "2020-05-21_18-31-49", "N2 1:10 OP50",
+  "2020-05-23_17-55-51", "N2 1:10 OP50"
+  # "2019-07-08_18-33-57", "N2 1:5 OP50",
+  # "2019-07-09_18-22-34", "N2 1:5 OP50",
+  # "2019-11-11_16-17-33", "N2 1:5 OP50",
+  # "2019-03-25_18-10-06", "N2 no food",
+  # "2019-11-18_18-43-57", "N2 no food",
+  # "2019-11-20_17-29-55", "N2 no food",
+  # "2020-05-25_18-48-32", "N2 RT no food",
+  # "2020-05-26_18-19-46", "N2 RT no food",
+  # "2020-05-27_20-33-10", "N2 RT no food",
+  # "2020-06-04_19-04-35", "Agar",
+  # "2020-06-05_18-29-54", "Agar",
+  # "2020-06-08_17-57-26", "Agar",
+  # "2019-04-23_17-46-08", "daf2",
+  # "2019-05-07_12-15-40", "daf2",
+  # "2019-04-30_14-15-44", "L2",
+  # "2019-05-04_15-36-42", "L2",
+  # "2020-02-20_18-53-49", "N2 1:10 OP50 after 6h exit",
+  # "2020-02-21_15-58-43", "N2 1:10 OP50 after 6h exit",
+  # "2020-03-03_19-35-55", "N2 1:10 OP50 after 6h exit",
+  # "2020-02-26_18-31-08", "N2 empty after 6h exit",
+  # "2020-02-27_17-51-43", "N2 empty after 6h exit",
+  # "2020-02-28_17-38-15", "N2 empty after 6h exit"
   ),byrow = TRUE,ncol=2)
 
 colnames(list_of_datasets) <- c("dataset_ID", "annotation")
@@ -39,14 +56,12 @@ for (row in 1:nrow(nested_list_of_datasets)){
   annotation <- as.character(pull(nested_list_of_datasets[row,1]))
   target_folder_analysis <- file.path(target_folder_base,target_folder_general, "analysis")
   
-  
   #load metadata (for all datasets)
   metadata_file <- list.files(file.path(target_folder_base,target_folder_general),pattern=".+\\_metadata.txt$", full.names = TRUE)
   metadata <- data.frame(sapply(metadata_file, function (x) read.delim(x,header=FALSE,check.names = FALSE)))
   colnames(metadata) <- metadata_file
   colnames(metadata) <- as.character(gsub(".+\\/", "",colnames(metadata)))
   colnames(metadata) <- as.character(gsub("_metadata.txt", "",colnames(metadata)))
-  
   time_elapsed <- apply(metadata,2, function(x) as.numeric(gsub(".+\\s([0-9]+).*", "\\1",x[grepl("Time elapsed.+\\:\\s(.+)",x)])))
   time_elapsed <- as.data.frame(time_elapsed)
   time_elapsed$dataset <- colnames(metadata)
@@ -82,9 +97,9 @@ for (row in 1:nrow(nested_list_of_datasets)){
   }
   
   
-  
   imported_data <-  unlist(map(target_folder_analysis,find_zip_files)) %>%
-    map_df(.,function(x) read_csv(x, col_types=cols(),col_names=TRUE) %>% mutate(file_name=x)) %>%
+    map_df(.,function(x) read_csv(x, col_types=cols(),col_names=TRUE) %>%
+    mutate(file_name=x)) %>%
     mutate(dataset_ID = gsub(".+\\/([0-9]+\\-[0-9]+\\-[0-9]+\\_[0-9]+\\-[0-9]+\\-[0-9]+)\\/.+", "\\1",file_name)) %>%
     #replace all whitespaces in column names with "_"
     rename_all(list(~gsub("\\s", "_",.))) %>%
@@ -98,18 +113,14 @@ for (row in 1:nrow(nested_list_of_datasets)){
     na.omit() %>%
     mutate(annotation = annotation)
   
-  
-  
+
     annotation_underscored <- gsub(" ", "_", annotation)
-    created_file_path <- file.path(save_path,paste0("200520_", annotation_underscored, "_raw_data.rds"))
+    created_file_path <- file.path(save_path,paste0("200612_", annotation_underscored, "_raw_data.rds"))
     saveRDS(imported_data, file = created_file_path)
     cat(paste0("\n\ndatasets ",paste(unique(imported_data$dataset_ID), collapse=" & "), " were processed \nand saved under: ", created_file_path))
-  
-  
+    immported_data <- NULL
+    
 }
-
-
-
 
 
 ```
