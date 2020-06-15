@@ -1,14 +1,20 @@
 ```{r message=FALSE, include=FALSE}
 
 
-target_folder <- "/home/fpreuss/raid/timelapses/analysis/200318/data"
-save_path_plots <- "/home/fpreuss/raid/timelapses/analysis/200318/plots/posture/moving_skeletons/"
+base_path <- "/home/fpreuss/raid/timelapses/analysis/200612/"
+
+```
+
+```{r message=FALSE, include=FALSE}
+target_path <- file.path(base_path, "data")
+save_path <- file.path(base_path, "data", "posture")
+dir.create(save_path)
 
 conversion_factor <- 6.25
 
 
 #list of .rds files in data folder
-files_to_process <- list.files(target_folder, "raw_data.rds", full.names = TRUE, ignore.case = TRUE)
+files_to_process <- list.files(target_path, "raw_data.rds", full.names = TRUE, ignore.case = TRUE)
 #define which .rds files to exclude
 # files_to_process <- grep("daf2|L2|1:10",files_to_process,value = TRUE,invert=TRUE)
 files_to_process <- grep("1:10",files_to_process,value = TRUE)
@@ -61,7 +67,7 @@ for (file in files_to_process){
       
         
     cat("\nskeletonization and head estimation done. now saving.")
-    created_file_path <- file.path(target_folder,"posture",paste0("200428_",annotation,"_timepoint_",timepoint,"_skeletonized.rds"))
+    created_file_path <- file.path(target_path,"posture",paste0("200428_",annotation,"_timepoint_",timepoint,"_skeletonized.rds"))
     saveRDS(data_skeletonized, file = created_file_path)
     cat(paste0("\ndataset: ",annotation," timepoint ",timepoint, " was skeletonized, filtered \nand saved under: ", created_file_path))
     
@@ -71,9 +77,10 @@ for (file in files_to_process){
 }
 ```
 
+#filter skeletons
 ```{r message=FALSE, include=FALSE}
 
-target_folder <- "/home/fpreuss/raid/timelapses/analysis/200318/data/posture/skeletonized/"
+target_path <- file.path(base_path, "data","posture")
 
 min_frames <- 10
 
