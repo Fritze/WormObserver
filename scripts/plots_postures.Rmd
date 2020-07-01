@@ -3,9 +3,12 @@
 #We need the clustering file containing the mean positions of each cluster as well as the skeletons filtered file with clusters attached
 ```{r, include=FALSE}
 
-target_folder<-"/media/fpreuss/raid5/timelapses/analysis/200612/data/posture/clustered_1"
-save_path <- "/media/fpreuss/raid5/timelapses/analysis/200612/plots/posture/heatmaps"
+base_path <-"/media/fpreuss/raid5/timelapses/analysis/200612/"
+target_folder <-file.path(base_path, "data","posture","clustered_1")
+```
 
+#Load data (clustered postures) for analysis
+```{r, include=FALSE}
 
 skeletons_filtered_clustered_filepath <- list.files(path = target_folder,pattern=".+skeletons_filtered_clustered.RDS",ignore.case = TRUE, full.names = TRUE)
 clustering_filepath <- list.files(path = target_folder,pattern="clustering.RDS",ignore.case = TRUE, full.names = TRUE)
@@ -15,7 +18,6 @@ cluster <- readRDS(clustering_filepath)
 cluster_centers_reduced <- readRDS(cluster_centers_reduced_filepath)
 skeleton_data_clustered <- readRDS(skeletons_filtered_clustered_filepath)
 ```
-
 
 
 #calculate relative occurence of clusters
@@ -67,7 +69,8 @@ order_overall <- freq_postures_overall$newID
 #plotted will be the original skeleton (with original X and Y location), as well as the alligned skeleton and the corresponding posture
 ```{r, include=FALSE}
 
-save_path_comparison <- "/media/fpreuss/raid5/timelapses/analysis/200612/plots/posture/posture_comparison_plots"
+save_path <- file.path(base_path,"plots","posture","posture_comparison_plots")
+dir.create(save_path)
 
 plot_posture_examples <- function(data_to_plot,X,Y){
   ggplot(data_to_plot, aes_string(x=X,y=Y,color="angle"))+
@@ -145,7 +148,7 @@ for (i in unique(skeleton_data_clustered_subset$frame)){
     plot_corresponding_cluster_mean) +
     plot_layout(heights = unit(c(6,1,8,8), c('cm', 'cm','cm','cm')))+
     # plot_layout(widths=c(1,3,3), heights = c(1,3, 3))
-     ggsave(file.path(save_path_comparison,paste0("posture_frame",selected_frame,".png")),height=15,width=10)
+     ggsave(file.path(save_path,paste0("posture_frame",selected_frame,".png")),height=15,width=10)
 
 }
 
@@ -260,6 +263,8 @@ angle_data_postures_per_dataset <- angle_data_postures_first %>%
 #  3- frequency, normalized (z-score) with rolling mean
 ```{r, include=FALSE}
 
+save_path <- file.path(base_path,"plots","posture","heatmaps")
+dir.create(save_path)
 
 plot_posture_heatmap <- function(data_to_plot,order){
   ggplot(data_to_plot,aes(x=factor(newID,levels=order),y=hours_rounded))+
@@ -388,7 +393,7 @@ for (a in annotations){
   heatmap /
     skeletons + 
     plot_layout(widths = c(1,4),heights = c(1,4))+
-    ggsave(file.path(save_path,paste0("200511_heatmap_",paste0(a,collapse="+"),"_",n,".png")),width=49,height=30)
+    ggsave(file.path(save_path,paste0("heatmap_",paste0(a,collapse="+"),"_",n,".png")),width=49,height=30)
   
  
   }
@@ -398,33 +403,90 @@ for (a in annotations){
 
 
 ```{r, include=FALSE}
-library(ggsignif)
-all_IDs = unique(skeleton_data_clustered)
-for ()
-oneID <- angle_data_postures_per_dataset %>%
-  filter(newID == 1) %>%
-  mutate(time_bin = ifelse(hours_rounded <= 3, "< 3","> 3")) %>%
-  # filter(annotation == "Agar") %>%
-  select(annotation,perc_per_dataset,time_bin) %>%
-  group_by(annotation) %>%
-  do(w = wilcox.test(perc_per_dataset~time_bin, data=., paired=FALSE)) %>%
-  summarise(annotation, Wilcox = w$p.value)
 
-wilcox.test(x, y, alternative = "two.sided")
+save_path <- file.path(base_path,"plots","posture","boxplots_posture_freqs")
+dir.create(save_path)
 
 
-data_to_plot <- angle_data_postures_per_dataset %>%
-  filter(newID %in% c(79,29,33)) %>%
-  filter(hours_rounded <= 6) %>%
-  mutate(time_bin = ifelse(hours_rounded <= 3, "< 3","> 3"))
+#new function to plot posture examples
+plot_posture_examples <- function(data_to_plot,X,Y){
+  ggplot(data_to_plot, aes_string(x=X,y=Y,color="angle"))+
+    geom_point(size=4) +
+    geom_path(size=2,lineend = "round") +
+    theme_void()+
+    coord_fixed(ratio = 1)+
+    #add some buffer on y axis to show full skeleton
+    scale_y_continuous(limits=c(0,1.1))+
+    scale_color_gradient2(low = "deepskyblue", mid = "lavender",
+                          high = "deeppink",midpoint=0,limits=c(-1,1),na.value="grey") +
+    # scale_color_viridis(option = "plasma",limits=c(-1,1))+
+    theme(plot.title = element_text(face = "bold"))
+}
+#get names of all newIDs
+all_IDs <- unique(cluster_centers_reduced$newID)
 
-ggplot(data_to_plot, aes(x=time_bin, y=perc_per_dataset,color=annotation))+
-  geom_boxplot()+
-  geom_point(alpha=0.5) +
-  facet_wrap(vars(newID,annotation),ncol = 2,scales="free")+
-  theme_classic()+
-   ggsave(file.path(save_path,paste0("comparison_test",".png")),width=10,height=5)
+#for every cluster ID, calculate wilcoxon rank test pvalue between time bins and append to one matrix
+all_ps <- NULL
+for (i in all_IDs) {
+  p <- angle_data_postures_per_dataset %>%
+    #only one clusterID
+    filter(newID == i) %>%
+    #only for timepoints lower than 6 hours
+    filter(hours_rounded <= 6) %>%
+    #create time bins
+    mutate(time_bin = ifelse(hours_rounded <= 3, "< 3","> 3")) %>%
+    #calculate pvalue for only annotation
+    filter(annotation == "N2 RT no food") %>%
+    select(perc_per_dataset,time_bin) %>%
+    #use the perc_per_dataset for calculation
+    summarise(Wilcox = wilcox.test(perc_per_dataset~time_bin, data=., paired=FALSE)$p.value) %>%
+    mutate(newID = i) %>%
+    mutate(Wilcox = as.numeric(Wilcox))
+  
+  all_ps <- rbind(all_ps, p)
+}
 
+all_ps %>%
+  arrange(Wilcox) %>%
+  slice(1:30)
+
+#take the clusterIDs with the lowest pvalue
+significant_IDs <- all_ps %>%
+  arrange(Wilcox) %>%
+  slice(1:30) %>%
+  pull(newID)
+
+for (i in all_IDs){
+  
+  pvalue <- all_ps %>%
+    filter(newID == i) %>%
+    select(Wilcox) %>%
+    pull()
+  
+  data_to_plot <- angle_data_postures_per_dataset %>%
+    filter(newID %in% i) %>%
+    #only for timepoints lower than 6 hours
+    filter(hours_rounded <= 6) %>%
+    mutate(time_bin = ifelse(hours_rounded <= 3, "< 3h","> 3h")) %>%
+    #frequency * 1000
+    mutate(perc_per_dataset = perc_per_dataset * 1000)
+  
+  boxplots <- ggplot(data_to_plot, aes(x=time_bin, y=perc_per_dataset,color=annotation))+
+    geom_boxplot(color="black")+
+    geom_point(alpha=0.5) +
+    labs(x="time",y="frequency (x 1000)") +
+    facet_wrap(vars(annotation),ncol = 2)+
+    theme_classic()
+  
+  skeletons <- plot_posture_examples(filter(cluster_centers_reduced,newID %in% i & newID_sub == 1), "X","Y") +
+    geom_point(data=filter(cluster_centers_reduced,index == 2 & newID == i & newID_sub == 1), aes(X,Y),color="orange",size=5,shape=17)+
+    ggtitle(paste0("posture_",i,"\npvalue= ",round(pvalue,10)))
+  
+  boxplots + skeletons +
+    plot_layout(heights = unit(c(5, 1), c('cm', 'null')))+
+    ggsave(file.path(save_path,paste0("boxplot_freq_posture_",i,".png")),width=7,height=5)
+  
+}
 
 
 ```
@@ -432,10 +494,11 @@ ggplot(data_to_plot, aes(x=time_bin, y=perc_per_dataset,color=annotation))+
 #calculate ngrams
 #i.e. which posters occur often together in a sequence
 ```{r, include=FALSE}
-
-save_path <- "/home/fpreuss/raid/timelapses/analysis/200318/plots/posture/syntax/"
-
 library(tidytext)
+
+save_path <- file.path(base_path,"plots","posture","syntax")
+dir.create(save_path)
+
 
 #reduce skeleton_data_clustered for one row per track
 postures_per_track <- skeleton_data_clustered %>%
@@ -491,7 +554,7 @@ posture_trigrams_w_postures <- posture_trigrams_stats %>%
   #add cluster centers for each trigram
   left_join(cluster_centers_reduced,by=c("posture" = "newID")) %>%
   filter(newID_sub == 1) %>%
-  select(-c(clusterID, angle_mirror, mirroredID,difference, newID_sub)) %>%
+  select(-c(clusterID, mirroredID, newID_sub)) %>%
   arrange(annotation, hours_rounded,trigram_position,freq_trigram) %>%
   mutate(ID = paste(annotation, hours_rounded,trigram_position,posture,sep="\n"))
  
