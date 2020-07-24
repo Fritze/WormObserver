@@ -2,7 +2,7 @@
 ```{r, include=FALSE}
 
 #Set the location folder of the raw data (of all experiments you want to plot)
-base_path <- "/home/fpreuss/raid/timelapses/analysis/200612/"
+base_path <- "/media/fpreuss/raid5/timelapses/analysis/200703/"
 
 ```
 
@@ -13,7 +13,7 @@ target_path <- file.path(base_path,"data")
 save_path <- file.path(base_path,"plots")
 
 #list of .rds files in data folder
-files_to_process <- list.files(target_folder, "raw_data.rds", full.names = TRUE, ignore.case = TRUE)
+files_to_process <- list.files(target_path, "raw_data.rds", full.names = TRUE, ignore.case = TRUE)
 
 
 imported_data <- NULL
@@ -33,31 +33,37 @@ for (file in files_to_process){
 
 library("ggridges")
 
+#pixel to µm conversion
+#this is with magnifaction 3.2
+conversion_factor <- 6.25
 
 for(a in unique(imported_data$annotation)){
-  # new data frame with hours rounded by half hour
+  # new data frame with hours rounded by hour
   data_to_plot <- imported_data %>%
     filter(annotation == a) %>%
     mutate(hours = minutes / 60) %>%
-    mutate(hours_rounded= floor(hours * 2) / 2)
+    mutate(hours_rounded= round(hours)) %>%
+    filter(hours_rounded <= 14) %>%
+    mutate(major = conversion_factor * major, minor = conversion_factor * minor)
   
 
   #all datasets individually,per annotation
-  ggplot(data_to_plot,aes(x = size ,y = factor(as.character(hours_rounded), level = unique(hours_rounded)), fill=stat(x))) +
+  ggplot(data_to_plot,aes(x = major ,y = factor(as.character(hours_rounded), level = unique(hours_rounded)), fill=stat(x))) +
     geom_density_ridges_gradient(scale = 1) +
-    scale_x_continuous(limits = c(0, max(data_to_plot$size)))+
-    # scale_y_continuous(limits=c(0, max(data_to_plot$hours_rounded)))+
     facet_wrap(vars(annotation,dataset_ID),ncol=1,scales="free_x")+
+    scale_x_continuous(breaks=seq(0,600, by=100),limits = c(0, max(data_to_plot$major)))+
     scale_fill_viridis()+
-    theme_linedraw()+
-    labs(x="Size (px)",y="time (hours)")+
+    theme_classic()+
+    labs(x="Major axis (µm)",y="time (hours)")+
     theme(strip.background = element_rect(colour = "white", fill = "white"),
       strip.text.x = element_text(size=20,colour = "black", face = "bold"),
-      axis.text.x = element_text(size=15),
-      axis.title.x = element_text(size=20),
-      axis.text.y = element_text(size=15),
-      axis.title.y = element_text(size=20))+
-    ggsave(file.path(save_path,paste0("size_plots_individual_",a,".png")),height=30,width=10)
+      axis.text.x = element_text(size=15, face="bold"),
+      axis.title.x = element_text(size=20, face="bold"),
+      axis.text.y = element_text(size=15, face="bold"),
+      axis.title.y = element_text(size=20, face="bold"),
+      axis.line = element_line(colour = 'black', size = 1.2),
+      axis.ticks = element_line(colour = "black", size = 1.2))+
+    ggsave(file.path(save_path,paste0("size_plots_individual_",a,".png")),height=15,width=7.5)
   }
   
 #all annotations grouped
