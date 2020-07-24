@@ -403,6 +403,9 @@ for (a in annotations){
 
 
 ```{r, include=FALSE}
+#define color palette for plots
+library(wesanderson)
+mr3 <- wes_palettes$Moonrise3[3:2]
 
 save_path <- file.path(base_path,"plots","posture","boxplots_posture_freqs")
 dir.create(save_path)
@@ -456,6 +459,7 @@ significant_IDs <- all_ps %>%
   slice(1:30) %>%
   pull(newID)
 
+#for all IDs plot boxplot and corresponding plosture
 for (i in all_IDs){
   
   pvalue <- all_ps %>%
@@ -471,12 +475,28 @@ for (i in all_IDs){
     #frequency * 1000
     mutate(perc_per_dataset = perc_per_dataset * 1000)
   
-  boxplots <- ggplot(data_to_plot, aes(x=time_bin, y=perc_per_dataset,color=annotation))+
-    geom_boxplot(color="black")+
-    geom_point(alpha=0.5) +
-    labs(x="time",y="frequency (x 1000)") +
-    facet_wrap(vars(annotation),ncol = 2)+
-    theme_classic()
+  data_to_plot$annotation <- factor(data_to_plot$annotation, levels=rev(unique(data_to_plot$annotation)))
+  
+  boxplots <- ggplot(data_to_plot, aes(x=time_bin, y=perc_per_dataset))+
+   geom_boxplot(aes(fill=annotation),lwd=1.2,outlier.shape=NA)+
+   geom_point(aes(fill=annotation),position = position_jitterdodge(),shape=21,size=2.5)+
+   xlab("hours") + ylab("frequency / 1000")+
+    scale_fill_manual(values=mr3)+
+    theme_classic()+
+    theme(
+      legend.direction="vertical",
+      legend.position = "right",
+      strip.background = element_rect(colour = "white", fill = "white"),
+      panel.spacing = unit(1, "lines"),
+      strip.text.x = element_text(size=15,colour = "black", face = "bold"),
+      axis.text.x = element_text(size=30),
+      axis.title.x = element_text(size=20),
+      axis.text.y = element_text(size=30),
+      axis.title.y = element_text(size=20),
+      axis.ticks=element_line(size=1.5),
+      axis.ticks.length=unit(0.25,"cm"),
+      axis.line = element_line(colour = 'black', size = 1.5),
+      legend.key.size = unit(2.5, "cm"))
   
   skeletons <- plot_posture_examples(filter(cluster_centers_reduced,newID %in% i & newID_sub == 1), "X","Y") +
     geom_point(data=filter(cluster_centers_reduced,index == 2 & newID == i & newID_sub == 1), aes(X,Y),color="orange",size=5,shape=17)+
