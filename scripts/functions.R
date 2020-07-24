@@ -4,11 +4,11 @@
 # packages to load
 
 library("dplyr")
+library("tibble")
 library("tidyr")
 library("ggplot2")
 library("rmarkdown")
 library("knitr")
-library("wesanderson")
 library("readr")
 library("purrr")
 library("viridis")
@@ -1106,4 +1106,6 @@ skeleton_head_estimate_old <- function(data) {
   }
   
 }
+
+
 
