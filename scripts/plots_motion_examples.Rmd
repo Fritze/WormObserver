@@ -14,19 +14,9 @@ dir.create(save_path)
 #list of centroid tracking .rds files in data folder
 files_to_process <- list.files(target_path, "raw_data",full.names = TRUE, ignore.case = TRUE)
   
-order  <- c("N2 1:5 OP50",
-            "N2 1:10 OP50",
-            "N2 no food",
-            "N2 1:10 after 6h exit",
-            "N2 1:10 OP50 after 6h exit",
-            "N2 empty after 6h exit",
-            "daf2",
-            "Agar",
-            "Agar with NAD",
-            "N2 RT no food"
-            )
 
-selected_annotation <- gsub("\\s","_","N2 1:5 OP50")   
+
+selected_annotation <- "Agar_raw"   
 file <- grep(selected_annotation,files_to_process, value=TRUE)
 
 imported_data <- map_dfr(file,readRDS) %>%
