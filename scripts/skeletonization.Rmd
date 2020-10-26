@@ -16,7 +16,7 @@ conversion_factor <- 6.25
 files_to_process <- list.files(target_path, "raw_data.rds", full.names = TRUE, ignore.case = TRUE)
 
 #define which .rds files to include
-files_titles <-  c("N2_1:10_OP50_after_6h_exit")
+files_titles <-  c(":10_OP50_after_6h_exit")
 files_to_process <- grep(paste0(files_titles,collapse="|"),files_to_process,value = TRUE)
 
 #take out specific datasets
@@ -24,19 +24,19 @@ files_to_process <- grep(paste0(files_titles,collapse="|"),files_to_process,valu
 # files_to_process <- grep("with",files_to_process,invert=TRUE,value=TRUE)
   
 #timepoints to process
-tps <- seq(1,90,7)
+tps <- seq(1,90)
 
 
 
 
 #load .rds with all experimental replicates
-# for (file in files_to_process){
+for (file in files_to_process){
   cat(paste0("\n\nimporting file: ", file))
   
   #get file title from raw dataset name
   file_title <- gsub("(.+)\\_raw_data.rds","\\1",basename(file))
   #get timepoints of this dataset that are already processed
-  tps_processed <- gsub(".+timepoint_(\\d+)_skeletonized,+","\\1",grep(file_title, list.files(save_path,pattern="skeletonized"),value=TRUE))
+  tps_processed <- gsub(".+timepoint_(\\d+)_skeletonized.+","\\1",grep(file_title, list.files(save_path,pattern="skeletonized"),value=TRUE))
   #get timepoints of this dataset that still have to be processed
   tps_to_process <- tps[!tps %in% tps_processed]
   
@@ -140,7 +140,7 @@ for (annotation in files_to_process_annotations){
       ungroup()
 
   cat("\nskeleton filtering done. now saving.")
-  created_file_path <- file.path(target_path,paste0("200907_",annotation,"_skeletonized_filtered.rds"))
+  created_file_path <- file.path(target_path,paste0(,annotation,"_skeletonized_filtered.rds"))
   saveRDS(imported_data, file = created_file_path)
   cat(paste0("\ndataset: ",annotation," was filtered \nand saved under: ", created_file_path))
   rm(imported_data)
