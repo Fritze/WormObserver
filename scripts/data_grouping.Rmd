@@ -21,6 +21,9 @@ list_of_datasets <- matrix(c(
   # "2019-07-08_18-33-57", "N2 1:5 OP50",
   # "2019-07-09_18-22-34", "N2 1:5 OP50",
   # "2019-11-11_16-17-33", "N2 1:5 OP50",
+  #"2020-09-16_19-35-16","N2 1:7 OP50",
+  #"2020-09-17_18-33-57","N2 1:7 OP50",
+  #"2020-09-18_19-39-59","N2 1:7 OP50",
   # "2019-03-25_18-10-06", "N2 no food",
   # "2019-11-18_18-43-57", "N2 no food",
   # "2019-11-20_17-29-55", "N2 no food",
@@ -30,8 +33,13 @@ list_of_datasets <- matrix(c(
   # "2020-06-04_19-04-35", "Agar",
   # "2020-06-05_18-29-54", "Agar",
   # "2020-06-08_17-57-26", "Agar",
-  "2020-07-16_18-36-46","Agar with NAD",
-  "2020-07-17_12-47-20", "Agar with NAD"
+  # "2020-07-16_18-36-46","Agar with NAD",
+  # "2020-07-17_12-47-20", "Agar with NAD",
+  # "2020-07-24_19-06-57", "Agar with NAD",
+  # "2020-07-27_16-34-21", "Agar with NAD"
+  "2020-08-27_12-06-16", "MT14984",
+  "2020-09-02_18-49-24", "MT14984",
+  "2020-09-09_18-42-17","MT14984"
   # "2019-04-23_17-46-08", "daf2",
   # "2019-05-07_12-15-40", "daf2",
   # "2019-04-30_14-15-44", "L2",
@@ -42,6 +50,7 @@ list_of_datasets <- matrix(c(
   # "2020-02-26_18-31-08", "N2 empty after 6h exit",
   # "2020-02-27_17-51-43", "N2 empty after 6h exit",
   # "2020-02-28_17-38-15", "N2 empty after 6h exit"
+  # "2020-09-04_18-54-35", "L3"
   ),byrow = TRUE,ncol=2)
 
 colnames(list_of_datasets) <- c("dataset_ID", "annotation")
@@ -111,7 +120,14 @@ for (row in 1:nrow(nested_list_of_datasets)){
     mutate(timestep_length = ifelse(timepoint_length > timestep_length, 0,timestep_length-timepoint_length)) %>%
     mutate(minutes = time_elapsed + ((tp-1)*timepoint_length+(tp-1)*timestep_length)) %>%
     na.omit() %>%
-    mutate(annotation = annotation)
+    mutate(annotation = annotation) %>%
+    select(c(TrackID, Number_of_gaps, Mean_velocity, Maximal_velocity, Minimal_velocity, Median_velocity,
+             Velocity_standard_deviation, Duration_of_track, Track_start, Track_stop, Track_displacement,
+             location_x, location_y, Size, Circularity, Convexity, Eccentricity, Main, Minimum, Maximum,
+             Major, Minor, Boundary, Boxivity, Roundness, Solidity, Prediction, Prediction_confidence,
+             frame, recorded_fps, downsampled_to, bitmask, bitmask_dim_X, bitmask_dim_Y, tp, file_name,
+             dataset_ID, time_elapsed, timepoint_length, timestep_length, plate_type, worm_type,
+             minutes, annotation))
   
 
     annotation_underscored <- gsub(" ", "_", annotation)
