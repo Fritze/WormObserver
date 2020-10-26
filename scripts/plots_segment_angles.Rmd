@@ -1,0 +1,154 @@
+```{r message=FALSE, include=FALSE}
+
+
+base_path <- "/media/fpreuss/raid5/timelapses/analysis/200703/"
+target_path <- file.path(base_path, "data","posture","skeletonized_filtered")
+
+```
+
+```{r message=FALSE, include=FALSE}
+
+files_to_process <- list.files(target_path,"skeletonized_filtered.rds", full.names = TRUE, ignore.case = TRUE)
+
+#define which .rds files to include
+files_titles <-  c("daf2","1:10","Agar")
+files_to_process <- grep(paste0(files_titles,collapse="|"),files_to_process,value = TRUE)
+
+
+
+sample_number = 1000
+#function to load posture library
+#ID to unify posture IDs across annotations
+load_skeletonized_filtered_subset <- function(x){
+  readRDS(x) %>%
+    #estimate 15 minutes as lag before experiment
+    mutate(minutes = 15 + ((tp-1)*8+(tp-1)*0)) %>%
+    #round to half hour steps
+    # mutate(hours_rounded = ceiling(minutes/60*2)/2) %>%
+    #round to full hours steps
+    mutate(hours_rounded = ceiling(minutes/60)) %>%
+    filter(hours_rounded <= 12) %>%
+    group_by(hours_rounded) %>%
+    mutate(ID = paste0(dataset_ID, "_",tp,"_",TrackID,"_",frame)) %>%
+    filter(ID %in% sample(unique(ID),sample_number)) %>%
+    select(annotation, dataset_ID, tp, hours_rounded, TrackID, frame,ID, index, X,Y,angle,is_head) %>%
+    group_by(ID) %>%
+    mutate(old_X = X, old_Y=Y) %>%
+    #turn the coordinates so that the worm's orientations are similar
+    group_modify(~ turn_worm(.x))
+    
+}
+
+
+#load data
+skeletonized_filtered_subset <- files_to_process %>%
+  map_df(., load_skeletonized_filtered_subset)
+
+```
+
+
+```{r message=FALSE, include=FALSE}
+
+sampled_ID <- sample(unique(skeletonized_filtered_subset$ID),1)
+example_skeleton <- skeletonized_filtered_subset %>%
+  filter(ID == sampled_ID)
+
+plot_posture_examples <- function(data_to_plot,X,Y){
+  ggplot(data_to_plot, aes_string(x=X,y=Y,color="angle"))+
+    geom_point(size=3.5) +
+    geom_point(data=filter(data_to_plot,index == 2), aes(X,Y),color="orange",size=7,shape=17) +
+    geom_path(size=2.5,lineend = "round") +
+    theme_void()+
+    coord_fixed(ratio = 1)+
+    scale_color_gradient2(low = "deepskyblue", mid = "lavender",
+                          high = "deeppink",midpoint=0,limits=c(-1,1),na.value="grey") +
+    # scale_color_viridis(option = "plasma",limits=c(-1,1))+
+    theme(plot.title = element_text(face = "bold"))
+  }
+
+p1 <- plot_posture_examples(example_skeleton,"old_X","old_Y")
+p2 <- plot_posture_examples(example_skeleton,"X","Y")
+
+# p1 / p2
+p2
+example_skeleton <- example_skeleton %>%
+  group_by(ID) %>%
+  arrange(index) %>%
+  mutate(zero_y = ifelse(is_head == "YES", Y, NA)) %>%
+  fill(zero_y) %>%
+  mutate(Y=Y-zero_y) %>%
+  mutate(min_y = min(Y),max_y = max(Y)) %>%
+  mutate(peak_to_peak = abs(min_y) + max_y)
+
+data_to_plot <- skeletonized_filtered_subset %>%
+  group_by(ID) %>%
+  arrange(index) %>%
+  mutate(zero_y = ifelse(is_head == "YES", Y, NA)) %>%
+  fill(zero_y) %>%
+  mutate(Y=Y-zero_y) %>%
+  mutate(min_y = min(Y),max_y = max(Y)) %>%
+  mutate(peak_to_peak = abs(min_y) + max_y) %>%
+  mutate(min_x = min(X), max_x = max(X)) %>%
+  mutate(length = abs(min_x) + max_x) %>%
+  mutate(peak_to_peak_relative = peak_to_peak / length) %>%
+  group_by(annotation, dataset_ID, tp, hours_rounded, TrackID, frame,ID, peak_to_peak,peak_to_peak_relative) %>%
+  summarise() %>%
+  filter(annotation %in% c("N2 1:10 OP50 after 6h exit","N2 1:10 OP50")) %>%
+  filter(hours_rounded %in% c(1,5,7,11))
+
+
+library("ggridges")
+
+ggplot(data_to_plot, aes(x=peak_to_peak_relative,y = factor(as.character(hours_rounded), level = unique(hours_rounded)),fill=annotation))+
+  # geom_histogram()+
+  theme_classic()+
+  # geom_density_ridges(stat = "binline", bins = 100, scale = 0.95, draw_baseline = FALSE)+
+  geom_density_ridges_gradient(scale = 0.9)+
+  facet_wrap(vars(annotation))+
+  ggsave(file.path(save_path,"peak_to_peak_relative_ridges.png"),height=7,width=10)
+
+ggplot(data_to_plot, aes(x=peak_to_peak_relative,fill=annotation))+
+  # geom_histogram(binwidth = 0.025)+
+  geom_density(aes(y=0.025 * ..count..),alpha=0.25)+
+  theme_classic()+
+  # geom_density_ridges(stat = "binline", bins = 100, scale = 0.95, draw_baseline = FALSE)+
+  # geom_density_ridges_gradient(scale = 0.9)+
+  facet_wrap(vars(hours_rounded,annotation),ncol=2)+
+  ggsave(file.path(save_path,"peak_to_peak_relative.png"),height=7,width=10)
+
+
+
+
+```
+
+```{r message=FALSE, include=FALSE}
+save_path <- file.path(base_path, "plots", "posture", "segment_angles")
+dir.create(save_path)
+
+data_to_plot <- skeletonized_filtered_subset %>%
+  filter(index %in% seq(10:20)) %>%
+  # # filter(hours_rounded %in% c(3,9,12)) %>%
+  # mutate(time = ifelse(hours_rounded <= 3, "<3", NA)) %>%
+  # mutate(time = ifelse(hours_rounded >= 9, ">9", time)) %>%
+  # mutate(time = ifelse(hours_rounded > 3 & hours_rounded < 9,NA,time)) %>%
+  # filter(time %in% c("<3",">9")) %>%
+  # filter(angle < 1 & angle > -1) %>%
+  mutate(angle_abs = abs(angle)) %>%
+  filter(annotation %in% c("Agar","N2 1:10 OP50","daf2"))
+
+
+ggplot(data_to_plot, aes(x=angle,fill=annotation))+
+  geom_histogram(binwidth = 0.05)+
+  geom_density(color="black")+
+  facet_wrap(vars(annotation,hours_rounded),ncol=12)+
+  ggsave(file.path(save_path,"angle_distribution.png"),height=10,width=30)
+
+ggplot(data_to_plot, aes(x=angle_abs,group=annotation,color=annotation))+
+  # geom_histogram()+
+  geom_density()+
+  facet_wrap(vars(hours_rounded),ncol=12)+
+  ggsave(file.path(save_path,"angle_abs_distribution.png"),height=10,width=30)
+
+
+```
+
