@@ -1,7 +1,8 @@
 ```{r, include=FALSE}
 
-target_folder<-"/home/fpreuss/raid/timelapses/analysis/200318/data/posture/skeletonized/"
-save_path <- "/home/fpreuss/raid/timelapses/analysis/200318/plots/posture"
+target_folder<-"/media/fpreuss/raid5/timelapses/analysis/200703/data/posture"
+
+save_path <- "/media/fpreuss/raid5/timelapses/analysis/200703/data/posture"
 
 
 files_to_process <- list.files(target_folder,"skeletonized_filtered.rds", full.names = TRUE, ignore.case = TRUE)
@@ -16,6 +17,7 @@ skeleton_data_filtered <- files_to_process %>%
   map_df(., function(x) readRDS(x)) %>%
   mutate(ID = paste0(dataset_ID, "_",tp,"_",TrackID,"_",frame))
 
+
 #transpose - rows: posture IDs, -columns: angles
 angle_data_cluster <- skeleton_data_filtered %>%
   dcast(ID ~ index,value.var = "angle") %>%
@@ -29,14 +31,15 @@ angle_data_cluster <- skeleton_data_filtered %>%
 #calculate clusters
 #choose right number of centers!
 
-centers <- 150
+centers <- 200
 
 cluster <- kmeans(angle_data_cluster,centers=centers,nstart = 5,iter.max = 1000,algorithm = "Lloyd")
 
 
 cluster_centers <- melt(cluster$centers) %>%
   rename("clusterID" = Var1, "index" = Var2, "angle" = value) %>%
-    arrange(clusterID) %>%
+  arrange(clusterID) %>%
+  #define initial values needed for estimating position from angles
   mutate(new_angle=0, X=1, Y=1) %>%
   group_by(clusterID) %>%
   #estimate the positions for each clusterID independently
@@ -72,13 +75,16 @@ cluster_centers_reduced <- cluster_centers %>%
   mutate(newID = as.integer(as.factor(newID))) %>%
   select(-c(angle_mirror,difference))
 
+annotations <- c(unique(skeleton_data_filtered$annotation))
+files_to_process_annotations <- paste(annotations,collapse="_")
+
 
 #this gives out an overview image of all postures (with mirrored corresponding ones)
 plot_posture_examples(cluster_centers_reduced, "X","Y") +
   geom_point(data=filter(cluster_centers_reduced,index == 2), aes(X,Y),color="orange",size=3,shape=17) +
   facet_wrap(vars(newID,newID_sub),ncol=4) +
   theme(strip.text.x = element_text(size = 20,face="bold"))+
-  ggsave(file.path(save_path,paste0("posture_angle_centers_mirrorExamples",".png")),height=49,width=10)
+  ggsave(file.path(save_path,paste0("200417_",paste0(paste0(files_to_process_annotations,collapse = "_"),"_posture_angle_centers_mirrorExamples",".png"))),height=49,width=10)
 
 #a dataframe with the clusterID (old as put out by kmeans) and the skeleton ID (from rownames of angle_data_cluster dataframe)
 skeletonIDs_with_postures <- data.frame(clusterID = as.character(cluster$cluster), ID = rownames(angle_data_cluster),stringsAsFactors = FALSE)
@@ -98,8 +104,7 @@ skeleton_data_clustered <- cluster_centers_reduced %>%
   ungroup()
 
 
-annotations <- c(unique(skeleton_data_filtered$annotation))
-files_to_process_annotations <- paste(annotations,collapse="_")
+
 
 cluster_centers_reduced_filepath <- file.path(target_folder,paste0("200417_",paste(files_to_process_annotations,collapse = "_"),"_cluster_centers_reduced.RDS"))
 saveRDS(cluster_centers_reduced, file=cluster_centers_reduced_filepath)
