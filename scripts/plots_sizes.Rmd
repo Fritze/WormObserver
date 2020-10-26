@@ -15,6 +15,10 @@ save_path <- file.path(base_path,"plots")
 #list of .rds files in data folder
 files_to_process <- list.files(target_path, "raw_data.rds", full.names = TRUE, ignore.case = TRUE)
 
+#select dataset
+files_to_process <- grep(".+L3.+", files_to_process,value=TRUE)
+
+
 
 imported_data <- NULL
 #load all .rds files and append to one data frame ('imported_data')
@@ -64,7 +68,11 @@ for(a in unique(imported_data$annotation)){
       axis.line = element_line(colour = 'black', size = 1.2),
       axis.ticks = element_line(colour = "black", size = 1.2))+
     ggsave(file.path(save_path,paste0("size_plots_individual_",a,".png")),height=15,width=7.5)
-  }
+  
+  # ggplot(data_to_plot,aes(x = factor(as.character(hours_rounded), level = unique(hours_rounded)) ,y = major)) +
+  #   geom_boxplot()
+  
+}
   
 #all annotations grouped
 data_to_plot <- imported_data %>%
