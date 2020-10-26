@@ -1,0 +1,157 @@
+
+```{r, include=FALSE}
+
+base_path <- "/media/fpreuss/raid5/timelapses/analysis/200703/"
+target_folder<- file.path(base_path, "data", "posture", "skeletonized_filtered")
+files_to_process <- list.files(target_folder,"skeletonized_filtered.rds", full.names = TRUE, ignore.case = TRUE)
+
+selected_annotation <-  c("N2_1:10_OP50_skel")
+files_to_process <- grep(selected_annotation,files_to_process,value = TRUE)
+
+```
+
+
+```{r, include=FALSE}
+
+skeleton_data_filtered <- files_to_process %>%
+  map_df(., function(x) readRDS(x)) %>%
+  mutate(ID = paste0(dataset_ID, "_",tp,"_",TrackID,"_",frame)) %>%
+  #estimate 15 minutes as lag before experiment
+  mutate(minutes = 15 + ((tp-1)*8+(tp-1)*0)) %>%
+  #round to full hours steps
+  mutate(hours_rounded = ceiling(minutes/60))
+
+annotation <- unique(skeleton_data_filtered$annotation)
+
+```
+
+
+```{r, include=FALSE}
+pca_for_eigenworms <- function(dataset, timeranges){
+  eigenworms_per_hour <- NULL
+  eigenworm_contr_per_hour <- NULL
+  for (timerange in timeranges){
+    # print(hour)
+    data_for_pca <- dataset %>%
+      filter(hours_rounded %in% timerange) %>%
+      dcast(ID ~ index,value.var = "angle") %>%
+      #make IDs the rowname so that this column is not part of the clustering data
+      tibble::column_to_rownames(var = "ID") %>%
+      #take out first and last angle
+      select(-c(1,ncol(.)))
+    
+    pca <- prcomp(data_for_pca,scale=TRUE)
+    six_eigenworms <- melt(pca$rotation[,1:6]) %>%
+      rename(index = 1, eigenworm = 2, angle = 3) %>%
+      mutate(hours_rounded = min(timerange))
+    
+    eigenworms_per_hour <- rbind(eigenworms_per_hour,six_eigenworms)
+    
+    
+    pca_con <- setNames(data.frame(1:length(pca$sdev),pca$sdev^2),c("eigenworm","value")) %>%
+      mutate(cumsum_eigenvalue = cumsum(value)) %>%
+      mutate(var_contr_cumsum = cumsum_eigenvalue/sum(value)) %>%
+      mutate(var_contr_rel = value/sum(value)) %>%
+      filter(eigenworm %in% c(1:6)) %>%
+      mutate(hours_rounded = min(timerange))
+    
+    
+    eigenworm_contr_per_hour <- rbind(eigenworm_contr_per_hour,pca_con)
+    
+  }
+  
+  #here, we calculate the cumulative difference between the two cumulative variance contributions
+  cumulative_difference <- eigenworm_contr_per_hour  %>%
+    select(hours_rounded, var_contr_cumsum, eigenworm) %>%
+    spread(hours_rounded,var_contr_cumsum) %>%
+    #early is first timepoint, late is second timepoint
+    rename(early = 2, late = 3) %>%
+    #the difference of the cumulative variance contribution for every eigenworm
+    mutate(difference = abs(early -late) ) %>%
+    #the cumulative difference between the two cumulative variance contributions
+    summarise(cumsum_diff = cumsum(difference)) %>%
+    #extract the cumulative difference (i.e. last row value aka the highest value)
+    pull(cumsum_diff) %>%
+    max()
+  
+  #append the cumulative difference as new column to all rows
+  eigenworm_contr_per_hour <<- eigenworm_contr_per_hour %>%
+      mutate(cumsum_diff = cumulative_difference)
+  
+  eigenworms_per_hour <<- eigenworms_per_hour
+}
+
+
+timeranges <- list(c(1:3),c(10:12))
+list_of_cumsum_diffs <- NULL
+# for (i in 1:1000){
+#   #only skeletons within the selected timeframe
+#   skeleton_data_filtered_resampled <- skeleton_data_filtered %>%
+#     filter(hours_rounded %in% unlist(hours)) %>%
+#     group_by(ID) %>%
+#   #assign every skeleton a new, random time ID
+#     mutate(hours_rounded = sample(unlist(timerange),1))
+#   
+#   #perform pca
+#   pca_for_eigenworms(skeleton_data_filtered_resampled,timeranges)
+#   #select the cumsum difference
+#   list_of_cumsum_diffs <<- rbind(list_of_cumsum_diffs,unique(eigenworm_contr_per_hour$cumsum_diff))
+# }
+# cumsum_diff_shuffled <- max(list_of_cumsum_diffs)
+# print(cumsum_diff_shuffled)
+
+
+pca_for_eigenworms(skeleton_data_filtered,timeranges)
+cumsum_diff <- unique(eigenworm_contr_per_hour$cumsum_diff)
+print(cumsum_diff)
+
+```
+
+```{r}
+save_path <- file.path(base_path,"plots","posture","eigenworms")
+dir.create(save_path)
+
+plot_eigenworms <- ggplot(eigenworms_per_hour, aes(index,angle,color=as.character(hours_rounded))) +
+  geom_point(size=2)+
+  geom_line(size=1)+
+  # scale_y_continuous(limits=c(-0.5,0.5))+
+  facet_wrap(vars(eigenworm),ncol=6)+
+  labs(x="# segment angle", y="angle (rad)")+
+  theme_classic()+
+  coord_fixed(ratio=10)+
+  theme(
+    legend.position = "none"
+  )+
+  ggsave(file.path(save_path,paste0(annotation,"_eigenworms.png")),height=5,width=20)
+
+
+
+plot_contr <- ggplot(eigenworm_contr_per_hour,aes(eigenworm,var_contr_cumsum*100,fill=as.character(hours_rounded))) +
+  geom_bar(aes(x = eigenworm,y = var_contr_rel*100  ,fill = as.character(hours_rounded)),stat="identity", position = "dodge")+ 
+  geom_line(size=1) +
+  geom_point(shape=21,size=3)+
+  scale_y_continuous(limits=c(0,100),breaks=c(0,10,20,30,40,50,60,70,80,90,100)) +
+  scale_x_continuous(breaks=c(0,1,2,3,4,5,6)) +
+  labs(x="# eigenworm", y="variance contribution (%)") +
+  theme_classic()+
+  theme(aspect.ratio=1,
+        legend.position = "top",
+        legend.direction="horizontal",
+        strip.background = element_rect(colour = "white", fill = "white"),
+        panel.spacing = unit(1, "lines"),
+        strip.text.x = element_text(size=15,colour = "black", face = "bold"),
+        axis.text.x = element_text(size=30),
+        axis.title.x = element_text(size=20),
+        axis.text.y = element_text(size=30),
+        axis.title.y = element_text(size=20),
+        axis.ticks=element_line(size=1.5),
+        axis.ticks.length=unit(0.25,"cm"),
+        axis.line = element_line(colour = 'black', size = 1.5))+
+  ggsave(file.path(save_path,paste0(annotation,"_eigenworm_contributions.png")),height=10,width=20)
+
+plot_eigenworms /
+  plot_contr +
+  plot_layout(heights = unit(c(5,15), c('cm', 'cm')))+
+  ggsave(file.path(save_path,paste0(annotation,"_eigenworms_with_contributions.png")),height=10,width=20)
+
+```
