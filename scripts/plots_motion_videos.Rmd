@@ -2,14 +2,26 @@
 #load the skeletonized data
 ```{r message=FALSE, include=FALSE}
 
-target_folder <- "/home/fpreuss/raid/timelapses/analysis/200318/data/posture/skeletonized/"
+target_folder <- "/media/fpreuss/raid5/timelapses/analysis/200703/data/posture/skeletonized_filtered"
 
 #list of .rds files in data folder
 files_to_process <- list.files(target_folder, "skeletonized_filtered.rds", full.names = TRUE, ignore.case = TRUE)
-files_to_process_annotations <- unique(gsub(".+\\_(.+)_skeletonized_filtered.rds","\\1",files_to_process))
+selected_annotation <-  c("N2_1:10_OP50_skel")
+files_to_process <- grep(selected_annotation,files_to_process,value = TRUE)
+
+#select which timepoint (hours_rounded)
+selected_timepoint <- 10:12
 
 data <- files_to_process %>%
-    map_df(.,function(x) readRDS(x))
+    map_df(.,function(x) readRDS(x)) %>%
+    #estimate 15 minutes as lag before experiment
+    mutate(minutes = 15 + ((tp-1)*8+(tp-1)*0)) %>%
+    #round to half hour steps
+    # mutate(hours_rounded = ceiling(minutes/60*2)/2) %>%
+    #round to full hours steps
+    mutate(hours_rounded = ceiling(minutes/60)) %>%
+    filter(hours_rounded %in% selected_timepoint) %>%
+    mutate(ID = paste0(dataset_ID,"_", tp,"_",TrackID))
 
 ```
 
@@ -17,24 +29,16 @@ data <- files_to_process %>%
 #select experiment type, dataset and timepoints to process
 #we also set a minimum track length ("minimal_track_length" variable) and select a fixed number of random tracks (defined by "numbers_of_displayed_tracls" variable)
 ```{r message=FALSE, include=FALSE}
-target_folder <- "/home/fpreuss/raid/timelapses/analysis/200318/plots/posture/moving_skeletons/"
+
+sample_ID = sample(1:100,1)
+
+save_path <- "/media/fpreuss/raid5/timelapses/analysis/200703/plots/motion_videos"
+save_path_video <- file.path("/media/fpreuss/raid5/timelapses/analysis/200703/plots/motion_videos",paste0(sample_ID, "_",selected_annotation,"_timepoint_",min(selected_timepoint),"-",max(selected_timepoint),"_hours_frames"))
+dir.create(save_path_video)
 
 #what is the conversion factor ? how many µm equals one pixel
 conversion_factor <- 6.25
 
-#select which annotation (==type of experiment)
-selected_annotation <- files_to_process_annotations[1]
-dataset_IDs <- data %>%
-  filter(annotation %in% selected_annotation) %>%
-  ungroup() %>%
-  distinct(dataset_ID) %>%
-  pull(dataset_ID)
-#select which dataset
-selected_dataset_ID <- dataset_IDs[1]
-
-
-#select which timepoints
-selected_timepoint <- 1:10
 #only tracks longer than 30 sec (if 2fps)
 minimal_track_length <- 60
 #How many tracks are shown?
@@ -42,42 +46,44 @@ numbers_of_displayed_tracks <- 30
 
 #calculate track angle and velocity for the selected data
 angle_and_velocity <- data %>%
-  filter(dataset_ID == selected_dataset_ID) %>%
-  filter(tp %in% selected_timepoint) %>%
-  group_by(dataset_ID,tp,TrackID,frame) %>%
-  summarise(location_x = first(location_x),location_y = first(location_y)) %>%
-  group_by(dataset_ID,tp,TrackID) %>%
+  #summarise by frame and keep location
+  group_by(ID,frame,location_x,location_y) %>%
+  summarise() %>%
+  #now calculate for the whole track (== ID)
+  group_by(ID) %>%
+  #the track should not have any missing frames
+  mutate(length_track = n(), length_track2=last(frame)-first(frame)+1) %>%
+  filter(length_track == length_track2) %>%
+  #filter out tracks that are too short
+  filter(length_track > minimal_track_length) %>%
+  select(-c(length_track2)) %>%
+  #calculate velocity, angular velocity and center the track position
   mutate(x_lag=lag(location_x,n=1) - location_x, y_lag = lag(location_y, n=1) - location_y) %>%
   mutate(x_lead=lead(location_x, n=1) - location_x, y_lead=lead(location_y, n=1) - location_y) %>%
   # calculate the angle and convert to degrees
   mutate(angle_track = suppressWarnings(180 - (as.numeric(mapply(angle,x_lag,y_lag,x_lead,y_lead)))*180/pi)) %>%
   # measure distance between current point and 1 second before
   mutate(local_distance=suppressWarnings(as.numeric(mapply(distance,lag(location_x,n=2),lag(location_y,n=2),location_x,location_y)))) %>%
-  # this will result in velocity based on local distance (µm/s)
+  #this will result in velocity based on local distance (µm/s)
   mutate(velocity = local_distance*conversion_factor/2) %>%
-  select(angle_track,velocity,frame)
-
-#append track angle and velocity to data
-data_for_plotting <- data %>%
-  filter(dataset_ID == selected_dataset_ID) %>%
-  filter(tp %in% selected_timepoint) %>%
-  group_by(dataset_ID,tp,TrackID) %>%
-  mutate(track_length = last(frame)-first(frame)) %>%
   mutate(first_location_x = first(location_x),first_location_y = first(location_y)) %>%
   mutate(location_x_centered = location_x-first_location_x, location_y_centered = location_y-first_location_y) %>%
-  left_join(angle_and_velocity,by=c("dataset_ID","tp","TrackID","frame")) %>%
-  mutate(ID = paste0(dataset_ID,"_",tp,"_",TrackID)) %>%
-  filter(track_length > minimal_track_length) %>%
   ungroup()
-  
 
+#select random tracks
+selected_tracks <- angle_and_velocity %>%
+  group_by(ID) %>%
+  summarise() %>%
+  sample_n(numbers_of_displayed_tracks) %>%
+  pull()
+  
+data_for_plotting_sub <- data %>%
+  #first filter out only the tracks that have been randomly selectd (after filtering)
+  filter(ID %in% selected_tracks) %>%
+  #to those tracks append the above calculated velocity, angular velocity etc
+  left_join(angle_and_velocity,by=c("ID","frame","location_x","location_y"))
  
-#sample random tracks
-#how many tracks is defined by "numbers_of_displayed_track" variable
-data_for_plotting_sub <- data_for_plotting %>%
- distinct(ID) %>%
- sample_n(numbers_of_displayed_tracks) %>%
- left_join(data_for_plotting, by="ID")
+
 
 #plot the sampled tracks at their original location
 ggplot(data_for_plotting_sub)+
@@ -89,7 +95,7 @@ ggplot(data_for_plotting_sub)+
     theme(legend.position = "none")+
     theme(legend.text = element_text(colour="white", size = 16, face = "bold"))+
     theme(legend.title = element_text(colour="white", size = 16, face = "bold"))+
-    ggsave(file.path(target_folder,paste0(selected_dataset_ID,"_","timepoints_",min(selected_timepoint),"-",max(selected_timepoint),"_all_tracks",".png")),height = 30,width= 30,units = "cm",bg="black",dpi=150)
+    ggsave(file.path(save_path,paste0(sample_ID,"_",selected_annotation,"_","timepoints_",min(selected_timepoint),"-",max(selected_timepoint),"_all_tracks",".png")),height = 30,width= 30,units = "cm",bg="black",dpi=150)
 
 #plot the sampled tracks at their centered location
 ggplot(data_for_plotting_sub)+
@@ -99,7 +105,7 @@ ggplot(data_for_plotting_sub)+
     scale_y_continuous(limits= c(-1023,1023))+
     theme_void()+
     theme(legend.position = "none")+
-    ggsave(file.path(target_folder,paste0(selected_dataset_ID,"_","timepoint_",min(selected_timepoint),"-",max(selected_timepoint),"_all_tracks_centered",".png")),height = 30,width= 30,units = "cm",bg="black",dpi=150)
+    ggsave(file.path(save_path,paste0(sample_ID,"_",selected_annotation,"_","timepoint_",min(selected_timepoint),"-",max(selected_timepoint),"_all_tracks_centered",".png")),height = 30,width= 30,units = "cm",bg="black",dpi=150)
 
 
 ```
@@ -113,6 +119,7 @@ for (selected_frame in frames){
   data_for_plotting_temp <- data_for_plotting_sub %>%
     filter(frame == selected_frame)
   
+  summarise() %>%
   ggplot(data_for_plotting_temp)+
     theme(aspect.ratio = 1024/1024)+
     coord_cartesian(ylim=c(0, 1023))+
@@ -124,7 +131,7 @@ for (selected_frame in frames){
                           high = "deeppink",midpoint=0,limits =c(-1,1),na.value="grey")+
     theme_void()+
     theme(legend.position = "none")+
-    ggsave(file.path(target_folder,paste0(selected_annotation,"_","timepoints_",min(selected_timepoint),"-",max(selected_timepoint),"_frame_",selected_frame,".png")),height = 30,width= 30,units = "cm",bg="black",dpi=150)
+    ggsave(file.path(save_path_video,paste0(sample_ID,"_",selected_annotation,"_","timepoints_",min(selected_timepoint),"-",max(selected_timepoint),"_frame_",selected_frame,".png")),height = 30,width= 30,units = "cm",bg="black",dpi=150)
 }
 
 ```
@@ -145,7 +152,7 @@ for (selected_frame in frames){
                           high = "deeppink",midpoint=0,limits =c(-1,1),na.value="grey")+
     theme_void()+
     theme(legend.position = "none")+
-    ggsave(file.path(target_folder,paste0(selected_annotation,"_","timepoints_",min(selected_timepoint),"-",max(selected_timepoint),"_frame_",selected_frame,"_centered.png")),height = 30,width= 30,units = "cm",bg="black",dpi=150)
+    ggsave(file.path(save_path_video,paste0(sample_ID,"_",selected_annotation,"_","timepoints_",min(selected_timepoint),"-",max(selected_timepoint),"_frame_",selected_frame,"_centered.png")),height = 30,width= 30,units = "cm",bg="black",dpi=150)
 }
   
 ```
