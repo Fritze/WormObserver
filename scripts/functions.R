@@ -66,26 +66,6 @@ replace_f <- function(x,y){
   inverse.rle(subs)
 }
 
-#function to estimate the worm posture based on list of angles
-estimate_positions_from_angles <- function(input_data) {
-  #for every skeleton (therefore this function has to be preceded by group_by(ID))
-  n <- nrow(input_data)
-  #we go from the end of the worm to it's head
-  for(i in (n-1):1) {
-    #add previous angle to current angle
-    input_data$new_angle[i] <- input_data$new_angle[i+1] + input_data$angle[i]
-    #calculate new position
-    input_data$X[i] <- (input_data$X[i+1] + cos(input_data$new_angle[i])) 
-    input_data$Y[i] <- (input_data$Y[i+1] + sin(input_data$new_angle[i]))
-  }
-  #additional part to ensure that x axis is always the major axis
-  if(max(input_data$Y) > max(input_data$X)){
-    input_data[(ncol(input_data)-1):ncol(input_data)] <- input_data[ncol(input_data):(ncol(input_data)-1)]
-  }
-  #we end with a dataframe
-  input_data <- input_data
-}
-
 
 plot_posture_examples <- function(data_to_plot,X,Y){
   ggplot(data_to_plot, aes_string(x=X,y=Y,color="angle"))+
@@ -616,12 +596,11 @@ skeleton_head_estimate <- function(data) {
     select(frame) %>%
     distinct() %>%
     pull()
-  
+
   ny <- filter(data,head_to_be_estimated == "YES") %>%
     select(frame) %>%
     distinct() %>%
     pull()
-  
   
   for (i in 1:10^3){
     #detect frames where head is detected (for particular track)
@@ -629,7 +608,6 @@ skeleton_head_estimate <- function(data) {
       select(frame) %>%
       distinct() %>%
       pull()
-    
     #list of adjacent frames to ones with head
     list_of_frames <- c(setdiff(s-1,s),setdiff(s+1,s))
     #only those that are NOT within the list of head_to_be_estimated == "NO"
@@ -644,9 +622,8 @@ skeleton_head_estimate <- function(data) {
       #get X and Y coordinates from the adjacent head
       XX <- filter(data, frame == adjacent_f & is_head == "YES") %>% pull(X)
       YY <- filter(data, frame == adjacent_f & is_head == "YES") %>% pull(Y)
-      
       data <- data %>%
-        ungroup(end_segment) %>%
+        ungroup() %>%
         #identify the five segments that are beginning or end
         mutate(end_segment = ifelse(frame == f & index %in% c(1:5),"one",NA)) %>%
         mutate(end_segment = ifelse(frame == f & index %in% c((max(data$index,na.rm=TRUE)-5):max(data$index,na.rm=TRUE)),"two",end_segment)) %>%
@@ -684,6 +661,28 @@ skeleton_reorder <- function(data){
     data <- data
   }
 }
+
+#function to estimate the worm posture based on list of angles
+estimate_positions_from_angles <- function(input_data) {
+  #for every skeleton (therefore this function has to be preceded by group_by(ID))
+  n <- nrow(input_data)
+  #we go from the end of the worm to it's head
+  for(i in (n-1):1) {
+    #add previous angle to current angle
+    input_data$new_angle[i] <- input_data$new_angle[i+1] + input_data$angle[i]
+    #calculate new position
+    input_data$X[i] <- (input_data$X[i+1] + cos(input_data$new_angle[i])) 
+    input_data$Y[i] <- (input_data$Y[i+1] + sin(input_data$new_angle[i]))
+  }
+  #additional part to ensure that x axis is always the major axis
+  if(max(input_data$Y) > max(input_data$X)){
+    input_data[(ncol(input_data)-1):ncol(input_data)] <- input_data[ncol(input_data):(ncol(input_data)-1)]
+  }
+  #we end with a dataframe
+  input_data <- input_data
+}
+
+
 
 #this function takes a skeleton and will orient it in a way
 #so that: head is on 0 and majority of points is above 0 (i.e. big bulges are pointing upwards)
