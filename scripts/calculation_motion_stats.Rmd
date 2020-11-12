@@ -22,13 +22,13 @@ duration = 20 #==10 seconds
 binning_factor = 20 #==10 seconds
 
 #list of .rds files in data folder that were already analysed for centroid tracking
-annotations_already_processed <- unique(gsub(".+\\/(.+)\\_centroid.+","\\1",list.files(target_path, "centroid_tracking", full.names = TRUE, ignore.case = TRUE)))
+annotations_already_processed <- unique(gsub(".+\\/(.+)\\_centroid.+","\\1",list.files(save_path, "centroid_tracking", full.names = TRUE, ignore.case = TRUE)))
 annotations_to_be_processed <- gsub("(.+)\\_raw_data.+","\\1",list.files(target_path,"raw_data", ignore.case = TRUE))
 #remaining annotations to process
 files_to_process_cleaned <- annotations_to_be_processed[!annotations_to_be_processed %in% annotations_already_processed]
 #get file path
 if (length(files_to_process_cleaned) > 0){
-  files_to_process <- list.files(target_path, paste0(files_to_process_cleaned, "_raw_data"), full.names = TRUE, ignore.case = TRUE)
+  files_to_process <- list.files(target_path, pattern=paste0(paste0(files_to_process_cleaned,"_raw_data"),collapse="|"), full.names = TRUE, ignore.case = TRUE)
   number_files_to_process <- length(files_to_process) * 2
   #for each of these files calculate the centroid tracking statistics
   for (file in files_to_process){
