@@ -16,8 +16,11 @@ save_path <- file.path(base_path,"plots")
 files_to_process <- list.files(target_path, "raw_data.rds", full.names = TRUE, ignore.case = TRUE)
 
 #select dataset
-files_to_process <- grep(".+L3.+", files_to_process,value=TRUE)
+files_to_process <- grep(".+long.+", files_to_process,value=TRUE)
 
+#pixel to µm conversion
+#this is with magnifaction 3.2
+conversion_factor <- 6.25
 
 
 imported_data <- NULL
@@ -26,7 +29,19 @@ for (file in files_to_process){
   imported_data_temp <- readRDS(file) %>%
     #calculate average size, major and minor axis BY TRACK
     group_by(annotation,dataset_ID, tp,minutes,TrackID) %>%
-    summarise(size=mean(Size),major=mean(Major),minor=mean(Minor))
+    summarise(size=mean(Size),major=mean(Major),minor=mean(Minor)) %>%
+    #round to full hour steps
+    mutate(hours_rounded = ceiling(minutes/60)) %>%
+    filter(hours_rounded <= 20) %>%
+    mutate(time= ifelse(hours_rounded < 4, 4, NA)) %>%
+    mutate(time = ifelse(hours_rounded < 8 & hours_rounded > 4, 8, time)) %>%
+    mutate(time = ifelse(hours_rounded < 12 & hours_rounded > 8, 12, time)) %>%
+    mutate(time = ifelse(hours_rounded < 16 & hours_rounded > 12, 16, time)) %>%
+    mutate(time = ifelse(hours_rounded <= 20 & hours_rounded > 16, 20, time)) %>%
+    mutate(time = as.character(time)) %>%
+    mutate(hours_rounded = as.character(hours_rounded)) %>%
+    mutate(major = conversion_factor * major, minor = conversion_factor * minor)
+  
   imported_data <- rbind(imported_data, imported_data_temp)  
 }
 
@@ -34,31 +49,21 @@ for (file in files_to_process){
 
 #create plots
 ```{r, include=FALSE}
-
 library("ggridges")
+library("pals")
 
-#pixel to µm conversion
-#this is with magnifaction 3.2
-conversion_factor <- 6.25
+save_path <- file.path(base_path,"plots","sizes")
+dir.create(save_path)
 
-for(a in unique(imported_data$annotation)){
-  # new data frame with hours rounded by hour
-  data_to_plot <- imported_data %>%
-    filter(annotation == a) %>%
-    mutate(hours = minutes / 60) %>%
-    mutate(hours_rounded= round(hours)) %>%
-    filter(hours_rounded <= 14) %>%
-    mutate(major = conversion_factor * major, minor = conversion_factor * minor)
-  
 
-  #all datasets individually,per annotation
-  ggplot(data_to_plot,aes(x = major ,y = factor(as.character(hours_rounded), level = unique(hours_rounded)), fill=stat(x))) +
-    geom_density_ridges_gradient(scale = 1) +
-    facet_wrap(vars(annotation,dataset_ID),ncol=1,scales="free_x")+
-    scale_x_continuous(breaks=seq(0,600, by=100),limits = c(0, max(data_to_plot$major)))+
-    scale_fill_viridis()+
+
+#function to plot distributions
+plot_distribution_ridges <- function(data_to_plot, X, Y){ 
+  ggplot(data_to_plot,aes_string(x = X ,y =Y)) +
+    geom_density_ridges_gradient(aes(fill=stat(x)),scale = 1) +
+    scale_fill_viridis(option="magma",limits=c(0,750)) +
     theme_classic()+
-    labs(x="Major axis (µm)",y="time (hours)")+
+    labs(x="Size (px)",y="time (hours)")+
     theme(strip.background = element_rect(colour = "white", fill = "white"),
       strip.text.x = element_text(size=20,colour = "black", face = "bold"),
       axis.text.x = element_text(size=15, face="bold"),
@@ -66,31 +71,72 @@ for(a in unique(imported_data$annotation)){
       axis.text.y = element_text(size=15, face="bold"),
       axis.title.y = element_text(size=20, face="bold"),
       axis.line = element_line(colour = 'black', size = 1.2),
-      axis.ticks = element_line(colour = "black", size = 1.2))+
-    ggsave(file.path(save_path,paste0("size_plots_individual_",a,".png")),height=15,width=7.5)
+      axis.ticks = element_line(colour = "black", size = 1.2))
+}
+
+
+plot_boxplots <- function(data_to_plot, X, Y){ 
+  ggplot(data_to_plot,aes_string(x = X ,y =Y, fill="annotation")) +
+    geom_boxplot(aes(fill=annotation),outlier.shape = NA)+
+    geom_point(aes(fill=annotation),alpha=0.05,shape=21,position = position_jitterdodge())+
+    theme_classic()+
+    labs(x="time (hours)",y="Size (px)")+
+    theme(strip.background = element_rect(colour = "white", fill = "white"),
+      strip.text.x = element_text(size=20,colour = "black", face = "bold"),
+      axis.text.x = element_text(size=15, face="bold"),
+      axis.title.x = element_text(size=20, face="bold"),
+      axis.text.y = element_text(size=15, face="bold"),
+      axis.title.y = element_text(size=20, face="bold"),
+      axis.line = element_line(colour = 'black', size = 1.2),
+      axis.ticks = element_line(colour = "black", size = 1.2))
+}
+
+plot_line <- function(data_to_plot, X, Y){ 
+  ggplot(data_to_plot,aes_string(x = X ,y =Y, color="annotation")) +
+    geom_smooth(aes(group=annotation))+
+    theme_classic()+
+    labs(x="time (hours)",y="Size (px)")+
+    theme(strip.background = element_rect(colour = "white", fill = "white"),
+      strip.text.x = element_text(size=20,colour = "black", face = "bold"),
+      axis.text.x = element_text(size=15, face="bold"),
+      axis.title.x = element_text(size=20, face="bold"),
+      axis.text.y = element_text(size=15, face="bold"),
+      axis.title.y = element_text(size=20, face="bold"),
+      axis.line = element_line(colour = 'black', size = 1.2),
+      axis.ticks = element_line(colour = "black", size = 1.2))
+}
+
+for(a in unique(imported_data$annotation)){
+  # new data frame with hours rounded by hour
+  data_to_plot <- imported_data %>%
+    filter(annotation == a)
   
-  # ggplot(data_to_plot,aes(x = factor(as.character(hours_rounded), level = unique(hours_rounded)) ,y = major)) +
-  #   geom_boxplot()
+  data_to_plot %>%
+    arrange(hours_rounded) %>%
+    mutate(hours_rounded=factor(hours_rounded, levels=unique(hours_rounded))) %>%
+    plot_distribution_ridges(., "size", "hours_rounded")+
+      ggsave(file.path(save_path,paste0("size_distri_",a,".png")),height=7,width=3.5)
   
 }
-  
-#all annotations grouped
-data_to_plot <- imported_data %>%
-  mutate(hours = minutes / 60) %>%
-  mutate(hours_rounded= floor(hours * 2) / 2)
 
-ggplot(data_to_plot,aes(x = size ,y = factor(as.character(hours_rounded), level = unique(hours_rounded)), fill=stat(x))) +
-  geom_density_ridges_gradient(scale = 1) +
-  facet_wrap(vars(annotation),ncol=3,scales="free")+
-  scale_fill_viridis()+
-  labs(x="Size (px)",y="time (hours)")+
-  theme_linedraw()+
-      theme(strip.background = element_rect(colour = "white", fill = "white"),
-      strip.text.x = element_text(size=25,colour = "black", face = "bold"),
-      axis.text.x = element_text(size=20),
-      axis.title.x = element_text(size=25),
-      axis.text.y = element_text(size=20),
-      axis.title.y = element_text(size=25))+
-  ggsave(file.path(save_path,paste0("size_plots_per_annotation",".png")),height=40,width=40)
+imported_data %>%
+  arrange(time) %>%
+  mutate(time=factor(time, levels=unique(time))) %>%
+  plot_distribution_ridges(., "size", "time")+
+    facet_wrap(vars(annotation))+
+    ggsave(file.path(save_path,paste0("size_distri_fewer_both",".png")),height=7,width=15)
+
+imported_data %>%
+  arrange(time) %>%
+  mutate(time=factor(time, levels=unique(time))) %>%
+  plot_boxplots(., "size", "time")+
+    ggsave(file.path(save_path,paste0("size_boxplot_both",".png")),height=7,width=15)
+
+
+imported_data %>%
+  arrange(hours_rounded) %>%
+  mutate(time=factor(hours_rounded, levels=unique(hours_rounded))) %>%
+  plot_line(., "time", "size")+
+    ggsave(file.path(save_path,paste0("size_line_both",".png")),height=7,width=7)
 
 ```
