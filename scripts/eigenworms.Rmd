@@ -83,27 +83,44 @@ pca_for_eigenworms <- function(dataset, timeranges){
 
 
 timeranges <- list(c(1:3),c(10:12))
+shuffle_cycles_nr <- 500
+
 list_of_cumsum_diffs <- NULL
-# for (i in 1:1000){
-#   #only skeletons within the selected timeframe
-#   skeleton_data_filtered_resampled <- skeleton_data_filtered %>%
-#     filter(hours_rounded %in% unlist(hours)) %>%
-#     group_by(ID) %>%
-#   #assign every skeleton a new, random time ID
-#     mutate(hours_rounded = sample(unlist(timerange),1))
-#   
-#   #perform pca
-#   pca_for_eigenworms(skeleton_data_filtered_resampled,timeranges)
-#   #select the cumsum difference
-#   list_of_cumsum_diffs <<- rbind(list_of_cumsum_diffs,unique(eigenworm_contr_per_hour$cumsum_diff))
-# }
-# cumsum_diff_shuffled <- max(list_of_cumsum_diffs)
-# print(cumsum_diff_shuffled)
+for (i in 1:shuffle_cycles_nr){
+  print(i)
+  #only skeletons within the selected timeframe
+  skeleton_data_filtered_resampled <- skeleton_data_filtered %>%
+    filter(hours_rounded %in% unlist(timeranges)) %>%
+    group_by(ID) %>%
+  #assign every skeleton a new, random time ID
+    mutate(hours_rounded = sample(unlist(timeranges),1))
+
+  #perform pca
+  pca_for_eigenworms(skeleton_data_filtered_resampled,timeranges)
+  #select the cumsum difference
+  list_of_cumsum_diffs <<- rbind(list_of_cumsum_diffs,unique(eigenworm_contr_per_hour$cumsum_diff))
+  rm(eigenworm_contr_per_hour)
+  rm(eigenworms_per_hour)
+  gc()
+}
+cumsum_diff_shuffled <- max(list_of_cumsum_diffs)
+print(cumsum_diff_shuffled)
 
 
 pca_for_eigenworms(skeleton_data_filtered,timeranges)
 cumsum_diff <- unique(eigenworm_contr_per_hour$cumsum_diff)
 print(cumsum_diff)
+
+cumsum_diffs_total <- list_of_cumsum_diffs %>%
+  as.data.frame() %>%
+  mutate(shuffle_cycle_nr = 1:n()) %>%
+  mutate(timeranges = paste(unlist(timeranges),collapse = ",")
+) %>%
+  mutate(cumsum_diff_timeranges = cumsum_diff)
+
+save_path <- file.path(base_path,"data","posture","eigenworms")
+dir.create(save_path)
+saveRDS(cumsum_diffs_total, file=file.path(save_path,paste0(shuffle_cycles_nr,"_shuffle_cycle_nr_1-3_and_10-12_hours.RDS")))
 
 ```
 
