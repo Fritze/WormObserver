@@ -75,7 +75,6 @@ plot_posture_examples <- function(data_to_plot,X,Y){
     coord_fixed(ratio = 1)+
     scale_color_gradient2(low = "deepskyblue", mid = "lavender",
                           high = "deeppink",midpoint=0,limits=c(-1,1),na.value="grey") +
-    # scale_color_viridis(option = "plasma",limits=c(-1,1))+
     theme(plot.title = element_text(face = "bold"))
   
 }
@@ -1105,6 +1104,7 @@ skeleton_head_estimate_old <- function(data) {
   }
   
 }
+
 
 
 
