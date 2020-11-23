@@ -9,7 +9,7 @@ base_path <- "/media/fpreuss/raid5/timelapses/analysis/200703/"
 #load files
 ```{r, include=FALSE}
 
-target_path <- file.path(base_path,"data")
+target_path <- file.path(base_path,"data", "other_raw")
 save_path <- file.path(base_path,"plots")
 
 #list of .rds files in data folder
@@ -33,13 +33,11 @@ for (file in files_to_process){
     #round to full hour steps
     mutate(hours_rounded = ceiling(minutes/60)) %>%
     filter(hours_rounded <= 20) %>%
-    mutate(time= ifelse(hours_rounded < 4, 4, NA)) %>%
-    mutate(time = ifelse(hours_rounded < 8 & hours_rounded > 4, 8, time)) %>%
-    mutate(time = ifelse(hours_rounded < 12 & hours_rounded > 8, 12, time)) %>%
-    mutate(time = ifelse(hours_rounded < 16 & hours_rounded > 12, 16, time)) %>%
-    mutate(time = ifelse(hours_rounded <= 20 & hours_rounded > 16, 20, time)) %>%
-    mutate(time = as.character(time)) %>%
-    mutate(hours_rounded = as.character(hours_rounded)) %>%
+    mutate(time= ifelse(hours_rounded < 5, 5, NA)) %>%
+    mutate(time = ifelse(hours_rounded < 10 & hours_rounded > 5, 10, time)) %>%
+    mutate(time = ifelse(hours_rounded < 15 & hours_rounded > 10, 15, time)) %>%
+    mutate(time = ifelse(hours_rounded <= 20 & hours_rounded > 15, 20, time)) %>%
+    na.omit() %>%
     mutate(major = conversion_factor * major, minor = conversion_factor * minor)
   
   imported_data <- rbind(imported_data, imported_data_temp)  
@@ -47,21 +45,18 @@ for (file in files_to_process){
 
 ```
 
-#create plots
+#create plotting functions
 ```{r, include=FALSE}
 library("ggridges")
-library("pals")
+library(wesanderson)
 
-save_path <- file.path(base_path,"plots","sizes")
-dir.create(save_path)
-
-
+pal <- wes_palette("Darjeeling1")[c(1,5)]
 
 #function to plot distributions
 plot_distribution_ridges <- function(data_to_plot, X, Y){ 
   ggplot(data_to_plot,aes_string(x = X ,y =Y)) +
     geom_density_ridges_gradient(aes(fill=stat(x)),scale = 1) +
-    scale_fill_viridis(option="magma",limits=c(0,750)) +
+    scale_fill_viridis(option="magma",limits=c(0,1000)) +
     theme_classic()+
     labs(x="Size (px)",y="time (hours)")+
     theme(strip.background = element_rect(colour = "white", fill = "white"),
@@ -78,7 +73,7 @@ plot_distribution_ridges <- function(data_to_plot, X, Y){
 plot_boxplots <- function(data_to_plot, X, Y){ 
   ggplot(data_to_plot,aes_string(x = X ,y =Y, fill="annotation")) +
     geom_boxplot(aes(fill=annotation),outlier.shape = NA)+
-    geom_point(aes(fill=annotation),alpha=0.05,shape=21,position = position_jitterdodge())+
+    geom_point(aes(fill=annotation),alpha=0.025,shape=21,position = position_jitterdodge())+
     theme_classic()+
     labs(x="time (hours)",y="Size (px)")+
     theme(strip.background = element_rect(colour = "white", fill = "white"),
@@ -88,14 +83,34 @@ plot_boxplots <- function(data_to_plot, X, Y){
       axis.text.y = element_text(size=15, face="bold"),
       axis.title.y = element_text(size=20, face="bold"),
       axis.line = element_line(colour = 'black', size = 1.2),
-      axis.ticks = element_line(colour = "black", size = 1.2))
+      axis.ticks = element_line(colour = "black", size = 1.2))+
+    scale_fill_manual(values = pal)
+}
+
+
+plot_violins <- function(data_to_plot, X, Y){ 
+  ggplot(data_to_plot,aes_string(x = X ,y =Y, fill="annotation")) +
+    geom_violin(aes(fill=annotation),lwd=1.3)+
+    theme_classic()+
+    labs(x="time (hours)",y="Size (px)")+
+    theme(strip.background = element_rect(colour = "white", fill = "white"),
+      strip.text.x = element_text(size=20,colour = "black", face = "bold"),
+      axis.text.x = element_text(size=15, face="bold"),
+      axis.title.x = element_text(size=20, face="bold"),
+      axis.text.y = element_text(size=15, face="bold"),
+      axis.title.y = element_text(size=20, face="bold"),
+      axis.line = element_line(colour = 'black', size = 1.2),
+      axis.ticks = element_line(colour = "black", size = 1.2))+
+    scale_fill_manual(values = pal)
 }
 
 plot_line <- function(data_to_plot, X, Y){ 
-  ggplot(data_to_plot,aes_string(x = X ,y =Y, color="annotation")) +
+  ggplot(data_to_plot,aes_string(x = X ,y =Y, color="annotation",fill="annotation")) +
     geom_smooth(aes(group=annotation))+
     theme_classic()+
     labs(x="time (hours)",y="Size (px)")+
+    #has to be defined in cartestian, otherwise it influences the data that goes into the geom_smooth calculation
+    coord_cartesian(ylim = c(0,350))+
     theme(strip.background = element_rect(colour = "white", fill = "white"),
       strip.text.x = element_text(size=20,colour = "black", face = "bold"),
       axis.text.x = element_text(size=15, face="bold"),
@@ -103,8 +118,18 @@ plot_line <- function(data_to_plot, X, Y){
       axis.text.y = element_text(size=15, face="bold"),
       axis.title.y = element_text(size=20, face="bold"),
       axis.line = element_line(colour = 'black', size = 1.2),
-      axis.ticks = element_line(colour = "black", size = 1.2))
+      axis.ticks = element_line(colour = "black", size = 1.2))+
+    scale_fill_manual(values = pal)+
+    scale_color_manual(values = pal)
 }
+
+```
+
+#make plots
+```{r, include=FALSE}
+save_path <- file.path(base_path,"plots","sizes")
+dir.create(save_path)
+
 
 for(a in unique(imported_data$annotation)){
   # new data frame with hours rounded by hour
@@ -119,24 +144,32 @@ for(a in unique(imported_data$annotation)){
   
 }
 
+
+
+
 imported_data %>%
   arrange(time) %>%
   mutate(time=factor(time, levels=unique(time))) %>%
   plot_distribution_ridges(., "size", "time")+
     facet_wrap(vars(annotation))+
-    ggsave(file.path(save_path,paste0("size_distri_fewer_both",".png")),height=7,width=15)
+    ggsave(file.path(save_path,paste0("size_distri_fewer_both",".png")),height=7,width=7)
 
 imported_data %>%
   arrange(time) %>%
   mutate(time=factor(time, levels=unique(time))) %>%
   plot_boxplots(., "size", "time")+
-    ggsave(file.path(save_path,paste0("size_boxplot_both",".png")),height=7,width=15)
+    ggsave(file.path(save_path,paste0("size_boxplot_both",".png")),height=7,width=7)
 
+imported_data %>%
+  arrange(time) %>%
+  mutate(time=factor(time, levels=unique(time))) %>%
+  plot_violins(., "size", "time")+
+    ggsave(file.path(save_path,paste0("size_violins_both",".png")),height=7,width=7)
 
 imported_data %>%
   arrange(hours_rounded) %>%
-  mutate(time=factor(hours_rounded, levels=unique(hours_rounded))) %>%
-  plot_line(., "time", "size")+
+  mutate(hours_rounded=factor(hours_rounded, levels=unique(hours_rounded))) %>%
+  plot_line(., "hours_rounded", "size")+
     ggsave(file.path(save_path,paste0("size_line_both",".png")),height=7,width=7)
 
 ```
