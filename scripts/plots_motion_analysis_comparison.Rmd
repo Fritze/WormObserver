@@ -8,220 +8,229 @@ average <- "bins"
 base_path <- "/media/fpreuss/raid5/timelapses/analysis/200703"
 ```
 
-```{r, echo=FALSE}
-
-target_path <- file.path(base_path,"data","motion")
-save_path <- file.path(base_path,"plots")
-dir.create(save_path)
-save_path <- file.path(save_path, average,"comparisons")
-dir.create(save_path)
-
-#list of centroid tracking .rds files in data folder
-files_to_process <- list.files(target_path, paste0("centroid_tracking_",average,".rds"),full.names = TRUE, ignore.case = TRUE)
-  
-order  <- c("N2 1:5 OP50",
-            "N2 1:10 OP50",
-            "N2 1:7 OP50",
-            "N2 no food",
-            "N2 1:10 OP50 after 6h exit",
-            "N2 empty after 6h exit",
-            "daf2",
-            "Agar",
-            "Agar with NAD",
-            "N2 RT no food",
-            "MT13984"
-            )
-  
-imported_data <- map_dfr(files_to_process,readRDS) %>%
-    mutate(hours = minutes / 60) %>%
-    #round per half an hour
-    # mutate(hours_rounded= floor(hours * 2) / 2) %>%
-    #round per hour
-    mutate(hours_rounded = ceiling(hours)) %>%
-    #filter out first 30 mins
-    filter(hours > 0.5) %>%
-    #take out conditions
-    filter(!annotation %in% c("L2","L3","N2 empty after 6h exit")) %>%
-    na.omit() %>%
-    #custom order of conditions
-    left_join(tibble(annotation=order),by="annotation")
-  
-#levels must be changed for ggplot to take new order into account
-imported_data$annotation = factor(imported_data$annotation, levels=order)
-
-unique(imported_data$annotation)
-
-```
-  
-  
+#Input: Data from "plots_motion_analysis_scatter.Rmd"
+#Please excecute this first!
 ```{r, echo=TRUE}
   
-#Until how many hours
-show_until <- 12
-
 #define colors
 library(wesanderson)
-pal <- wes_palette("Darjeeling1",5)[c(3,5)]
 
-library(pals)
-  
-data <- imported_data %>%
-  filter(hours_rounded <= show_until) %>%
-  group_by(annotation, hours_rounded) %>%
-  #count tracks per hour per condition
-  mutate(number_of_tracks_in_this_hour = n_distinct(dataset_ID,tp,TrackID)) %>%
-  # scale velocity to mm/s
-  mutate(p_mean_velocity = p_mean_velocity / 1000) %>%
-  arrange(hours_rounded)
 
+#lower velocity limit for mode == roaming
+velocity_r <- 0.01
+#upper angle limit for mode == roaming
+angle_r <- 30
+#upper velocity limit for mode == still
+# velocity_s <- 0.005
 
   
-data_binarized <- imported_data %>%
-  mutate(ratio = p_mean_velocity/p_mean_angle) %>%
-  #calculate ratio, this will give result in a diagonal (see binarized_not_log plot)
-  mutate(behavioral_state=ifelse(ratio > 1, "roaming","dwelling")) %>%
-  # scale velocity to mm/s
-  mutate(p_mean_velocity = p_mean_velocity / 1000) %>%
-  filter(hours_rounded <= show_until) %>%
-  group_by(annotation, hours_rounded) %>%
-  #count tracks per hour per condition
-  mutate(number_of_tracks_in_this_hour = n_distinct(dataset_ID,tp,TrackID)) %>%
-  arrange(hours_rounded) 
+data_binarized <- data %>%
+    mutate(mode = ifelse(p_mean_velocity > velocity_r & p_mean_angle < angle_r,"roaming","dwelling"))
 
-data_binarized_summarized <- data_binarized %>%
-  group_by(annotation,hours_rounded) %>%
-  mutate(n_total = n()) %>%
-  group_by(annotation, hours_rounded,behavioral_state) %>%
-  mutate(n=n()) %>%
-  mutate(perc=n/n_total) %>%
-  group_by(annotation, hours_rounded,behavioral_state,perc) %>%
-  summarise()
-
-data_summarised <- data_binarized %>%
+#here we will summarise by tp (==video timestep)
+#so later in the plots one dot = one (in our case 8 mins long) video 
+data_bs <- data_binarized %>%
   #counts per behavioral state
-  group_by(annotation,hours_rounded,tp,behavioral_state,dataset_ID) %>%
-  summarise(counts=n()) %>%
-  #total counts
+  group_by(annotation,hours_rounded,tp,mode,dataset_ID) %>%
+  summarise(counts=n(),mean_velocity = mean(p_mean_velocity), mean_angle = mean(p_mean_angle)) %>%
   group_by(annotation,hours_rounded,tp,dataset_ID) %>%
+  #total counts
   mutate(sum=sum(counts)) %>%
-  #relative occurence of behavioral_state
+  #relative occurence of mode
   mutate(perc = counts/sum) %>%
-  mutate(hours_rounded =as.character(hours_rounded))
+  ungroup()
+
+data_bsh <- data_binarized %>%
+  group_by(annotation,hours_rounded,mode,dataset_ID) %>%
+  mutate(counts=n()) %>%
+  #total counts
+  group_by(annotation,hours_rounded,dataset_ID) %>%
+  mutate(sum=sum(counts)) %>%
+  #relative occurence of mode
+  mutate(perc = counts/sum) %>%
+  group_by(annotation, hours_rounded, dataset_ID,mode) %>%
+  summarise(mean_mode_perc = mean(perc),mean_velocity = mean(p_mean_velocity), mean_angle = mean(p_mean_angle))
+
+
 
 ```
-
-
-#plot relative occurence of dwelling AND roaming for all timepoints for all conditions
+#function for plotting mean mode fraction with Local Polynomial Regression Fitting
 ```{r, echo=TRUE}
 
-ggplot(data_summarised,aes(x=factor(hours_rounded, levels=as.character(c(1:show_until))),y=perc,fill=behavioral_state))+
-      geom_boxplot(lwd=1.75)+
-      scale_fill_manual(values =pal)+
-      scale_y_continuous(limits=c(0,1))+
-      geom_point(position=position_dodge(width=0.75),aes(group=behavioral_state),color="black",alpha=0.5,size=2)+
-      xlab("hours") + ylab("Relative occurence of \nbehavioral state")+
-      facet_wrap(annotation ~ .)+
-      theme_classic()+
-      theme(
-        legend.direction="horizontal",
+plot_mean_modes <- function(data,grouping){
+  ggplot(data, aes_string(x="hours_rounded", y="perc", group=grouping,color=grouping,fill=grouping))+
+  # geom_point(size=1,alpha=0.5, shape=21, aes(fill=mode),color="black")+
+  geom_smooth(alpha=0.5)+
+  scale_x_continuous(breaks=(seq(1,show_until)))+
+  theme_classic()+
+  labs(x="time (hours)", "relative fraction")+
+  scale_fill_manual(values =pal)+
+  scale_color_manual(values =pal)+
+  theme(legend.direction="horizontal",
         legend.position = "top",
         strip.background = element_rect(colour = "white", fill = "white"),
         panel.spacing = unit(1, "lines"),
         strip.text.x = element_text(size=15,colour = "black", face = "bold"),
-        axis.text.x = element_text(size=30),
-        axis.title.x = element_text(size=45),
-        axis.text.y = element_text(size=30),
-        axis.title.y = element_text(size=45),
-        legend.key.size = unit(2.5, "cm"))+
-      facet_wrap(vars(annotation),scales="free_x")+
-      ggsave(file.path(save_path,paste0("box_roaming_dwelling_relative",".png")),height=20,width=40)
+        axis.text.x = element_text(size=10),
+        axis.title.x = element_text(size=25),
+        axis.text.y = element_text(size=15),
+        axis.title.y = element_text(size=25))
+}
+```
+
+#plot modes
+```{r, echo=TRUE}
+save_path <- file.path(base_path,"plots","bins","comparisons")
+dir.create(save_path)
+
+pal <- wes_palette("Rushmore1")[c(4,5)]
+#roaming and dwelling
+data_bs %>%
+  plot_mean_modes(.,"mode")+
+    facet_wrap(vars(annotation),ncol=4,scales="free_x")+
+    ggsave(file.path(save_path,paste0("modes_relative.png")),height=7.5,width=10,dpi=600)
+
+pal <- wes_palette("Rushmore1")[c(5)]
+#only roaming
+data_bs %>%
+  filter(mode %in% c("roaming")) %>%
+  plot_mean_modes(.,"mode")+
+    facet_wrap(vars(annotation),ncol=4,scales="free_x")+
+    ggsave(file.path(save_path,paste0("roaming_relative.png")),height=7.5,width=10,dpi=600)
+
+
+pal <-wes_palette("Darjeeling1")
+#only roaming
+data_bs %>%
+  filter(mode %in% c("roaming")) %>%
+  filter(annotation %in% c(
+    "Agar",
+    "N2 1:10 OP50",
+    "N2 1:10 OP50 with Az NGM"
+  )) %>%
+  plot_mean_modes(.,"annotation")+
+    ggsave(file.path(save_path,paste0("roaming_relative.png")),height=7.5,width=10,dpi=600)
+
+
+```
+
+#plot relative occurence of dwelling AND roaming for all timepoints for all conditions -- BOXPLOT
+```{r, echo=TRUE}
+
+for (a in unique(data$annotation)){
+  data_to_plot <- data_bs %>%
+    filter(annotation == a)
+  
+  ggplot(data_to_plot,aes(x=factor(hours_rounded,levels=unique(hours_rounded)),y=perc,fill=mode))+
+        geom_boxplot(aes(fill=mode),width=0.75,lwd=1.2,alpha=0.75,outlier.size = 0)+
+        geom_point(aes(group=mode,fill=mode),position=position_jitter(width=0.25),shape=21, color="black",size=1.5)+
+        scale_y_continuous(limits=c(0,1))+
+        scale_fill_manual(values =pal)+
+        xlab("hours") + ylab("Relative occurence of \nbehavioral state")+
+        facet_wrap(vars(mode),ncol=3)+
+        theme_classic()+
+        theme(legend.direction="horizontal",
+          legend.position = "top",
+          strip.background = element_rect(colour = "white", fill = "white"),
+          panel.spacing = unit(1, "lines"),
+          strip.text.x = element_text(size=15,colour = "black", face = "bold"),
+          axis.text.x = element_text(size=10),
+          axis.title.x = element_text(size=25),
+          axis.text.y = element_text(size=15),
+          axis.title.y = element_text(size=25))+
+    ggsave(file.path(save_path,paste0("modes_relative_box_",a,".png")),height=7.5,width=15,dpi=600)
+  
+}
   
 ```
 
 
-#plot relative occurence of roaming for specific timepoints and conditions
+#plot relative occurence of dwelling/roaming for specific timepoints and conditions
 ```{r, echo=TRUE}
 
+pal <- wes_palette("Darjeeling1")[c(1,5)]
+se <- function(x) sqrt(var(x)/length(x))
 
-selected_hours <- c(3,6,9,12)
+plot_mode_relative <- function(data_bs, selected_mode, selected_hours, selected_annotations){
 
-selected_annotations <- c("Agar", "Agar with NAD","N2 1:10 OP50")
+  data_bsf <- data_bs %>%
+    filter(annotation %in% selected_annotations) %>%
+    filter(hours_rounded %in% selected_hours) %>%
+    filter(mode %in% selected_mode)
+  
+  data_bsfs <- data_bsf %>%
+    group_by(annotation,hours_rounded) %>%
+    summarise(
+      sd = sd(perc, na.rm=TRUE),
+      # sem = se(perc),
+      perc = mean(perc)
+    )
+  
+  data_bsf$annotation <- factor(data_bsf$annotation, levels=unique(data_bsf$annotation))
+  
+  
+  ggplot(data_bsf,aes(x=factor(hours_rounded,levels = unique(hours_rounded)),y=perc,fill=annotation))+
+        # geom_boxplot(aes(fill=annotation),lwd=1.2, outlier.shape = NA)+
+        geom_point(position = position_jitterdodge(),color="black",shape=21,size=2.5,alpha=0.5)+
+        geom_pointrange(data = data_bsfs,aes(ymin = perc-sd, ymax = perc+sd),color="black",position = position_dodge(0.75))+
+        scale_fill_manual(values=pal)+
+        xlab("hours") + ylab(paste0("fraction ",selected_mode))+
+        theme_classic()+
+        theme(
+          legend.direction="horizontal",
+          legend.position = "top",
+          strip.background = element_rect(colour = "white", fill = "white"),
+          panel.spacing = unit(1, "lines"),
+          strip.text.x = element_text(size=15,colour = "black", face = "bold"),
+          axis.text.x = element_text(size=30),
+          axis.title.x = element_text(size=20),
+          axis.text.y = element_text(size=30),
+          axis.title.y = element_text(size=20),
+          axis.ticks=element_line(size=1.5),
+          axis.ticks.length=unit(0.25,"cm"),
+          axis.line = element_line(colour = 'black', size = 1.5))
 
-data_summarised_sub <- data_summarised %>%
-  filter(annotation %in% selected_annotations) %>%
-  filter(hours_rounded %in% selected_hours) %>%
-  filter(behavioral_state == "roaming")
-
-data_summarised_sub$annotation <- factor(data_summarised_sub$annotation, levels=unique(data_summarised_sub$annotation))
+}
 
 
-ggplot(data_summarised_sub,aes(x=factor(hours_rounded,levels = c(hours)),y=perc,fill=annotation))+
-      geom_boxplot(aes(fill=annotation),lwd=1.2)+
-      geom_point(aes(fill=annotation),position = position_jitterdodge(),shape=21,size=2.5,alpha=0.5)+
-      xlab("hours") + ylab("fraction roaming")+
-      scale_y_continuous(limits=c(0,1))+
-      scale_fill_manual(values=wes_palette(n=4, name="Moonrise3"))+
-      theme_classic()+
-      theme(
-        legend.direction="horizontal",
-        legend.position = "top",
-        strip.background = element_rect(colour = "white", fill = "white"),
-        panel.spacing = unit(1, "lines"),
-        strip.text.x = element_text(size=15,colour = "black", face = "bold"),
-        axis.text.x = element_text(size=30),
-        axis.title.x = element_text(size=20),
-        axis.text.y = element_text(size=30),
-        axis.title.y = element_text(size=20),
-        axis.ticks=element_line(size=1.5),
-        axis.ticks.length=unit(0.25,"cm"),
-        axis.line = element_line(colour = 'black', size = 1.5),
-        legend.key.size = unit(2.5, "cm"))+
-      ggsave(file.path(save_path,paste0("box_roaming_dwelling_relative_sub_compare_",paste(selected_annotations, collapse="_"),".png")),height=5,width=10)
+
+selected_mode <- "dwelling"
+selected_hours <- c(6,7,8,9,10,11,12)
+selected_annotations <- c("N2 1:10 OP50","N2 1:10 OP50 with Az")
+
+plot_mode_relative(data_bs, selected_mode, selected_hours, selected_annotations)+
+  ggsave(file.path(save_path,paste0("relative_compare_",paste(selected_annotations, collapse="_"),".png")),height=5,width=7.5,dpi=600)
+
+selected_hours <- unique(data_bs$hours_rounded)
+plot_mode_relative(data_bs, selected_mode, selected_hours, selected_annotations)+
+  ggsave(file.path(save_path,paste0("relative_compare_",paste(selected_annotations, collapse="_"),"_all_hours.png")),height=5,width=12,dpi=600)
+
+
 
 
 selected_annotations <- c("Agar", "N2 1:10 OP50")
+selected_hours <- c(6,7,8,9,10,11,12)
+plot_mode_relative(data_bs, selected_mode, selected_hours, selected_annotations)+
+  ggsave(file.path(save_path,paste0("relative_compare_",paste(selected_annotations, collapse="_"),".png")),height=5,width=7.5,dpi=600)
 
-data_summarised_sub <- data_summarised %>%
-  filter(annotation %in% selected_annotations) %>%
-  filter(hours_rounded %in% selected_hours) %>%
-  filter(behavioral_state == "roaming")
-
-data_summarised_sub$annotation <- factor(data_summarised_sub$annotation, levels=unique(data_summarised_sub$annotation))
+selected_hours <- unique(data_bs$hours_rounded)
+plot_mode_relative(data_bs, selected_mode, selected_hours, selected_annotations)+
+  ggsave(file.path(save_path,paste0("relative_compare_",paste(selected_annotations, collapse="_"),"_all_hours.png")),height=5,width=12,dpi=600)
 
 
-ggplot(data_summarised_sub,aes(x=factor(hours_rounded,levels = c(hours)),y=perc,fill=annotation))+
-      geom_boxplot(aes(fill=annotation),lwd=1.2)+
-      geom_point(aes(fill=annotation),position = position_jitterdodge(),shape=21,size=2.5,alpha=0.5)+
-      xlab("hours") + ylab("fraction roaming")+
-      scale_y_continuous(limits=c(0,1))+
-      scale_fill_manual(values=wes_palette(n=4, name="Moonrise3"))+
-      theme_classic()+
-      theme(
-        legend.direction="horizontal",
-        legend.position = "top",
-        strip.background = element_rect(colour = "white", fill = "white"),
-        panel.spacing = unit(1, "lines"),
-        strip.text.x = element_text(size=15,colour = "black", face = "bold"),
-        axis.text.x = element_text(size=30),
-        axis.title.x = element_text(size=20),
-        axis.text.y = element_text(size=30),
-        axis.title.y = element_text(size=20),
-        axis.ticks=element_line(size=1.5),
-        axis.ticks.length=unit(0.25,"cm"),
-        axis.line = element_line(colour = 'black', size = 1.5),
-        legend.key.size = unit(2.5, "cm"))+
-      ggsave(file.path(save_path,paste0("box_roaming_dwelling_relative_sub_compare_",paste(selected_annotations, collapse="_"),".png")),height=5,width=10)
+
+
 ```
 
 #function for plotting histograms
 ```{r, echo=TRUE}
 plot_histograms <- function(data,X,xlab){
   ggplot(data,aes_string(x=X,fill="annotation"))+
-    geom_histogram(lwd=1.2)+
+    geom_histogram(lwd=1.2,binwidth = 0.1)+
     xlab(xlab)+
     theme_classic()+
     scale_fill_manual(values=pal)+
-    facet_wrap(vars(annotation,hours_rounded),ncol=4,scales="free")+
+    facet_wrap(vars(annotation,hours_rounded),scales="free")+
       theme(
         legend.direction="horizontal",
         legend.position = "top",
@@ -234,38 +243,53 @@ plot_histograms <- function(data,X,xlab){
         axis.title.y = element_text(size=20),
         axis.ticks=element_line(size=1.5),
         axis.ticks.length=unit(0.25,"cm"),
-        axis.line = element_line(colour = 'black', size = 1.5))+
-      ggsave(file.path(save_path,paste0(X,"_",paste(selected_annotations, collapse="_"),"_histograms.png")),height=8,width=20)
+        axis.line = element_line(colour = 'black', size = 1.5))
+      
   
   
 }
-```
 
 #function for plotting violin plots
-```{r, echo=TRUE}
-plot_violins <- function(data,Y,xlab){
-  ggplot(data,aes_string(x="annotation",y=Y,fill="annotation"))+
-    # geom_violin(lwd=1.2)+
-    geom_boxplot(width=0.1, lwd=1.5,color="black")+
-    xlab(xlab)+
+plot_violins <- function(data_bs,Y,ylab){
+  
+  data_bsf <- data_bs %>%
+    filter(annotation %in% selected_annotations) %>%
+    filter(hours_rounded %in% selected_hours) %>%
+    filter(mode %in% selected_mode)
+  
+  data_bsfs <- data_bsf %>%
+    group_by(annotation,hours_rounded) %>%
+    summarise(
+      sd = sd(!!sym(Y), na.rm=TRUE),
+      # sem = se(perc),
+      !!Y := mean(!!sym(Y)),
+      error_min = !!sym(Y)-sd,
+      error_max = !!sym(Y)+sd
+    )
+    
+  
+  ggplot(data_bsf,aes_string(x="annotation",y=Y,fill="annotation"))+
+    # geom_violin(fill="grey", alpha=0.5,lwd=0)+
+    # geom_boxplot(width=0.1, lwd=1.5,color="black")+
+    geom_point(size=2,shape=21,position = position_jitterdodge(jitter.width = 0.1))+
+    geom_pointrange(data = data_bsfs,aes(ymin = error_min, ymax = error_max),position = position_dodge(0.75))+
+    # ylab(ylab)+
     theme_classic()+
     scale_fill_manual(values=pal)+
-    facet_wrap(vars(hours_rounded),ncol=4,scales="fixed")+
-      theme(
-        legend.direction="horizontal",
-        legend.position = "top",
-        strip.background = element_rect(colour = "white", fill = "white"),
-        panel.spacing = unit(1, "lines"),
-        strip.text.x = element_text(size=15,colour = "black", face = "bold"),
-        axis.text.x = element_text(size=20),
-        axis.title.x = element_text(size=20),
-        axis.text.y = element_text(size=20),
-        axis.title.y = element_text(size=20),
-        axis.ticks=element_line(size=1.5),
-        axis.ticks.length=unit(0.25,"cm"),
-        axis.line = element_line(colour = 'black', size = 1.5))+
-      ggsave(file.path(save_path,paste0(Y,"_",paste(selected_annotations, collapse="_"),"_violins.png")),height=5,width=10)
-  
+    facet_wrap(vars(hours_rounded),scales="fixed")+
+    theme(
+      legend.direction="horizontal",
+      legend.position = "top",
+      strip.background = element_rect(colour = "white", fill = "white"),
+      panel.spacing = unit(1, "lines"),
+      strip.text.x = element_text(size=15,colour = "black", face = "bold"),
+      axis.text.x = element_text(size=20),
+      axis.title.x = element_text(size=20),
+      axis.text.y = element_text(size=20),
+      axis.title.y = element_text(size=20),
+      axis.ticks=element_line(size=1.5),
+      axis.ticks.length=unit(0.25,"cm"),
+      axis.line = element_line(colour = 'black', size = 1.5))
   
 }
 ```
@@ -273,41 +297,89 @@ plot_violins <- function(data,Y,xlab){
  
 #plot velocity histograms for specific timepoints and conditions
 ```{r, echo=TRUE}
+library(ggsignif)
+
+pal <- wes_palette("Darjeeling1")[c(3,5)]
+
 
 selected_hours <- c(12)
+selected_mode <- "roaming"
+selected_annotations <- c("N2 1:10 OP50", "Agar")
 
-selected_annotations <- c("N2 1:10 OP50", "MT13984")
+data_bs %>%
+  plot_violins(., "mean_velocity", "velocity (mm/s)")+
+    geom_signif(comparisons = list(c(selected_annotations[1], selected_annotations[2])),map_signif_level = TRUE, textsize=2,test = "wilcox.test") +
+    ggsave(file.path(save_path,paste0(selected_mode,"_mean_velocity","_",paste(selected_annotations, collapse="_"),".png")),height=5,width=5)
 
-data_binarized %>%
-  filter(annotation %in% selected_annotations) %>%
-  filter(hours_rounded %in% selected_hours) %>%
-  plot_histograms(., "p_mean_velocity", "velocity (mm/s)")
 
-data_binarized %>%
-  filter(annotation %in% selected_annotations) %>%
-  filter(hours_rounded %in% selected_hours) %>%
-  plot_violins(., "p_mean_velocity", "velocity (mm/s)")
-  
+
+selected_hours <- c(12)
+selected_mode <- "dwelling"
+selected_annotations <- c("N2 1:10 OP50", "MT14984")
+
+data_bs %>%
+  plot_violins(., "mean_velocity", "velocity (mm/s)")+
+    geom_signif(comparisons = list(c(selected_annotations[1], selected_annotations[2])),map_signif_level = TRUE, textsize=2,test = "wilcox.test") +
+    ggsave(file.path(save_path,paste0(selected_mode,"_mean_velocity","_",paste(selected_annotations, collapse="_"),".png")),height=5,width=5)
+
+selected_hours <- c(12)
+selected_mode <- "roaming"
+selected_annotations <- c("N2 1:10 OP50", "MT14984")
+
+data_bs %>%
+  plot_violins(., "mean_velocity", "velocity (mm/s)")+
+    geom_signif(comparisons = list(c(selected_annotations[1], selected_annotations[2])),map_signif_level = TRUE, textsize=2,test = "wilcox.test") +
+    ggsave(file.path(save_path,paste0(selected_mode,"_mean_velocity","_",paste(selected_annotations, collapse="_"),".png")),height=5,width=5)
+
+
+
+selected_hours <- c(12)
+selected_mode <- "dwelling"
+selected_annotations <- c("N2 1:10 OP50", "daf2")
+
+data_bs %>%
+  plot_violins(., "mean_velocity", "velocity (mm/s)")+
+    geom_signif(comparisons = list(c(selected_annotations[1], selected_annotations[2])),map_signif_level = TRUE, textsize=2,test = "wilcox.test") +
+    ggsave(file.path(save_path,paste0(selected_mode,"_mean_velocity","_",paste(selected_annotations, collapse="_"),".png")),height=5,width=5)
+
+# data <- data_bs %>%
+#   filter(annotation %in% selected_annotations) %>%
+#   filter(hours_rounded %in% selected_hours) %>%
+#   filter(mode %in% selected_mode)
+# 
+# pairwise.t.test(y, group, p.adjust="none", pool.sd = T)  
+
 ```
 
 
 #plot angular velocity histograms for specific timepoints and conditions
 ```{r, echo=TRUE}
-pal <- wes_palette("Darjeeling1",5)[c(1,3,5)]
 
-selected_hours <- c(3,6,9,12)
+pal <- wes_palette("Darjeeling1")[c(3,5)]
 
-selected_annotations <- c("Agar","N2 1:10 OP50", "MT13984")
+selected_hours <- c(12)
+selected_mode <- "dwelling"
+selected_annotations <- c("N2 1:10 OP50", "MT14984")
 
-data_binarized %>%
-  filter(annotation %in% selected_annotations) %>%
-  filter(hours_rounded %in% selected_hours) %>%
-  plot_histograms(., "p_mean_angle", "angular velocity (°/s)")
+# data_binarized %>%
+#   filter(annotation %in% selected_annotations) %>%
+#   filter(hours_rounded %in% selected_hours) %>%
+#   filter(mode %in% selected_mode) %>%
+#   plot_histograms(., "p_mean_angle", "angular velocity (°/s)")
 
-data_binarized %>%
-  filter(annotation %in% selected_annotations) %>%
-  filter(hours_rounded %in% selected_hours) %>%
-  plot_violins(., "p_mean_angle", "velocity (mm/s)")
+data_bs %>%
+  plot_violins(., "mean_angle", "angular velocity (°/s)")+
+    geom_signif(comparisons = list(c(selected_annotations[1], selected_annotations[2])),map_signif_level = TRUE, textsize=1,test = "wilcox.test") +
+    ggsave(file.path(save_path,paste0(selected_mode,"_mean_angle","_",paste(selected_annotations, collapse="_"),"_violins.png")),height=5,width=5)
 
+
+selected_hours <- c(12)
+selected_mode <- "roaming"
+selected_annotations <- c("N2 1:10 OP50", "MT14984")
+
+data_bs %>%
+  plot_violins(., "mean_angle", "angular velocity (°/s)")+
+    geom_signif(comparisons = list(c(selected_annotations[1], selected_annotations[2])),map_signif_level = TRUE, textsize=1,test = "wilcox.test") +
+    ggsave(file.path(save_path,paste0(selected_mode,"_mean_angle","_",paste(selected_annotations, collapse="_"),"_violins.png")),height=5,width=5)
 
 ```
