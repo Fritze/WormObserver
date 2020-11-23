@@ -7,8 +7,6 @@ library("dplyr")
 library("tibble")
 library("tidyr")
 library("ggplot2")
-library("rmarkdown")
-library("knitr")
 library("readr")
 library("purrr")
 library("viridis")
@@ -138,7 +136,7 @@ myPalette <- colorRampPalette(rev(brewer.pal(11, "Spectral")))
 ###########################################################
 
 #2 Calculate centroid tracking statistics per track
-# this function calculates things on a per frame frame
+#
 data_filtering <- function(data_input,conversion_factor, offset,binning_factor, max_gaps, duration){
   data_input %>%
     mutate(grouping = paste0(dataset_ID, "_", tp, "_", TrackID)) %>%
@@ -158,6 +156,7 @@ data_filtering <- function(data_input,conversion_factor, offset,binning_factor, 
     mutate(x_lag=lag(location_x,n=offset/2) - location_x, y_lag = lag(location_y, n=offset/2) - location_y) %>%
     mutate(x_lead=lead(location_x, n=offset/2) - location_x, y_lead=lead(location_y, n=offset/2) - location_y) %>%
     # calculate the angle and convert to degrees
+    #this will result in degrees/s if the offset chosen above corresponds to 1s 
     mutate(angle=suppressWarnings(180 - (as.numeric(mapply(angle,x_lag,y_lag,x_lead,y_lead)))*180/pi)) %>%
     # mutate(angle=suppressWarnings(as.numeric(mapply(angle2,x_lag,y_lag,x_lead,y_lead)))*(180/pi)) %>%
     # measure distance between current point and 1 second before
