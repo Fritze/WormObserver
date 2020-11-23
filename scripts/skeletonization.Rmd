@@ -16,7 +16,7 @@ conversion_factor <- 6.25
 files_to_process <- list.files(target_path, "raw_data.rds", full.names = TRUE, ignore.case = TRUE)
 
 #define which .rds files to include
-files_titles <-  c(":10_OP50_after_6h_exit")
+files_titles <-  c("MT")
 files_to_process <- grep(paste0(files_titles,collapse="|"),files_to_process,value = TRUE)
 
 #take out specific datasets
