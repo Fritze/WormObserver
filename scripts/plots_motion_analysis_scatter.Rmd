@@ -34,14 +34,13 @@ data <- map_dfr(files_to_process,readRDS) %>%
     #filter out first 30 mins
     filter(hours > 0.5) %>%
     #take out one condition
-    filter(!annotation %in% c("L2",
-                              "L3",
-                              "N2 empty after 6h exit",
-                              "N2 1:10 OP50 after 6h exit",
-                              "N2 1:5 OP50",
-                              "N2 1:7 OP50",
-                              "N2 RT no food",
-                              "DA465")) %>%
+    filter(!annotation %in% c("Agar with NAD",
+                              "NGM RT",
+                              "NGM",
+                              "DA465",
+                              "OP50 after 6h exit",
+                              "NGM after 6h exit",
+                              "OP50 with Az Agar")) %>%
     na.omit() %>%
     # scale velocity to mm/s
     mutate(p_mean_velocity = p_mean_velocity / 1000) %>%
