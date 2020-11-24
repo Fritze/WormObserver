@@ -136,8 +136,8 @@ myPalette <- colorRampPalette(rev(brewer.pal(11, "Spectral")))
 ###########################################################
 
 #2 Calculate centroid tracking statistics per track
-#
-data_filtering <- function(data_input,conversion_factor, offset,binning_factor, max_gaps, duration){
+
+centroids_summarise_per_bin <- function(data_input,conversion_factor, offset,binning_factor, max_gaps, duration){
   data_input %>%
     mutate(grouping = paste0(dataset_ID, "_", tp, "_", TrackID)) %>%
     # only tracks with less gaps than max_gaps allowed 
@@ -168,119 +168,26 @@ data_filtering <- function(data_input,conversion_factor, offset,binning_factor, 
     na.omit() %>%
     #set up binning depending on binning_factor
     mutate(binning=rep(0:n(),each=binning_factor,length.out=n())) %>%
-    ungroup()
-}
-
-# this function will average values calculated with the data_filtering function either on a "per track" basis or "per bin"
-# for the "per bin" option we additionally calculate basic behavioral states by just looking at certain parameters
-# frames will be classified individually and state will be determined by majority vote within the chosen time bin
-# both options can be calculated as "mutate" (i.e. append to raw dataframe) or "summarize" (i.e. only one row per track/bin)
-params_statistics <- function(input_data,how_to){
-  if (how_to == "mutate_per_track"){
-    input_data %>%
-      na.omit() %>%
-      #this will be computed on a "per track basis"
-      group_by(annotation,TrackID, tp, minutes,dataset_ID,file_name,worm_type,plate_type,Duration_of_track) %>%
-      mutate(p_mean_angle = mean(angle),
-             p_sd_local_angle = sd(angle),
-             p_displacement = first(Track_displacement*conversion_factor),
-             p_displacement_distance_ratio = mean(Track_displacement) / sum(local_distance),
-             p_mean_velocity = mean(velocity),
-             p_track_length_secs = mean(Duration_of_track/downsampled_to),
-             p_eccentricity = mean(Eccentricity),
-             p_size = mean(Size),
-             p_length=mean(Major*conversion_factor),
-             p_major_minor_ratio = mean(Major)/mean(Minor))
-  } else if (how_to == "summarise_per_track"){
-    input_data %>%
-      na.omit() %>%
-      #this will be computed on a "per track basis"
-      group_by(annotation,TrackID, tp, minutes,dataset_ID,file_name,worm_type,plate_type,Duration_of_track) %>%
-      summarise(p_mean_angle = mean(angle),
-                p_sd_local_angle=sd(angle),
-                p_displacement=first(Track_displacement*conversion_factor),
-                p_displacement_distance_ratio= mean(Track_displacement) / sum(local_distance),
-                p_mean_velocity = mean(velocity),
-                p_track_length_secs = mean(Duration_of_track/downsampled_to),
-                p_eccentricity = mean(Eccentricity),
-                p_size = mean(Size),
-                p_length=mean(Major*conversion_factor),
-                p_major_minor_ratio = mean(Major)/mean(Minor))
-  } else if (how_to == "summarise_per_bin"){
-    input_data %>%
-      na.omit() %>%
-      # rest will be computed on a "per bin basis"
-      group_by(annotation,TrackID, tp, minutes,dataset_ID,file_name,worm_type,plate_type,Duration_of_track,binning) %>%
-      # classify now every frame as a certain behavioral class while binning
-      # pause if velocity very low
-      mutate(state= if_else(velocity < 0.01,"pause","straight")) %>%
-      # if path angle is over 120 than turn
-      mutate(turn_parameter_based = if_else(angle > 75,"turn","no")) %>%
-      mutate(state=if_else((turn_parameter_based == "turn" & state != "pause"), "turn",state)) %>%
-      #for every bin do majority vote
-      mutate(state_binned = names(table(state))[which.max(table(state))]) %>%
-      summarise(state_binned = first(state_binned),
-                p_mean_angle = mean(angle),
-                p_sd_local_angle=sd(angle),
-                p_displacement=first(Track_displacement*conversion_factor),
-                p_displacement_distance_ratio= mean(Track_displacement) / sum(local_distance),
-                p_mean_velocity = mean(velocity),
-                p_track_length_secs = mean(Duration_of_track/downsampled_to),
-                p_eccentricity = mean(Eccentricity),
-                p_size = mean(Size),
-                p_length=mean(Major*conversion_factor),
-                p_major_minor_ratio = mean(Major)/mean(Minor))
-  } else if (how_to == "mutate_per_bin"){
-    input_data %>%
-      na.omit() %>%
-      # rest will be computed on a "per bin basis"
-      group_by(annotation,TrackID, tp, minutes,dataset_ID,file_name,worm_type,plate_type,Duration_of_track,binning) %>%
-      # classify now every frame as a certain behavioral class while binning
-      # pause if velocity very low
-      mutate(state= if_else(velocity < 0.005,"pause","straight")) %>%
-      # if path angle is over 120 than turn
-      mutate(turn_parameter_based = if_else(angle > 90,"turn","no")) %>%
-      mutate(state=if_else((turn_parameter_based == "turn" & state != "pause"), "turn",state)) %>%
-      #for every bin do majority vote
-      mutate(state_binned = names(table(state))[which.max(table(state))]) %>%
-      mutate(p_mean_angle = mean(angle),
-                p_sd_local_angle=sd(angle),
-                p_displacement=first(Track_displacement*conversion_factor),
-                p_displacement_distance_ratio= mean(Track_displacement) / sum(local_distance),
-                p_mean_velocity = mean(velocity),
-                p_track_length_secs = mean(Duration_of_track/downsampled_to),
-                p_eccentricity = mean(Eccentricity),
-                p_size = mean(Size),
-                p_length=mean(Major*conversion_factor),
-                p_major_minor_ratio = mean(Major)/mean(Minor))
-  }
-}
-
-#function wrapping data_filtering and summarise_per_bin
-#will also add the chosen parameters for offset, max gaps duration and binning factor to every row
-calculate_overview_statistics_per_bin <-  function(data,conversion_factor,offset,binning_factor,max_gaps,duration) {
-  data_filtering(data, conversion_factor, offset, binning_factor, max_gaps,duration) %>%
-    params_statistics(., "summarise_per_bin") %>%
+    ungroup() %>%
+    na.omit() %>%
+    # rest will be computed on a "per bin basis"
+    group_by(annotation,TrackID, tp, minutes,dataset_ID,file_name,worm_type,plate_type,Duration_of_track,binning) %>%
+    summarise(p_mean_angle = mean(angle),
+              p_sd_local_angle=sd(angle),
+              p_displacement=first(Track_displacement*conversion_factor),
+              p_displacement_distance_ratio= mean(Track_displacement) / sum(local_distance),
+              p_mean_velocity = mean(velocity),
+              p_track_length_secs = mean(Duration_of_track/downsampled_to),
+              p_eccentricity = mean(Eccentricity),
+              p_size = mean(Size),
+              p_length=mean(Major*conversion_factor),
+              p_major_minor_ratio = mean(Major)/mean(Minor)) %>%
+    #append selected parameters to each row
     mutate(offset = offset,
            max_gaps = max_gaps,
            duration = duration,
            binning_factor = binning_factor)
 }
-
-
-
-#function wrapping data_filtering and summarise_per_track
-#will also add the chosen parameters for offset, max gaps duration and binning factor to every row
-calculate_overview_statistics_per_track <-  function(data,conversion_factor,offset,binning_factor,max_gaps,duration) {
-  data_filtering(data, conversion_factor, offset, binning_factor, max_gaps,duration) %>%
-    params_statistics(., "summarise_per_track") %>%
-    mutate(offset = offset,
-           max_gaps = max_gaps,
-           duration = duration,
-           binning_factor = binning_factor)
-  
-}
-
 
 
 
