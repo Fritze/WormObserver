@@ -25,31 +25,37 @@ angle_r <- 30
 
   
 data_binarized <- data %>%
-    mutate(mode = ifelse(p_mean_velocity > velocity_r & p_mean_angle < angle_r,"roaming","dwelling"))
+  mutate(mode = ifelse(p_mean_velocity > velocity_r & p_mean_angle < angle_r,"roaming","dwelling")) %>%
+  group_by(dataset_ID, tp, TrackID, binning) %>%
+  mutate(omega = ifelse(p_omega_rf > 0, 1, 0))
 
 #here we will summarise by tp (==video timestep)
 #so later in the plots one dot = one (in our case 8 mins long) video 
 data_bs <- data_binarized %>%
-  #counts per behavioral state
   group_by(annotation,hours_rounded,tp,mode,dataset_ID) %>%
-  summarise(counts=n(),mean_velocity = mean(p_mean_velocity), mean_angle = mean(p_mean_angle)) %>%
+  #summarise over tp
+  #this will be the mean of the bins contained within that tp and mode
+  #counts is the number of bins of a certain mode
+  #mean_omega is the number of bins with at least one detected omega turn divided by the total number of bins
+  summarise(counts=n(),mean_velocity = mean(p_mean_velocity), mean_angle = mean(p_mean_angle),perc_omega = sum(omega)/n()) %>%
   group_by(annotation,hours_rounded,tp,dataset_ID) %>%
   #total counts
   mutate(sum=sum(counts)) %>%
   #relative occurence of mode
   mutate(perc = counts/sum) %>%
   ungroup()
+  
 
-data_bsh <- data_binarized %>%
-  group_by(annotation,hours_rounded,mode,dataset_ID) %>%
-  mutate(counts=n()) %>%
-  #total counts
-  group_by(annotation,hours_rounded,dataset_ID) %>%
-  mutate(sum=sum(counts)) %>%
-  #relative occurence of mode
-  mutate(perc = counts/sum) %>%
-  group_by(annotation, hours_rounded, dataset_ID,mode) %>%
-  summarise(mean_mode_perc = mean(perc),mean_velocity = mean(p_mean_velocity), mean_angle = mean(p_mean_angle))
+# data_bsh <- data_binarized %>%
+#   group_by(annotation,hours_rounded,mode,dataset_ID) %>%
+#   mutate(counts=n()) %>%
+#   #total counts
+#   group_by(annotation,hours_rounded,dataset_ID) %>%
+#   mutate(sum=sum(counts)) %>%
+#   #relative occurence of mode
+#   mutate(perc = counts/sum) %>%
+#   group_by(annotation, hours_rounded, dataset_ID,mode) %>%
+#   summarise(mean_mode_perc = mean(perc),mean_velocity = mean(p_mean_velocity), mean_angle = mean(p_mean_angle))
 
 
 
@@ -500,6 +506,91 @@ post_test <- glht(aov,
 )
 
 write.table(tidy(post_test),file=file.path(save_path,paste0(selected_mode,"_mean_angle","_",paste(selected_annotations, collapse="_"),".txt")))
+
+
+```
+
+```{r, echo=TRUE}
+
+
+plot_omega <- function(data_bs, selected_mode, selected_hours, selected_annotations){
+
+  data_bsf <<- data_bs %>%
+    filter(annotation %in% selected_annotations) %>%
+    filter(hours_rounded %in% selected_hours) %>%
+    filter(mode %in% selected_mode) %>%
+    mutate(annotation = factor(annotation, levels = selected_annotations)) %>%
+    arrange(annotation) 
+  
+  data_bsfs <- data_bsf %>%
+    group_by(annotation,hours_rounded) %>%
+    summarise(
+      sd = sd(perc_omega, na.rm=TRUE),
+      # sem = se(perc),
+      perc_omega = median(perc_omega)
+    )
+  
+  ggplot(data_bsf,aes(x=factor(hours_rounded,levels = unique(hours_rounded)),y=perc_omega,fill=annotation))+
+        geom_boxplot(lwd=1.2,outlier.shape = NA)+
+        geom_point(position = position_jitterdodge(jitter.width=0.25),color="black",shape=21,size=2.5,alpha=0.5)+
+        # geom_pointrange(data = data_bsfs,aes(ymin = perc_omega-sd, ymax = perc_omega+sd),color="black",position = position_dodge(0.75))+
+        scale_fill_manual(values=pal)+
+        xlab("hours") + ylab(paste0("fraction omega turns"))+
+        theme_classic()+
+        theme(
+          legend.direction="horizontal",
+          legend.position = "top",
+          strip.background = element_rect(colour = "white", fill = "white"),
+          panel.spacing = unit(1, "lines"),
+          strip.text.x = element_text(size=15,colour = "black", face = "bold"),
+          axis.text.x = element_text(size=30),
+          axis.title.x = element_text(size=20),
+          axis.text.y = element_text(size=30),
+          axis.title.y = element_text(size=20),
+          axis.ticks=element_line(size=1.5),
+          axis.ticks.length=unit(0.25,"cm"),
+          axis.line = element_line(colour = 'black', size = 1.5))
+
+}
+selected_annotations <- c("OP50","Agar","OP50 with Az NGM")
+selected_hours <- c(1,12)
+pal <- wes_palette("Darjeeling1")[c(5,1,2)]
+selected_mode <- "roaming"
+plot_omega(data_bs, selected_mode, selected_hours, selected_annotations)+
+  ggsave(file.path(save_path,paste0("omega_",paste(selected_annotations, collapse="_"),".png")),height=5,width=5,dpi=600)
+
+
+# data_bsf is created by the plot_omega function
+# create separate dataframe for each timepoint (if two timepoints have been selected)
+data_bsf1 <- filter(data_bsf, hours_rounded == selected_hours[1])
+data_bsf2 <- filter(data_bsf, hours_rounded == selected_hours[2])
+
+# for every dataframe (i.e. timepoint) compute separate kruskal wallis test
+kw1 <- kruskal.test(perc_omega ~ annotation, data = data_bsf1)
+kw2 <- kruskal.test(perc_omega ~ annotation, data = data_bsf2)
+
+#select p-value correction for pairwise wilcox test
+padjust <- "BH"
+
+#for each timepoint new dataframe with results from pairwise wilcox test and kruskal wallis p value 
+post_test1 <- pairwise.wilcox.test(data_bsf1$perc_omega, data_bsf1$annotation,
+                 p.adjust.method = padjust) %>%
+  tidy() %>%
+  mutate(kw_pvalue = kw1$p.value) %>%
+  mutate(selected_hour = selected_hours[1])
+
+post_test2 <- pairwise.wilcox.test(data_bsf2$perc_omega, data_bsf2$annotation,
+                 p.adjust.method = padjust) %>%
+  tidy() %>%
+  mutate(kw_pvalue = kw2$p.value) %>%
+  mutate(selected_hour = selected_hours[2])
+
+#combine the results of the two wilcox tests and attach methods description
+post_test <- rbind(post_test1, post_test2) %>%
+  mutate(test = "kruskal-wallis", padjust = padjust)
+
+write.table(post_test,file=file.path(save_path,paste0("omega_",paste(selected_annotations, collapse="_"),".txt")))
+
 
 
 ```
