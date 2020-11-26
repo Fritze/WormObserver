@@ -4,16 +4,25 @@
 #Set the location folder of the raw data (of all experiments you want to plot)
 base_path <- "/media/fpreuss/raid5/timelapses/analysis/200703/"
 target_path <- file.path(base_path,"data")
-save_path <- file.path(base_path,"plots")
-
+save_path <- file.path(base_path,"plots","turns")
+dir.create(save_path)
 ```
 
 #load files for omega turns plotting (raw data files)
 ```{r, include=FALSE}
 
+
 #list of .rds files in data folder
 files_to_process <- list.files(target_path, "raw_data.rds", full.names = TRUE, ignore.case = TRUE)
-files_to_process <- grep("1:10_OP50_after_6h_exit_raw|1:10_OP50_raw|N2_no_food|Agar_raw|Agar_with_NAD_raw|1:5_OP50_raw|N2_empty_after_6h_exit_raw_data", files_to_process, value=TRUE)
+files_to_process <- grep("Agar_raw|Agar_with_NAD_raw|daf2_raw|MT14984_raw|OP50_raw|OP50_with_Az_NGM_raw", files_to_process, value=TRUE)
+
+
+#lower velocity limit for mode == roaming
+velocity_r <- 0.01
+#upper angle limit for mode == roaming
+angle_r <-15
+#upper velocity limit for mode == still
+# velocity_s <- 0.001
 
 
 #load all .rds files and append to one data frame ('imported_data')
@@ -37,14 +46,14 @@ imported_data <- files_to_process %>%
   map_df(.,load_and_summarise)
   
 
-created_file_path <- file.path(save_path,"201005_omega_turns.rds")
+created_file_path <- file.path(save_path,"201125_omega_turns.rds")
 saveRDS(imported_data, file = created_file_path)
 
 ```
 
 #plots for omega turns
 ```{r, include=FALSE}
-imported_data <- readRDS(file.path(save_path,"201005_omega_turns.rds"))
+imported_data <- readRDS(file.path(save_path,"201125_omega_turns.rds"))
 library(wesanderson)
 
 plotting_function <- function(data){
@@ -75,7 +84,7 @@ plotting_function <- function(data){
 
 
 unique(imported_data$annotation)
-plotting_function(imported_data %>% filter(annotation == "Agar" | annotation == "Agar with NAD"))
+plotting_function(imported_data %>% filter(annotation == "Agar" | annotation == "OP50 with Az NGM" | annotation == "OP50"| annotation == "MT14984"| annotation == "daf2"))
 plotting_function(imported_data %>% filter(annotation == "Agar" | annotation == "Agar with NAD"| annotation == "N2 1:10 OP50" | annotation == "N2 no food" ))
 plotting_function(imported_data %>% filter(annotation == "N2 1:10 OP50" | annotation == "N2 1:5 OP50" | annotation == "N2 1:10 OP50 after 6h exit"))
 plotting_function(imported_data %>% filter(annotation == "Agar" | annotation == "N2 no food" ))
