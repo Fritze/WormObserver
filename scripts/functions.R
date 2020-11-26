@@ -170,18 +170,18 @@ centroids_summarise_per_bin <- function(data_input,conversion_factor, offset,bin
     mutate(binning=rep(0:n(),each=binning_factor,length.out=n())) %>%
     ungroup() %>%
     na.omit() %>%
-    # rest will be computed on a "per bin basis"
+    #output will be one row == one bin
     group_by(annotation,TrackID, tp, minutes,dataset_ID,file_name,worm_type,plate_type,Duration_of_track,binning) %>%
     summarise(p_mean_angle = mean(angle),
               p_sd_local_angle=sd(angle),
               p_displacement=first(Track_displacement*conversion_factor),
               p_displacement_distance_ratio= mean(Track_displacement) / sum(local_distance),
               p_mean_velocity = mean(velocity),
-              p_track_length_secs = mean(Duration_of_track/downsampled_to),
               p_eccentricity = mean(Eccentricity),
               p_size = mean(Size),
               p_length=mean(Major*conversion_factor),
-              p_major_minor_ratio = mean(Major)/mean(Minor)) %>%
+              p_major_minor_ratio = mean(Major)/mean(Minor),
+              p_omega_rf = sum(Prediction == "turn" & Prediction_confidence > 0.8)) %>%
     #append selected parameters to each row
     mutate(offset = offset,
            max_gaps = max_gaps,
