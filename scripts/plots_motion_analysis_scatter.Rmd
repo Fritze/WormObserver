@@ -2,9 +2,8 @@
 #Define locations
 #Also define timerange to be plotted
 ```{r, echo=FALSE}
-#bins or tracks?
-average <- "bins"
-  
+
+#define base path  
 base_path <- "/media/fpreuss/raid5/timelapses/analysis/200703"
 
 
@@ -17,10 +16,6 @@ show_until <- 12
 ```{r, echo=FALSE}
 
 target_path <- file.path(base_path,"data","motion")
-save_path <- file.path(base_path,"plots",average)
-dir.create(save_path)
-save_path <- file.path(save_path, "scatterplots")
-dir.create(save_path)
 
 #list of centroid tracking .rds files in data folder
 files_to_process <- list.files(target_path, paste0("centroid_tracking_",average,".rds"),full.names = TRUE, ignore.case = TRUE)
@@ -40,7 +35,8 @@ data <- map_dfr(files_to_process,readRDS) %>%
                               "DA465",
                               "OP50 after 6h exit",
                               "NGM after 6h exit",
-                              "OP50 with Az Agar")) %>%
+                              "OP50 with Az Agar"
+                              )) %>%
     na.omit() %>%
     # scale velocity to mm/s
     mutate(p_mean_velocity = p_mean_velocity / 1000) %>%
@@ -96,10 +92,10 @@ plot_scatterdensity <- function(data_to_plot){
 
 
 
-#plot all 10s windows per annotation AND dataset_ID  
+#plot all 10s windows per annotation AND dataset_ID (both as points and density)
 ```{r, echo=TRUE}
 
-save_path <- file.path(base_path,"plots","bins","scatterpoints")
+save_path <- file.path(base_path,"plots","scatterpoints")
 dir.create(save_path)
 
 
@@ -110,7 +106,20 @@ for (a in unique(data$annotation)){
   
   plot_scatterpoints(data_to_plot)+
      ggsave(file.path(save_path,paste0("scatterpoints_",a,".png")),height=15,width=35)
+  
+}
 
+
+save_path <- file.path(base_path,"plots","scatterdensity")
+dir.create(save_path)
+  
+for (a in unique(data$annotation)){
+  data_to_plot <- data %>%
+    filter(annotation == a)
+
+  plot_scatterdensity(data_to_plot)+
+    ggsave(file.path(save_path,paste0("scatterdensity_",a,".png")),height=15,width=35)
+  
 }
 ```
 
@@ -118,9 +127,7 @@ for (a in unique(data$annotation)){
 #plot the relative density for all annotations, timepoints and datasets
 #additionally also as seperate file for every annotation
 ```{r, echo=TRUE}
-
-save_path <- file.path(base_path,"plots","bins","scatterdensity")
-dir.create(save_path)
+save_path <- file.path(base_path,"plots","scatterdensity")
 
 plot_scatterdensity(data)+
   facet_wrap(vars(annotation,hours_rounded),ncol=length(unique(data$hours_rounded)),scales="free_x")+
@@ -153,19 +160,19 @@ library(wesanderson)
 velocity_r <- 0.01
 #upper angle limit for mode == roaming
 angle_r <-15
-#upper velocity limit for mode == still
-# velocity_s <- 0.001
+# upper velocity limit for mode == still
+velocity_s <- 0.001
 
 
-save_path <- file.path(base_path,"plots","bins","scatterpoints_annotated")
+save_path <- file.path(base_path,"plots","scatterpoints_annotated")
 dir.create(save_path)
 
 
 for (a in unique(data$annotation)){
   data_to_plot <- data %>%
     filter(annotation == a) %>%
-    mutate(mode = ifelse(p_mean_velocity > velocity_r & p_mean_angle < angle_r,"roaming","dwelling"))
-    # mutate(mode=ifelse(p_mean_velocity < velocity_s, "still", mode))
+    mutate(mode = ifelse(p_mean_velocity > velocity_r & p_mean_angle < angle_r,"roaming","dwelling")) %>%
+    mutate(mode=ifelse(p_mean_velocity < velocity_s, "still", mode))
   
   plot_basis(data_to_plot)+
     geom_point(aes(fill=mode),shape=21 ,alpha=0.25)+
@@ -178,39 +185,4 @@ for (a in unique(data$annotation)){
 
 ```
 
-```{r, echo=TRUE}
-  
-#   
-# data_binarized <- imported_data %>%
-#   mutate(ratio = p_mean_velocity/p_mean_angle) %>%
-#   #calculate ratio, this will give result in a diagonal (see binarized_not_log plot)
-#   mutate(behavioral_state=ifelse(ratio > 1, "roaming","dwelling")) %>%
-#   filter(hours_rounded <= show_until) %>%
-#   group_by(annotation, hours_rounded) %>%
-#   #count tracks per hour per condition
-#   mutate(number_of_tracks_in_this_hour = n_distinct(dataset_ID,tp,TrackID)) %>%
-#   arrange(hours_rounded) 
-#   
-# binarized <- ggplot(data_binarized,aes(x = p_mean_angle, y = p_mean_velocity,color=behavioral_state))+
-#   geom_point(alpha=0.05)+
-#   theme_linedraw()+
-#   ylab("velocity (mm/s)") + xlab("angular velocity (degree/s)")+
-#   scale_x_continuous(limits=c(0,180))+
-#     theme(legend.direction="horizontal",
-#       legend.position = "top",
-#       strip.background = element_rect(colour = "white", fill = "white"),
-#       panel.spacing = unit(1, "lines"),
-#         strip.text.x = element_text(size=15,colour = "black", face = "bold"),
-#         axis.text.x = element_text(size=30),
-#         axis.title.x = element_text(size=45),
-#         axis.text.y = element_text(size=35),
-#         axis.title.y = element_text(size=45))+
-#   facet_wrap(vars(annotation,hours_rounded,number_of_tracks_in_this_hour),ncol=length(unique(data$hours_rounded)),scales="free_x")
-#   
-# binarized + ggsave(file.path(save_path,paste0("scatter_roaming_dwelling_heatmap_binarized_not_log",".png")),height=35,width=35)
-# binarized + scale_y_log10() + ggsave(file.path(save_path,paste0("scatter_roaming_dwelling_heatmap_binarized",".png")),height=35,width=35)
-#   
-
-  
-```
 
