@@ -2,9 +2,7 @@
   
 #Define locations and datasets to include
 ```{r, echo=FALSE}
-#bins or tracks?
-average <- "bins"
-  
+#define base path
 base_path <- "/media/fpreuss/raid5/timelapses/analysis/200703"
 ```
 
@@ -14,20 +12,25 @@ base_path <- "/media/fpreuss/raid5/timelapses/analysis/200703"
   
 #define colors
 library(wesanderson)
-
+#fps we downsampled to (in KNIME)
+downsampled_to = 2
 
 #lower velocity limit for mode == roaming
 velocity_r <- 0.01
 #upper angle limit for mode == roaming
-angle_r <- 30
-#upper velocity limit for mode == still
-# velocity_s <- 0.005
-
+angle_r <-15
+# upper velocity limit for mode == still
+velocity_s <- 0.001
   
 data_binarized <- data %>%
   mutate(mode = ifelse(p_mean_velocity > velocity_r & p_mean_angle < angle_r,"roaming","dwelling")) %>%
+  mutate(mode=ifelse(p_mean_velocity < velocity_s, "still", mode)) %>%
   group_by(dataset_ID, tp, TrackID, binning) %>%
-  mutate(omega = ifelse(p_omega_rf > 0, 1, 0))
+  #if there is at least one omega turn in a bin, make it 1 otherwise 0
+  mutate(omega = ifelse(p_omega_rf > 0, 1, 0)) %>%
+  group_by(annotation, dataset_ID, tp, TrackID) %>%
+  #sum up traveled distance per track (multiply by conversion factor and divide by 1000 to get mm)
+  mutate(distance_per_track = sum(p_traveled_distance)*conversion_factor/1000)
 
 #here we will summarise by tp (==video timestep)
 #so later in the plots one dot = one (in our case 8 mins long) video 
@@ -45,125 +48,44 @@ data_bs <- data_binarized %>%
   mutate(perc = counts/sum) %>%
   ungroup()
   
-
-# data_bsh <- data_binarized %>%
-#   group_by(annotation,hours_rounded,mode,dataset_ID) %>%
-#   mutate(counts=n()) %>%
-#   #total counts
-#   group_by(annotation,hours_rounded,dataset_ID) %>%
-#   mutate(sum=sum(counts)) %>%
-#   #relative occurence of mode
-#   mutate(perc = counts/sum) %>%
-#   group_by(annotation, hours_rounded, dataset_ID,mode) %>%
-#   summarise(mean_mode_perc = mean(perc),mean_velocity = mean(p_mean_velocity), mean_angle = mean(p_mean_angle))
-
-
+#here we will summarise per track
+#so later in the plots one dot = one (in our case 8 mins long) video 
+# data_bst <- data_binarized %>%
+#   group_by(annotation,hours_rounded,tp,TrackID,dataset_ID,mode,binning,omega) %>%
+#   #summarise over individual tracks
+#   #this will be the mean of the bins contained within that track
+#   #mean_omega is the mean number of tracks with at one omega turn, normalized per s
+#   summarise(mean_velocity = mean(p_mean_velocity), mean_angle = mean(p_mean_angle))
 
 ```
 #function for plotting mean mode fraction with Local Polynomial Regression Fitting
 ```{r, echo=TRUE}
 
-plot_mean_modes <- function(data,grouping){
-  ggplot(data, aes_string(x="hours_rounded", y="perc", group=grouping,color=grouping,fill=grouping))+
-  # geom_point(size=1,alpha=0.5, shape=21, aes(fill=mode),color="black")+
-  geom_smooth(alpha=0.5)+
-  scale_x_continuous(breaks=(seq(1,show_until)))+
-  theme_classic()+
-  labs(x="time (hours)", "relative fraction")+
-  scale_fill_manual(values =pal)+
-  scale_color_manual(values =pal)+
-  theme(legend.direction="horizontal",
-        legend.position = "top",
-        strip.background = element_rect(colour = "white", fill = "white"),
-        panel.spacing = unit(1, "lines"),
-        strip.text.x = element_text(size=15,colour = "black", face = "bold"),
-        axis.text.x = element_text(size=10),
-        axis.title.x = element_text(size=25),
-        axis.text.y = element_text(size=15),
-        axis.title.y = element_text(size=25))
-}
-```
-
-#plot modes
-```{r, echo=TRUE}
-save_path <- file.path(base_path,"plots","bins","comparisons")
-dir.create(save_path)
-
-pal <- wes_palette("Rushmore1")[c(4,5)]
-#roaming and dwelling
-data_bs %>%
-  plot_mean_modes(.,"mode")+
-    facet_wrap(vars(annotation),ncol=3,scales="free_x")+
-    ggsave(file.path(save_path,paste0("modes_relative.png")),height=7.5,width=10,dpi=600)
-
-pal <- wes_palette("Rushmore1")[c(4)]
-#only roaming
-data_bs %>%
-  filter(mode %in% c("dwelling")) %>%
-  plot_mean_modes(.,"mode")+
-    facet_wrap(vars(annotation),ncol=3,scales="free_x")+
-    ggsave(file.path(save_path,paste0("dwelling_relative.png")),height=7.5,width=10,dpi=600)
-
-pal <- wes_palette("Rushmore1")[c(5)]
-#only roaming
-data_bs %>%
-  filter(mode %in% c("roaming")) %>%
-  plot_mean_modes(.,"mode")+
-    facet_wrap(vars(annotation),ncol=3,scales="free_x")+
-    ggsave(file.path(save_path,paste0("roaming_relative.png")),height=7.5,width=10,dpi=600)
-
-
-pal <-wes_palette("Darjeeling1")
-#only roaming
-data_bs %>%
-  filter(mode %in% c("roaming")) %>%
-  filter(annotation %in% c(
-    "Agar",
-    "OP50",
-    "OP50 with Az NGM"
-  )) %>%
-  plot_mean_modes(.,"annotation")+
-    ggsave(file.path(save_path,paste0("roaming_relative.png")),height=7.5,width=10,dpi=600)
-
-
-```
-
-#plot relative occurence of dwelling AND roaming for all timepoints for all conditions -- BOXPLOT
-```{r, echo=TRUE}
-
-for (a in unique(data$annotation)){
-  data_to_plot <- data_bs %>%
-    filter(annotation == a)
-  
-  ggplot(data_to_plot,aes(x=factor(hours_rounded,levels=unique(hours_rounded)),y=perc,fill=mode))+
-        geom_boxplot(aes(fill=mode),width=0.75,lwd=1.2,alpha=0.75,outlier.size = 0)+
-        geom_point(aes(group=mode,fill=mode),position=position_jitter(width=0.25),shape=21, color="black",size=1.5)+
-        scale_y_continuous(limits=c(0,1))+
-        scale_fill_manual(values =pal)+
-        xlab("hours") + ylab("Relative occurence of \nbehavioral state")+
-        facet_wrap(vars(mode),ncol=3)+
-        theme_classic()+
-        theme(legend.direction="horizontal",
-          legend.position = "top",
-          strip.background = element_rect(colour = "white", fill = "white"),
-          panel.spacing = unit(1, "lines"),
-          strip.text.x = element_text(size=15,colour = "black", face = "bold"),
-          axis.text.x = element_text(size=10),
-          axis.title.x = element_text(size=25),
-          axis.text.y = element_text(size=15),
-          axis.title.y = element_text(size=25))+
-    ggsave(file.path(save_path,paste0("modes_relative_box_",a,".png")),height=7.5,width=15,dpi=600)
-  
-}
-  
-```
-
-
-#plot relative occurence of dwelling/roaming for specific timepoints and conditions
-```{r, echo=TRUE}
-
 
 se <- function(x) sqrt(var(x)/length(x))
+
+plot_meanse <- function(data_to_plot, X, Y){
+  ggplot(data_to_plot,aes_string(x = X ,y =Y,color="mode",fill="mode",group="mode")) +
+    geom_ribbon(aes(ymin=minsd, ymax=maxsd,group=mode),fill="lightgray", color="lightgray", alpha=.8)+
+    geom_line(size=1.2)+
+    geom_point(aes(color=mode),shape=21,size=2,color="black")+
+    scale_x_continuous(breaks=(seq(1,show_until)))+
+    theme_classic()+
+    labs(x="time (hours)", "relative fraction")+
+    theme_classic()+
+    labs(x="time (hours)",y="Size (px)")+
+    theme(strip.background = element_rect(colour = "white", fill = "white"),
+      strip.text.x = element_text(size=20,colour = "black", face = "bold"),
+      axis.text.x = element_text(size=15, face="bold"),
+      axis.title.x = element_text(size=20, face="bold"),
+      axis.text.y = element_text(size=15, face="bold"),
+      axis.title.y = element_text(size=20, face="bold"),
+      axis.line = element_line(colour = 'black', size = 1.2),
+      axis.ticks = element_line(colour = "black", size = 1.2))+
+    scale_fill_manual(values = pal)+
+    scale_color_manual(values = pal)
+}
+
 
 plot_mode_relative <- function(data_bs, selected_mode, selected_hours, selected_annotations){
 
@@ -206,67 +128,47 @@ plot_mode_relative <- function(data_bs, selected_mode, selected_hours, selected_
 
 }
 
+#function for plotting boxplots
+plot_boxplots <- function(data,Y,ylab,fill_by){
+
+  data_bsf <- data %>%
+    filter(annotation %in% selected_annotations) %>%
+    filter(hours_rounded %in% selected_hours) %>%
+    filter(mode %in% selected_mode) %>%
+    mutate(annotation =  factor(annotation, levels = selected_annotations)) %>%
+    arrange(annotation)
 
 
-selected_mode <- "dwelling"
-selected_hours <- c(6,7,8,9,10,11,12)
-pal <- wes_palette("Darjeeling1")[c(5,1)]
-selected_annotations <- c("OP50 with Az NGM","OP50")
-
-plot_mode_relative(data_bs, selected_mode, selected_hours, selected_annotations)+
-  ggsave(file.path(save_path,paste0("relative_compare_",paste(selected_annotations, collapse="_"),".png")),height=5,width=7.5,dpi=600)
-
-selected_hours <- unique(data_bs$hours_rounded)
-plot_mode_relative(data_bs, selected_mode, selected_hours, selected_annotations)+
-  ggsave(file.path(save_path,paste0("relative_compare_",paste(selected_annotations, collapse="_"),"_all_hours.png")),height=5,width=12,dpi=600)
-
-
-
-
-selected_annotations <- c("Agar", "OP50")
-selected_hours <- c(6,7,8,9,10,11,12)
-pal <- wes_palette("Darjeeling1")[c(1,5)]
-plot_mode_relative(data_bs, selected_mode, selected_hours, selected_annotations)+
-  ggsave(file.path(save_path,paste0("relative_compare_",paste(selected_annotations, collapse="_"),".png")),height=5,width=7.5,dpi=600)
-
-selected_hours <- unique(data_bs$hours_rounded)
-plot_mode_relative(data_bs, selected_mode, selected_hours, selected_annotations)+
-  ggsave(file.path(save_path,paste0("relative_compare_",paste(selected_annotations, collapse="_"),"_all_hours.png")),height=5,width=12,dpi=600)
-
-
-
-
-```
-
-#function for plotting histograms
-```{r, echo=TRUE}
-plot_histograms <- function(data,X,xlab){
-  ggplot(data,aes_string(x=X,fill="annotation"))+
-    geom_histogram(lwd=1.2,binwidth = 0.1)+
-    xlab(xlab)+
+  ggplot(data_bsf,aes_string(x=fill_by,y=Y,group=fill_by))+
+    geom_violin(fill="lightgrey",color="lightgrey", alpha=0.2)+
+    geom_boxplot(aes(fill=annotation),lwd=1.2,alpha=0.5)+
+    labs(y=paste0(Y, " (", selected_mode,")"))+
     theme_classic()+
+    # scale_y_continuous(limits=c(NA,NA))+
     scale_fill_manual(values=pal)+
-    facet_wrap(vars(annotation,hours_rounded),scales="free")+
-      theme(
-        legend.direction="horizontal",
-        legend.position = "top",
-        strip.background = element_rect(colour = "white", fill = "white"),
-        panel.spacing = unit(1, "lines"),
-        strip.text.x = element_text(size=15,colour = "black", face = "bold"),
-        axis.text.x = element_text(size=20),
-        axis.title.x = element_text(size=20),
-        axis.text.y = element_text(size=20),
-        axis.title.y = element_text(size=20),
-        axis.ticks=element_line(size=1.5),
-        axis.ticks.length=unit(0.25,"cm"),
-        axis.line = element_line(colour = 'black', size = 1.5))
-      
-  
-  
+    theme(
+      legend.direction="horizontal",
+      legend.position = "top",
+      strip.background = element_rect(colour = "white", fill = "white"),
+      panel.spacing = unit(1, "lines"),
+      strip.text.x = element_text(size=15,colour = "black", face = "bold"),
+      axis.text.x = element_text(size=10),
+      axis.title.x = element_text(size=20),
+      axis.text.y = element_text(size=20),
+      axis.title.y = element_text(size=20),
+      axis.ticks=element_line(size=1.5),
+      axis.ticks.length=unit(0.25,"cm"),
+      axis.line = element_line(colour = 'black', size = 1.5))
+
 }
 
-#function for plotting violin plots
-plot_violins <- function(data_bs,Y,ylab){
+
+
+
+
+
+#function for plotting point plots with range
+plot_dots <- function(data_bs,Y,ylab,fill_by){
   
   data_bsf <<- data_bs %>%
     filter(annotation %in% selected_annotations) %>%
@@ -286,8 +188,8 @@ plot_violins <- function(data_bs,Y,ylab){
     )
     
   
-  ggplot(data_bsf,aes_string(x="annotation",y=Y,fill="annotation"))+
-    # geom_boxplot(width=0.1, lwd=1.5,color="black")+
+  ggplot(data_bsf,aes_string(x="annotation",y=Y,fill=fill_by))+
+    #
     {
       if(length(selected_annotations) > 2) 
     geom_violin(fill="grey", alpha=0.25,lwd=0)
@@ -298,7 +200,6 @@ plot_violins <- function(data_bs,Y,ylab){
     labs(y=paste0(Y, " (", selected_mode,")"))+
     theme_classic()+
     scale_fill_manual(values=pal)+
-    facet_wrap(vars(hours_rounded),scales="fixed")+
     theme(
       legend.direction="horizontal",
       legend.position = "top",
@@ -314,204 +215,6 @@ plot_violins <- function(data_bs,Y,ylab){
       axis.line = element_line(colour = 'black', size = 1.5))
   
 }
-```
-
- 
-#plot velocity histograms for specific timepoints and conditions
-```{r, echo=TRUE}
-library(ggsignif)
-#for Dunnett's test
-library(multcomp)
-#for exporting Dunnett's test result
-library(broom)
-
-##### Only quantify 10s bins that are stratified as "Roaming" ####
-# Agar and OP50
-selected_hours <- c(12)
-pal <- wes_palette("Darjeeling1")[c(1,5)]
-selected_mode <- "roaming"
-selected_annotations <- c("Agar","OP50")
-
-data_bs %>%
-  plot_violins(., "mean_velocity", "velocity (mm/s)")+
-    geom_signif(comparisons = list(c(selected_annotations[1], selected_annotations[2])),map_signif_level = TRUE, textsize=2,test = "wilcox.test") +
-    ggsave(file.path(save_path,paste0(selected_mode,"_mean_velocity","_",paste(selected_annotations, collapse="_"),".png")),height=5,width=5)
-
-
-
-# OP50 with Az NGM and OP50
-selected_hours <- c(12)
-pal <- wes_palette("Darjeeling1")[c(2,5)]
-selected_mode <- "roaming"
-selected_annotations <- c("OP50 with Az NGM","OP50")
-
-data_bs %>%
-  plot_violins(., "mean_velocity", "velocity (mm/s)")+
-    geom_signif(comparisons = list(c(selected_annotations[1], selected_annotations[2])),map_signif_level = TRUE, textsize=2,test = "wilcox.test") +
-    ggsave(file.path(save_path,paste0(selected_mode,"_mean_velocity","_",paste(selected_annotations, collapse="_"),".png")),height=5,width=5)
-
-
-
-# MT14984 OP50 and OP50
-selected_hours <- c(12)
-pal <- wes_palette("Darjeeling1")[c(3,5)]
-selected_mode <- "roaming"
-selected_annotations <- c("MT14984 OP50","OP50")
-
-data_bs %>%
-  plot_violins(., "mean_velocity", "velocity (mm/s)")+
-    geom_signif(comparisons = list(c(selected_annotations[1], selected_annotations[2])),map_signif_level = TRUE, textsize=2,test = "wilcox.test") +
-    ggsave(file.path(save_path,paste0(selected_mode,"_mean_velocity","_",paste(selected_annotations, collapse="_"),".png")),height=5,width=5)
-
-
-
-# daf2 and OP50
-selected_hours <- c(12)
-pal <- wes_palette("Darjeeling1")[c(4,5)]
-selected_mode <- "roaming"
-selected_annotations <- c("daf2","OP50")
-
-data_bs %>%
-  plot_violins(., "mean_velocity", "velocity (mm/s)")+
-    geom_signif(comparisons = list(c(selected_annotations[1], selected_annotations[2])),map_signif_level = TRUE, textsize=2,test = "wilcox.test") +
-    ggsave(file.path(save_path,paste0(selected_mode,"_mean_velocity","_",paste(selected_annotations, collapse="_"),".png")),height=5,width=5)
-
-
-# daf2,Agar,OP50 with Az NGM and OP50
-selected_hours <- c(12)
-pal <- wes_palette("Darjeeling1")[c(5,4,1,2)]
-selected_mode <- "roaming"
-selected_annotations <- c("OP50","daf2","Agar","OP50 with Az NGM")
-
-data_bs %>%
-  plot_violins(., "mean_velocity", "velocity (mm/s)")+
-  ggsave(file.path(save_path,paste0(selected_mode,"_mean_velocity","_",paste(selected_annotations, collapse="_"),".png")),height=5,width=5)
-
-#right order (so that OP50 is first factor and treated as "control" for Dunnett's post-hoc test)
-data_bsf$annotation <- relevel(data_bsf$annotation, ref = "OP50")
-# Compute the analysis of variance
-aov <- aov(mean_velocity ~ annotation, data = data_bsf)
-# Summary of the analysis
-summary(aov)
-# Dunnett's post-hoc test
-post_test <- glht(aov,
-  linfct = mcp(annotation = "Dunnett")
-)
-write.table(tidy(post_test),file=file.path(save_path,paste0(selected_mode,"_mean_velocity","_",paste(selected_annotations, collapse="_"),".txt")))
-
-
-##### Only quantify 10s bins that are stratified as "Dwelling" ####
-#MT14984 and OP50
-selected_hours <- c(12)
-pal <- wes_palette("Darjeeling1")[c(3,5)]
-selected_mode <- "dwelling"
-selected_annotations <- c("MT14984 OP50","OP50")
-
-data_bs %>%
-  plot_violins(., "mean_velocity", "velocity (mm/s)")+
-    geom_signif(comparisons = list(c(selected_annotations[1], selected_annotations[2])),map_signif_level = TRUE, textsize=2,test = "wilcox.test") +
-    ggsave(file.path(save_path,paste0(selected_mode,"_mean_velocity","_",paste(selected_annotations, collapse="_"),".png")),height=5,width=5)
-
-
-#daf2 and OP50
-selected_hours <- c(12)
-pal <- wes_palette("Darjeeling1")[c(4,5)]
-selected_mode <- "dwelling"
-selected_annotations <- c("daf2","OP50")
-
-data_bs %>%
-  plot_violins(., "mean_velocity", "velocity (mm/s)")+
-    geom_signif(comparisons = list(c(selected_annotations[1], selected_annotations[2])),map_signif_level = TRUE, textsize=2,test = "wilcox.test") +
-    ggsave(file.path(save_path,paste0(selected_mode,"_mean_velocity","_",paste(selected_annotations, collapse="_"),".png")),height=5,width=5)
-
-
-```
-
-
-#plot angular velocity histograms for specific timepoints and conditions
-```{r, echo=TRUE}
-
-
-##### Only quantify 10s bins that are stratified as "Roaming" ####
-#daf2,Agar,OP50 with Az NGM and OP50
-selected_hours <- c(12)
-pal <- wes_palette("Darjeeling1")[c(5,4,1,2)]
-selected_mode <- "roaming"
-selected_annotations <- c("OP50","daf2","Agar","OP50 with Az NGM")
-
-data_bs %>%
-  plot_violins(., "mean_angle", "velocity (mm/s)")+
-  ggsave(file.path(save_path,paste0(selected_mode,"_mean_angle","_",paste(selected_annotations, collapse="_"),".png")),height=5,width=5)
-
-#right order (so that OP50 is first factor and treated as "control" for Dunnett's post-hoc test)
-data_bsf$annotation <- relevel(data_bsf$annotation, ref = "OP50")
-# Compute the analysis of variance
-aov <- aov(mean_velocity ~ annotation, data = data_bsf)
-# Summary of the analysis
-summary(aov)
-# Dunnett's post-hoc test
-post_test <- glht(aov,
-  linfct = mcp(annotation = "Dunnett")
-)
-
-write.table(tidy(post_test),file=file.path(save_path,paste0(selected_mode,"_mean_angle","_",paste(selected_annotations, collapse="_"),".txt")))
-
-
-
-#MT14984 OP50 and OP50
-selected_hours <- c(12)
-selected_mode <- "roaming"
-selected_annotations <- c("OP50", "MT14984 OP50")
-
-data_bs %>%
-  plot_violins(., "mean_angle", "angular velocity (°/s)")+
-    geom_signif(comparisons = list(c(selected_annotations[1], selected_annotations[2])),map_signif_level = TRUE, textsize=1,test = "wilcox.test") +
-    ggsave(file.path(save_path,paste0(selected_mode,"_mean_angle","_",paste(selected_annotations, collapse="_"),".png")),height=5,width=5)
-
-
-
-##### Only quantify 10s bins that are stratified as "Dwelling" ####
-#MT14984 OP50 and OP50
-pal <- wes_palette("Darjeeling1")[c(3,5)]
-selected_hours <- c(12)
-selected_mode <- "dwelling"
-selected_annotations <- c("OP50", "MT14984 OP50")
-
-data_bs %>%
-  plot_violins(., "mean_angle", "angular velocity (°/s)")+
-    geom_signif(comparisons = list(c(selected_annotations[1], selected_annotations[2])),map_signif_level = TRUE, textsize=1,test = "wilcox.test") +
-    ggsave(file.path(save_path,paste0(selected_mode,"_mean_angle","_",paste(selected_annotations, collapse="_"),".png")),height=5,width=5)
-
-
-
-#daf2,Agar,OP50 with Az NGM and OP50
-selected_hours <- c(12)
-pal <- wes_palette("Darjeeling1")[c(5,4,1,2)]
-selected_mode <- "dwelling"
-selected_annotations <- c("OP50","daf2","Agar","OP50 with Az NGM")
-
-data_bs %>%
-  plot_violins(., "mean_angle", "velocity (mm/s)")+
-  ggsave(file.path(save_path,paste0(selected_mode,"_mean_angle","_",paste(selected_annotations, collapse="_"),".png")),height=5,width=5)
-
-#right order (so that OP50 is first factor and treated as "control" for Dunnett's post-hoc test)
-data_bsf$annotation <- relevel(data_bsf$annotation, ref = "OP50")
-# Compute the analysis of variance
-aov <- aov(mean_velocity ~ annotation, data = data_bsf)
-# Summary of the analysis
-summary(aov)
-# Dunnett's post-hoc test
-post_test <- glht(aov,
-  linfct = mcp(annotation = "Dunnett")
-)
-
-write.table(tidy(post_test),file=file.path(save_path,paste0(selected_mode,"_mean_angle","_",paste(selected_annotations, collapse="_"),".txt")))
-
-
-```
-
-```{r, echo=TRUE}
-
 
 plot_omega <- function(data_bs, selected_mode, selected_hours, selected_annotations){
 
@@ -552,13 +255,396 @@ plot_omega <- function(data_bs, selected_mode, selected_hours, selected_annotati
           axis.line = element_line(colour = 'black', size = 1.5))
 
 }
+```
+
+#plot modes
+```{r, echo=TRUE}
+save_path <- file.path(base_path,"plots","modes")
+dir.create(save_path)
+
+pal <- wes_palette("Rushmore1")[c(4,5,1)]
+#roaming and dwelling
+data_bs %>%
+  group_by(hours_rounded,annotation,mode) %>%
+  summarise(mean_perc= mean(perc), maxsd=mean(perc)+se(perc),minsd=mean(perc)-se(perc)) %>%
+  plot_meanse(., "hours_rounded", "mean_perc") +
+    facet_wrap(vars(annotation),ncol=3,scales="free_x")+
+    ggsave(file.path(save_path,paste0("modes_relative.png")),height=7.5,width=10,dpi=600)
+
+
+pal <- wes_palette("Rushmore1")[c(4)]
+#only dwelling
+data_bs %>%
+  filter(mode %in% c("dwelling")) %>%
+  group_by(hours_rounded,annotation,mode) %>%
+  summarise(mean_perc= mean(perc), maxsd=mean(perc)+se(perc),minsd=mean(perc)-se(perc)) %>%
+  plot_meanse(., "hours_rounded", "mean_perc") +
+    facet_wrap(vars(annotation),ncol=3,scales="free_x")+
+    ggsave(file.path(save_path,paste0("dwelling_relative.png")),height=7.5,width=10,dpi=600)
+
+pal <- wes_palette("Rushmore1")[c(5)]
+#only roaming
+data_bs %>%
+  filter(mode %in% c("roaming")) %>%
+  group_by(hours_rounded,annotation,mode) %>%
+  summarise(mean_perc= mean(perc), maxsd=mean(perc)+se(perc),minsd=mean(perc)-se(perc)) %>%
+  plot_meanse(., "hours_rounded", "mean_perc") +
+    facet_wrap(vars(annotation),ncol=3,scales="free_x")+
+    ggsave(file.path(save_path,paste0("roaming_relative.png")),height=7.5,width=10,dpi=600)
+
+pal <- wes_palette("Rushmore1")[c(1)]
+#only still
+data_bs %>%
+  filter(mode %in% c("still")) %>%
+  group_by(hours_rounded,annotation,mode) %>%
+  summarise(mean_perc= mean(perc), maxsd=mean(perc)+se(perc),minsd=mean(perc)-se(perc)) %>%
+  plot_meanse(., "hours_rounded", "mean_perc") +
+    facet_wrap(vars(annotation),ncol=3,scales="free_x")+
+    ggsave(file.path(save_path,paste0("still_relative.png")),height=7.5,width=10,dpi=600)
+
+
+
+#only roaming fractions for three datasets in one plot
+pal <- wes_palette("Darjeeling1")[c(5,1,2)]
+selected_annotations <- c("OP50","Agar","OP50 with Az NGM")
+data_bs %>%
+  filter(annotation %in% selected_annotations) %>%
+  filter(mode %in% c("roaming")) %>%
+  mutate(annotation = factor(annotation, levels = selected_annotations)) %>%
+  arrange(annotation) %>%
+  group_by(hours_rounded,annotation,mode) %>%
+  summarise(mean_perc= mean(perc), maxsd=mean(perc)+se(perc),minsd=mean(perc)-se(perc)) %>%
+  plot_meanse(., "hours_rounded", "mean_perc") +
+    facet_wrap(vars(annotation),ncol=3,scales="free_x")+
+    ggsave(file.path(save_path,paste0("roaming_relative.png")),height=7.5,width=10,dpi=600)
+
+
+#all mode fractions for two datasets seperately in one plot
+pal <- wes_palette("Darjeeling1")[c(5,1,2)]
+selected_annotations <- c("OP50","OP50 with Az NGM")
+data_bs %>%
+  filter(annotation %in% selected_annotations) %>%
+  filter(mode %in% c("roaming","dwelling","still")) %>%
+  group_by(hours_rounded,annotation,mode) %>%
+  summarise(mean_perc= mean(perc), maxsd=mean(perc)+se(perc),minsd=mean(perc)-se(perc)) %>%
+  plot_meanse(., "hours_rounded", "mean_perc") +
+    facet_wrap(vars(annotation),ncol=3,scales="free_x")+
+    scale_y_continuous(breaks=c(0,0.25,0.5,0.75,1),limits=c(0,1.2))+
+    ggsave(file.path(save_path,paste0("modes_relative_",paste(selected_annotations,collapse="_"),".png")),height=7.5,width=5,dpi=600)
+
+```
+
+#plot relative occurence of dwelling AND roaming for all timepoints for all conditions -- BOXPLOT
+```{r, echo=TRUE}
+save_path <- file.path(base_path,"plots","modes_boxplots")
+dir.create(save_path)
+
+
+for (a in unique(data$annotation)){
+  data_to_plot <- data_bs %>%
+    filter(annotation == a)
+  
+  ggplot(data_to_plot,aes(x=factor(hours_rounded,levels=unique(hours_rounded)),y=perc,fill=mode))+
+        geom_boxplot(aes(fill=mode),width=0.75,lwd=1.2,alpha=0.75,outlier.size = 0)+
+        geom_point(aes(group=mode,fill=mode),position=position_jitter(width=0.25),shape=21, color="black",size=1.5)+
+        scale_y_continuous(limits=c(0,1))+
+        scale_fill_manual(values =pal)+
+        xlab("hours") + ylab("Relative occurence of \nbehavioral state")+
+        facet_wrap(vars(mode),ncol=3)+
+        theme_classic()+
+        theme(legend.direction="horizontal",
+          legend.position = "top",
+          strip.background = element_rect(colour = "white", fill = "white"),
+          panel.spacing = unit(1, "lines"),
+          strip.text.x = element_text(size=15,colour = "black", face = "bold"),
+          axis.text.x = element_text(size=10),
+          axis.title.x = element_text(size=25),
+          axis.text.y = element_text(size=15),
+          axis.title.y = element_text(size=25))+
+    ggsave(file.path(save_path,paste0("modes_relative_box_",a,".png")),height=7.5,width=15,dpi=600)
+  
+}
+  
+```
+
+
+#plot relative occurence of dwelling/roaming for specific timepoints and conditions
+```{r, echo=TRUE}
+
+save_path <- file.path(base_path,"plots","relative_occurence_per_tp")
+dir.create(save_path)
+
+
+selected_mode <- "dwelling"
+selected_hours <- c(6,7,8,9,10,11,12)
+pal <- wes_palette("Darjeeling1")[c(5,1)]
+selected_annotations <- c("OP50 with Az NGM","OP50")
+
+plot_mode_relative(data_bs, selected_mode, selected_hours, selected_annotations)+
+  ggsave(file.path(save_path,paste0("relative_compare_",paste(selected_annotations, collapse="_"),".png")),height=5,width=7.5,dpi=600)
+
+selected_hours <- unique(data_bs$hours_rounded)
+plot_mode_relative(data_bs, selected_mode, selected_hours, selected_annotations)+
+  ggsave(file.path(save_path,paste0("relative_compare_",paste(selected_annotations, collapse="_"),"_all_hours.png")),height=5,width=12,dpi=600)
+
+
+
+
+selected_annotations <- c("Agar", "OP50")
+selected_hours <- c(6,7,8,9,10,11,12)
+pal <- wes_palette("Darjeeling1")[c(1,5)]
+plot_mode_relative(data_bs, selected_mode, selected_hours, selected_annotations)+
+  ggsave(file.path(save_path,paste0("relative_compare_",paste(selected_annotations, collapse="_"),".png")),height=5,width=7.5,dpi=600)
+
+selected_hours <- unique(data_bs$hours_rounded)
+plot_mode_relative(data_bs, selected_mode, selected_hours, selected_annotations)+
+  ggsave(file.path(save_path,paste0("relative_compare_",paste(selected_annotations, collapse="_"),"_all_hours.png")),height=5,width=12,dpi=600)
+
+
+
+
+```
+ 
+#plot velocity comparisons for specific timepoints and conditions
+```{r, echo=TRUE}
+
+save_path <- file.path(base_path,"plots","velocity")
+dir.create(save_path)
+
+library(ggsignif)
+#for Dunnett's test
+library(multcomp)
+#for exporting Dunnett's test result
+library(broom)
+
+##### Only quantify 10s bins that are stratified as "Roaming" ####
+# Agar and OP50
+selected_hours <- c(12)
+pal <- wes_palette("Darjeeling1")[c(5,1)]
+selected_mode <- "roaming"
+selected_annotations <- c("OP50","Agar")
+
+plot_dots(data_bs, "mean_velocity", "velocity (mm/s)","annotation")+
+  geom_signif(comparisons = list(c(selected_annotations[1], selected_annotations[2])),map_signif_level = TRUE, textsize=2,test = "wilcox.test") +
+  ggsave(file.path(save_path,paste0(selected_mode,"_mean_velocity","_",paste(selected_annotations, collapse="_"),".png")),height=5,width=5)
+
+
+
+# OP50 with Az NGM and OP50
+selected_hours <- c(12)
+pal <- wes_palette("Darjeeling1")[c(5,2)]
+selected_mode <- "roaming"
+selected_annotations <- c("OP50","OP50 with Az NGM")
+
+
+plot_dots(data_bs, "mean_velocity", "velocity (mm/s)","annotation")+
+  geom_signif(comparisons = list(c(selected_annotations[1], selected_annotations[2])),map_signif_level = TRUE, textsize=2,test = "wilcox.test") +
+  ggsave(file.path(save_path,paste0(selected_mode,"_mean_velocity","_",paste(selected_annotations, collapse="_"),".png")),height=5,width=5)
+
+
+
+# MT14984 OP50 and OP50
+selected_hours <- c(12)
+pal <- wes_palette("Darjeeling1")[c(5,3)]
+selected_mode <- "roaming"
+selected_annotations <- c("OP50","MT14984 OP50")
+
+
+plot_dots(data_bs, "mean_velocity", "velocity (mm/s)","annotation")+
+  geom_signif(comparisons = list(c(selected_annotations[1], selected_annotations[2])),map_signif_level = TRUE, textsize=2,test = "wilcox.test") +
+  ggsave(file.path(save_path,paste0(selected_mode,"_mean_velocity","_",paste(selected_annotations, collapse="_"),".png")),height=5,width=5)
+
+
+
+# daf2 and OP50
+selected_hours <- c(12)
+pal <- wes_palette("Darjeeling1")[c(5,4)]
+selected_mode <- "roaming"
+selected_annotations <- c("OP50","daf2")
+
+
+plot_dots(data_bs, "mean_velocity", "velocity (mm/s)","annotation")+
+  geom_signif(comparisons = list(c(selected_annotations[1], selected_annotations[2])),map_signif_level = TRUE, textsize=2,test = "wilcox.test") +
+  ggsave(file.path(save_path,paste0(selected_mode,"_mean_velocity","_",paste(selected_annotations, collapse="_"),".png")),height=5,width=5)
+
+
+# daf2,Agar,OP50 with Az NGM and OP50
+selected_hours <- c(12)
+pal <- wes_palette("Darjeeling1")[c(5,4,1,2)]
+selected_mode <- "roaming"
+selected_annotations <- c("OP50","daf2","Agar","OP50 with Az NGM")
+
+plot_dots(data_bs, "mean_velocity", "velocity (mm/s)","annotation")+
+  ggsave(file.path(save_path,paste0(selected_mode,"_mean_velocity","_",paste(selected_annotations, collapse="_"),".png")),height=5,width=5)
+
+#right order (so that OP50 is first factor and treated as "control" for Dunnett's post-hoc test)
+data_bsf$annotation <- relevel(data_bsf$annotation, ref = "OP50")
+# Compute the analysis of variance
+aov <- aov(mean_velocity ~ annotation, data = data_bsf)
+# Summary of the analysis
+summary(aov)
+# Dunnett's post-hoc test
+post_test <- glht(aov,
+  linfct = mcp(annotation = "Dunnett")
+)
+write.table(tidy(post_test) %>%
+              mutate(test = "Anova with Dunnett Post Hoc test")
+            ,file=file.path(save_path,paste0(selected_mode,"_mean_velocity","_",paste(selected_annotations, collapse="_"),".txt")))
+
+
+##### Only quantify 10s bins that are stratified as "Dwelling" ####
+#OP50 only but two timepoints
+# selected_hours <- c(3,12)
+# pal <- wes_palette("BottleRocket2")[c(2,4)]
+# selected_mode <- "dwelling"
+# selected_annotations <- c("OP50")
+# 
+# data_bs %>%
+#   mutate(hours_rounded = as.character(hours_rounded)) %>%
+#   plot_violins(., "mean_velocity", "velocity (mm/s)","hours_rounded")+
+#     ggsave(file.path(save_path,paste0(selected_mode,"_mean_velocity","_",paste(selected_annotations, collapse="_"),".png")),height=5,width=5)
+
+
+#MT14984 and OP50
+selected_hours <- c(12)
+pal <- wes_palette("Darjeeling1")[c(5,3)]
+selected_mode <- "dwelling"
+selected_annotations <- c("OP50","MT14984 OP50")
+
+plot_dots(data_bs, "mean_velocity", "velocity (mm/s)","annotation")+
+  geom_signif(comparisons = list(c(selected_annotations[1], selected_annotations[2])),map_signif_level = TRUE, textsize=2,test = "wilcox.test") +
+  ggsave(file.path(save_path,paste0(selected_mode,"_mean_velocity","_",paste(selected_annotations, collapse="_"),".png")),height=5,width=5)
+
+
+#daf2 and OP50
+selected_hours <- c(12)
+pal <- wes_palette("Darjeeling1")[c(5,4)]
+selected_mode <- "dwelling"
+selected_annotations <- c("OP50","daf2")
+
+plot_dots(data_bs, "mean_velocity", "velocity (mm/s)","annotation")+
+    geom_signif(comparisons = list(c(selected_annotations[1], selected_annotations[2])),map_signif_level = TRUE, textsize=2,test = "wilcox.test") +
+    ggsave(file.path(save_path,paste0(selected_mode,"_mean_velocity","_",paste(selected_annotations, collapse="_"),".png")),height=5,width=5)
+
+
+```
+
+
+#plot angular velocity comparison for specific timepoints and conditions
+```{r, echo=TRUE}
+
+save_path <- file.path(base_path,"plots","angular_velocity")
+dir.create(save_path)
+
+
+##### Only quantify 10s bins that are stratified as "Roaming" ####
+#daf2,Agar,OP50 with Az NGM and OP50
+selected_hours <- c(12)
+pal <- wes_palette("Darjeeling1")[c(5,4,1,2)]
+selected_mode <- "roaming"
+selected_annotations <- c("OP50","daf2","Agar","OP50 with Az NGM")
+
+plot_dots(data_bs, "mean_angle", "velocity (mm/s)","annotation")+
+  ggsave(file.path(save_path,paste0(selected_mode,"_mean_angle","_",paste(selected_annotations, collapse="_"),".png")),height=5,width=5)
+
+#right order (so that OP50 is first factor and treated as "control" for Dunnett's post-hoc test)
+data_bsf$annotation <- relevel(data_bsf$annotation, ref = "OP50")
+# Compute the analysis of variance
+aov <- aov(mean_velocity ~ annotation, data = data_bsf)
+# Summary of the analysis
+summary(aov)
+# Dunnett's post-hoc test
+post_test <- glht(aov,
+  linfct = mcp(annotation = "Dunnett")
+)
+
+write.table(tidy(post_test) %>%
+              mutate(test = "Anova with Dunnett Post Hoc test")
+            ,file=file.path(save_path,paste0(selected_mode,"_mean_angle","_",paste(selected_annotations, collapse="_"),".txt")))
+
+
+
+#MT14984 OP50 and OP50
+pal <- wes_palette("Darjeeling1")[c(5,3)]
+selected_hours <- c(12)
+selected_mode <- "roaming"
+selected_annotations <- c("OP50", "MT14984 OP50")
+
+plot_dots(data_bs, "mean_angle", "angular velocity (°/s)","annotation")+
+  geom_signif(comparisons = list(c(selected_annotations[1], selected_annotations[2])),map_signif_level = TRUE, textsize=1,test = "wilcox.test") +
+  ggsave(file.path(save_path,paste0(selected_mode,"_mean_angle","_",paste(selected_annotations, collapse="_"),".png")),height=5,width=5)
+
+
+
+##### Only quantify 10s bins that are stratified as "Dwelling" ####
+#MT14984 OP50 and OP50
+pal <- wes_palette("Darjeeling1")[c(5,3)]
+selected_hours <- c(12)
+selected_mode <- "dwelling"
+selected_annotations <- c("OP50", "MT14984 OP50")
+
+plot_dots(data_bs, "mean_angle", "angular velocity (°/s)","annotation")+
+  geom_signif(comparisons = list(c(selected_annotations[1], selected_annotations[2])),map_signif_level = TRUE, textsize=1,test = "wilcox.test") +
+  ggsave(file.path(save_path,paste0(selected_mode,"_mean_angle","_",paste(selected_annotations, collapse="_"),".png")),height=5,width=5)
+
+
+
+#daf2,Agar,OP50 with Az NGM and OP50
+selected_hours <- c(12)
+pal <- wes_palette("Darjeeling1")[c(5,4,1,2)]
+selected_mode <- "dwelling"
+selected_annotations <- c("OP50","daf2","Agar","OP50 with Az NGM")
+
+plot_dots(data_bs, "mean_angle", "velocity (mm/s)","annotation")+
+  ggsave(file.path(save_path,paste0(selected_mode,"_mean_angle","_",paste(selected_annotations, collapse="_"),".png")),height=5,width=5)
+
+#right order (so that OP50 is first factor and treated as "control" for Dunnett's post-hoc test)
+data_bsf$annotation <- relevel(data_bsf$annotation, ref = "OP50")
+# Compute the analysis of variance
+aov <- aov(mean_velocity ~ annotation, data = data_bsf)
+# Summary of the analysis
+summary(aov)
+# Dunnett's post-hoc test
+post_test <- glht(aov,
+  linfct = mcp(annotation = "Dunnett")
+)
+
+
+write.table(tidy(post_test) %>%
+              mutate(test = "Anova with Dunnett Post Hoc test")
+            ,file=file.path(save_path,paste0(selected_mode,"_mean_angle","_",paste(selected_annotations, collapse="_"),".txt")))
+
+
+```
+
+#compare omega turn occurences across conditions
+```{r, echo=TRUE}
+save_path <- file.path(base_path,"plots","omega_turns")
+dir.create(save_path)
+
+
 selected_annotations <- c("OP50","Agar","OP50 with Az NGM")
 selected_hours <- c(1,12)
 pal <- wes_palette("Darjeeling1")[c(5,1,2)]
 selected_mode <- "roaming"
+
 plot_omega(data_bs, selected_mode, selected_hours, selected_annotations)+
   ggsave(file.path(save_path,paste0("omega_",paste(selected_annotations, collapse="_"),".png")),height=5,width=5,dpi=600)
 
+selected_annotations <- c("OP50","Agar")
+selected_hours <- seq(1,12)
+pal <- wes_palette("Darjeeling1")[c(5,1)]
+selected_mode <- "roaming"
+plot_omega(data_bs, selected_mode, selected_hours, selected_annotations)+
+  ggsave(file.path(save_path,paste0("omega_",paste(selected_annotations, collapse="_"),"all_hours.png")),height=5,width=12,dpi=600)
+
+
+selected_annotations <- c("OP50","Agar","OP50 with Az NGM")
+selected_hours <- seq(1,12)
+pal <- wes_palette("Darjeeling1")[c(5,1,2)]
+selected_mode <- "roaming"
+plot_omega(data_bs, selected_mode, selected_hours, selected_annotations)+
+  ggsave(file.path(save_path,paste0("omega_",paste(selected_annotations, collapse="_"),"all_hours.png")),height=5,width=15,dpi=600)
 
 # data_bsf is created by the plot_omega function
 # create separate dataframe for each timepoint (if two timepoints have been selected)
@@ -577,20 +663,47 @@ post_test1 <- pairwise.wilcox.test(data_bsf1$perc_omega, data_bsf1$annotation,
                  p.adjust.method = padjust) %>%
   tidy() %>%
   mutate(kw_pvalue = kw1$p.value) %>%
+  rename(wilcox_pvalue = p.value) %>%
   mutate(selected_hour = selected_hours[1])
 
 post_test2 <- pairwise.wilcox.test(data_bsf2$perc_omega, data_bsf2$annotation,
                  p.adjust.method = padjust) %>%
   tidy() %>%
   mutate(kw_pvalue = kw2$p.value) %>%
+  rename(wilcox_pvalue = p.value) %>%
   mutate(selected_hour = selected_hours[2])
 
 #combine the results of the two wilcox tests and attach methods description
 post_test <- rbind(post_test1, post_test2) %>%
-  mutate(test = "kruskal-wallis", padjust = padjust)
+  mutate(test = "kruskal-wallis", padjust_method = padjust)
 
 write.table(post_test,file=file.path(save_path,paste0("omega_",paste(selected_annotations, collapse="_"),".txt")))
 
 
+```
+
+#compare traveled distance across timepoints
+```{r, echo=TRUE}
+
+save_path <- file.path(base_path,"plots","traveled_distance")
+dir.create(save_path)
+
+selected_annotations <- c("OP50")
+selected_hours <- c(1,12)
+pal <- wes_palette("Darjeeling1")[c(5)]
+selected_mode <- c("dwelling","still")
+
+data_binarized %>%
+  filter(annotation %in% selected_annotations) %>%
+  filter(mode %in% selected_mode) %>%
+  filter(hours_rounded %in% selected_hours) %>%
+  mutate(time = as.character(hours_rounded)) %>%
+  plot_boxplots(., "distance_per_track", "velocity (mm/s)", "time")+
+    geom_signif(comparisons = list(c(as.character(selected_hours[1]), as.character(selected_hours[2]))),map_signif_level = TRUE, textsize=1,test = "wilcox.test")+
+    ggsave(file.path(save_path,paste0(paste(selected_mode,collapse="_"),"_traveled_distance","_",paste(selected_annotations, collapse="_"),".png")),height=5,width=5)
+
+
+
+ 
 
 ```
