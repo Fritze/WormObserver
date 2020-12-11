@@ -144,10 +144,10 @@ centroids_summarise_per_bin <- function(data_input,conversion_factor, offset,bin
     filter(Number_of_gaps <= max_gaps) %>%
     # only tracks longer than duration
     filter(Duration_of_track >= duration) %>%
-    # all calculations now done per individual worm
+    # all calculations now done per individual worm (==track)
     # (uniqueness ensured by grouping by dataset, tp and TrackID)
     group_by(grouping) %>%
-    # track displacement as measured by TrackMate time conversion factor to get µm
+    # track displacement as measured by TrackMate times conversion factor to get µm
     mutate(Track_displacement=Track_displacement * conversion_factor) %>%
     # convert frame to second
     mutate(seconds=frame / downsampled_to) %>%
@@ -174,8 +174,7 @@ centroids_summarise_per_bin <- function(data_input,conversion_factor, offset,bin
     group_by(annotation,TrackID, tp, minutes,dataset_ID,file_name,worm_type,plate_type,Duration_of_track,binning) %>%
     summarise(p_mean_angle = mean(angle),
               p_sd_local_angle=sd(angle),
-              p_displacement=first(Track_displacement*conversion_factor),
-              p_displacement_distance_ratio= mean(Track_displacement) / sum(local_distance),
+              p_traveled_distance=sum(local_distance),
               p_mean_velocity = mean(velocity),
               p_eccentricity = mean(Eccentricity),
               p_size = mean(Size),
@@ -1010,6 +1009,7 @@ skeleton_head_estimate_old <- function(data) {
   }
   
 }
+
 
 
 
