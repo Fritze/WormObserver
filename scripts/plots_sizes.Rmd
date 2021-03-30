@@ -156,7 +156,7 @@ for(a in unique(imported_data$annotation)){
     filter(annotation == a)
   
   data_to_plot %>%
-    arrange(hours_rounded) %>%
+    arrange(hours_rounded) %>%w
     mutate(hours_rounded=factor(hours_rounded, levels=unique(hours_rounded))) %>%
     plot_distribution_ridges(., "size", "hours_rounded")+
       ggsave(file.path(save_path,paste0("size_distri_",a,".png")),height=7,width=3.5)
