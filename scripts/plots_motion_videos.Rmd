@@ -10,7 +10,7 @@ selected_annotation <-  c("N2_1:10_OP50_skel")
 files_to_process <- grep(selected_annotation,files_to_process,value = TRUE)
 
 #select which timepoint (hours_rounded)
-selected_timepoint <- 10:12
+selected_timepoint <- 1:10
 
 data <- files_to_process %>%
     map_df(.,function(x) readRDS(x)) %>%
@@ -24,6 +24,7 @@ data <- files_to_process %>%
     mutate(ID = paste0(dataset_ID,"_", tp,"_",TrackID))
 
 ```
+
 
 
 #select experiment type, dataset and timepoints to process
@@ -40,9 +41,9 @@ dir.create(save_path_video)
 conversion_factor <- 6.25
 
 #only tracks longer than 30 sec (if 2fps)
-minimal_track_length <- 60
+minimal_track_length <- 120
 #How many tracks are shown?
-numbers_of_displayed_tracks <- 30
+numbers_of_displayed_tracks <- 300
 
 #calculate track angle and velocity for the selected data
 angle_and_velocity <- data %>%
@@ -78,13 +79,15 @@ selected_tracks <- angle_and_velocity %>%
   pull()
   
 data_for_plotting_sub <- data %>%
-  #first filter out only the tracks that have been randomly selectd (after filtering)
+  #first filter out only the tracks that have been randomly selected (after filtering)
   filter(ID %in% selected_tracks) %>%
   #to those tracks append the above calculated velocity, angular velocity etc
   left_join(angle_and_velocity,by=c("ID","frame","location_x","location_y"))
  
+```
 
 
+```{r message=FALSE, include=FALSE}
 #plot the sampled tracks at their original location
 ggplot(data_for_plotting_sub)+
     geom_path(aes(x=location_x, y=location_y,group=ID,color=ID))+
@@ -110,6 +113,44 @@ ggplot(data_for_plotting_sub)+
 
 ```
 
+
+
+#plot all skeletons as an overview grid
+```{r message=FALSE, include=FALSE}
+
+
+data_for_plotting_temp <- data_for_plotting_sub %>%
+  group_by(ID) %>%
+  mutate(frame_norm = frame - min(frame))
+
+frames <- sort(unique(data_for_plotting_temp$frame_norm))
+frames <- 1:150
+
+
+for (selected_frame in frames){
+  
+  ggplot(data_for_plotting_temp)+
+    #manually define area for each skeleton, otherwise there will be slight translation of the whole grid in between frames
+    scale_x_continuous(limits = c(-10, 70))+
+    scale_y_continuous(expand = c(0, 0),limits=c(70,-10), trans="reverse")+
+    geom_point(data=filter(data_for_plotting_temp,frame_norm==selected_frame),aes(X,Y,color=angle),size=0.5)+
+    geom_point(data=filter(data_for_plotting_temp,frame_norm==selected_frame & is_head== "YES"),aes(X,Y),color="orange",size=2,shape=17)+
+    scale_color_gradient2(low = "deepskyblue", mid = "lavender",
+                          high = "deeppink",midpoint=0,limits =c(-1,1),na.value="grey")+
+    theme_void()+
+    coord_fixed(ratio = 1)+
+    theme(legend.position = "none",
+          strip.text.x = element_blank())+
+    facet_wrap(vars(ID))+
+    ggsave(file.path(save_path_video,paste0(sample_ID,"_",selected_annotation,"_","timepoints_",min(selected_timepoint),"-",max(selected_timepoint),"_frame_",selected_frame,".png")),height = 30,width= 30,units = "cm",dpi=200)
+
+}
+
+
+```
+
+
+
 #plot all frames with skeletons in their original location
 ```{r message=FALSE, include=FALSE}
 
@@ -119,7 +160,6 @@ for (selected_frame in frames){
   data_for_plotting_temp <- data_for_plotting_sub %>%
     filter(frame == selected_frame)
   
-  summarise() %>%
   ggplot(data_for_plotting_temp)+
     theme(aspect.ratio = 1024/1024)+
     coord_cartesian(ylim=c(0, 1023))+
