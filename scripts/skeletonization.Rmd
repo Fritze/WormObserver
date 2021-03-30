@@ -16,7 +16,7 @@ conversion_factor <- 6.25
 files_to_process <- list.files(target_path, "raw_data.rds", full.names = TRUE, ignore.case = TRUE)
 
 #define which .rds files to include
-files_titles <-  c("MT")
+files_titles <-  c("Agar_raw","Az")
 files_to_process <- grep(paste0(files_titles,collapse="|"),files_to_process,value = TRUE)
 
 #take out specific datasets
@@ -40,7 +40,7 @@ for (file in files_to_process){
   #get timepoints of this dataset that still have to be processed
   tps_to_process <- tps[!tps %in% tps_processed]
   
-  cat(paste0("\nThe following timepoints are already analysed:\n"), tps_processed)
+  cat(paste0("\nThe following timepoints are already analysed:\n"), sort(tps_processed))
   cat(paste0("\nThe following timepoints will be analysed:\n"),tps_to_process)
   
   #load dataset
