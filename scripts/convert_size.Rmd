@@ -1,0 +1,66 @@
+#set parameters here
+```{r, include=FALSE}
+
+#Set the location folder of the raw data (of all experiments you want to convert)
+base_path <- "/media/fpreuss/raid5/timelapses/analysis/200703/"
+
+```
+
+#load files
+```{r, include=FALSE}
+
+target_path <- file.path(base_path,"data", "other_raw")
+save_path <- file.path(base_path,"plots")
+
+#list of .rds files in data folder
+files_to_process <- list.files(target_path, "raw_data.rds", full.names = TRUE, ignore.case = TRUE)
+
+
+
+#pixel to µm conversion
+#this is with magnification 3.2
+conversion_factor <- 6.25
+
+
+#load all .rds files and append to one data frame ('imported_data')
+for (file in files_to_process){
+  imported_data_temp <- readRDS(file) %>%
+    #minimal track displacement to exclude artifacts of aggregating worms happening after ca. 16h
+    filter(Track_displacement > 100) %>%
+    #only tracks that are longer than 10s
+    #same as for calculating motion parameters
+    mutate(Duration_of_track_in_s = Duration_of_track/downsampled_to) %>%
+    filter(Duration_of_track_in_s > 10) %>%
+    #calculate average size, major and minor axis BY TRACK
+    group_by(annotation,dataset_ID, tp,minutes,TrackID) %>%
+    #guess direction from centroid movement for every Track
+    group_modify(~ skeleton_direction(.x)) %>%
+    group_by(annotation, dataset_ID, tp,minutes, TrackID,frame) %>%
+    #count number of midline pixels for every frame
+    group_modify(~ count_midline_pixels(.x)) %>%
+    group_by(annotation,dataset_ID, tp,minutes,TrackID) %>%
+    summarise(size=mean(Size),major=mean(Major),minor=mean(Minor),midline=mean(midline_length,na.rm = TRUE)) %>%
+    #round to full hour steps
+    mutate(hours_rounded = ceiling(minutes/60)) %>%
+    filter(hours_rounded <= 20) %>%
+    mutate(time= ifelse(hours_rounded <= 5, 5, NA)) %>%
+    mutate(time = ifelse(hours_rounded <= 10 & hours_rounded > 5, 10, time)) %>%
+    mutate(time = ifelse(hours_rounded <= 15 & hours_rounded > 10, 15, time)) %>%
+    mutate(time = ifelse(hours_rounded <= 20 & hours_rounded > 15, 20, time)) %>%
+    na.omit() %>%
+    #multiply by pixel conversion factor to get values in µm
+    mutate(major = conversion_factor * major, minor = conversion_factor * minor, midline = conversion_factor * midline) %>%
+    #get annotation from file name
+    mutate(annotation = gsub("(.+)\\_long.+","\\1", annotation))
+
+  save_path <- file.path(target_path,"converted")
+  dir.create(save_path)
+
+  annotation <- unique(imported_data_temp$annotation)
+  saveRDS(imported_data_temp, file.path(save_path, paste0("size_converted_",annotation ,".RDS")))
+  print(paste0(annotation, " was converted and saved."))
+}
+
+
+
+```
