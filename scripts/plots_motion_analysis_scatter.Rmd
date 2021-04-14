@@ -88,18 +88,6 @@ plot_scatterdensity <- function(data_to_plot){
 
 ```
 
-```{r, echo=TRUE}
-library(rayshader)
-plot <- data %>%
-  filter(annotation == "OP50") %>%
-  filter(hours_rounded == 2) %>%
-  plot_scatterdensity(.)
-
-plot_gg(plot,multicore=TRUE,width=5,height=5)+
-  ggsave(file.path(save_path,paste0("scatterdensity_ray_test",".png")),height=15,width=35)
-
-```
-
 
 #plot all 10s windows per annotation AND dataset_ID (both as points and density)
 ```{r, echo=TRUE}
