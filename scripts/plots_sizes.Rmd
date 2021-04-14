@@ -9,57 +9,32 @@ base_path <- "/media/fpreuss/raid5/timelapses/analysis/200703/"
 #load files
 ```{r, include=FALSE}
 
-target_path <- file.path(base_path,"data", "other_raw")
+target_path <- file.path(base_path,"data", "other_raw", "converted")
 save_path <- file.path(base_path,"plots")
 
 #list of .rds files in data folder
-files_to_process <- list.files(target_path, "raw_data.rds", full.names = TRUE, ignore.case = TRUE)
+files_to_process <- list.files(target_path, "converted", full.names = TRUE, ignore.case = TRUE)
 
-#select dataset
-files_to_process <- grep(".+long.+", files_to_process,value=TRUE)
+
 
 #pixel to µm conversion
 #this is with magnifaction 3.2
 conversion_factor <- 6.25
 
-
 imported_data <- NULL
 #load all .rds files and append to one data frame ('imported_data')
 for (file in files_to_process){
-  imported_data_temp <- readRDS(file) %>%
-    #minimal track displacement to exclude artifacts of aggregating worms happening after ca. 16h
-    filter(Track_displacement > 100) %>%
-    #only tracks that are longer than 10s
-    #same as for calculating motion parameters
-    mutate(Duration_of_track_in_s = Duration_of_track/2) %>%
-    filter(Duration_of_track_in_s > 10) %>%
-    #calculate average size, major and minor axis BY TRACK
-    group_by(annotation,dataset_ID, tp,minutes,TrackID) %>%
-    summarise(size=mean(Size),major=mean(Major),minor=mean(Minor)) %>%
-    #round to full hour steps
-    mutate(hours_rounded = ceiling(minutes/60)) %>%
-    filter(hours_rounded <= 20) %>%
-    mutate(time= ifelse(hours_rounded <= 5, 5, NA)) %>%
-    mutate(time = ifelse(hours_rounded <= 10 & hours_rounded > 5, 10, time)) %>%
-    mutate(time = ifelse(hours_rounded <= 15 & hours_rounded > 10, 15, time)) %>%
-    mutate(time = ifelse(hours_rounded <= 20 & hours_rounded > 15, 20, time)) %>%
-    na.omit() %>%
-    mutate(major = conversion_factor * major, minor = conversion_factor * minor) %>%
-    #get annotation from file name
-    mutate(annotation = gsub("(.+)\\_long.+","\\1", annotation))
+  imported_data_temp <- readRDS(file)
   
-  imported_data <- rbind(imported_data, imported_data_temp)  
+  imported_data <- rbind(imported_data, imported_data_temp)
 }
 
 ```
 
+
 #create plotting functions
 ```{r, include=FALSE}
 library("ggridges")
-library(wesanderson)
-
-pal <- wes_palette("Darjeeling1")[c(1,5)]
-
 
 se <- function(x) sqrt(var(x)/length(x))
 
@@ -89,65 +64,11 @@ plot_distribution_ridges <- function(data_to_plot, X, Y){
 }
 
 
-plot_boxplots <- function(data_to_plot, X, Y){ 
-  ggplot(data_to_plot,aes_string(x = X ,y =Y, fill="annotation")) +
-    geom_boxplot(aes(fill=annotation),outlier.shape = NA)+
-    geom_point(aes(fill=annotation),alpha=0.025,shape=21,position = position_jitterdodge())+
-    theme_classic()+
-    labs(x="time (hours)",y="Size (px)")+
-    theme(strip.background = element_rect(colour = "white", fill = "white"),
-      strip.text.x = element_text(size=20,colour = "black", face = "bold"),
-      axis.text.x = element_text(size=15, face="bold"),
-      axis.title.x = element_text(size=20, face="bold"),
-      axis.text.y = element_text(size=15, face="bold"),
-      axis.title.y = element_text(size=20, face="bold"),
-      axis.line = element_line(colour = 'black', size = 1.2),
-      axis.ticks = element_line(colour = "black", size = 1.2))+
-    scale_fill_manual(values = pal)
-}
-
-
-plot_violins <- function(data_to_plot, X, Y){ 
-  ggplot(data_to_plot,aes_string(x = X ,y =Y, fill="annotation")) +
-    geom_violin(aes(fill=annotation),lwd=1.3,alpha=0.5)+
-    theme_classic()+
-    labs(x="time (hours)",y="Size (px)")+
-    theme(strip.background = element_rect(colour = "white", fill = "white"),
-      strip.text.x = element_text(size=20,colour = "black", face = "bold"),
-      axis.text.x = element_text(size=15, face="bold"),
-      axis.title.x = element_text(size=20, face="bold"),
-      axis.text.y = element_text(size=15, face="bold"),
-      axis.title.y = element_text(size=20, face="bold"),
-      axis.line = element_line(colour = 'black', size = 1.2),
-      axis.ticks = element_line(colour = "black", size = 1.2))+
-    scale_fill_manual(values = pal)
-}
-
-
-plot_meansd <- function(data_to_plot, X, Y){
-  ggplot(data_to_plot,aes_string(x = X ,y =Y,color="annotation",fill="annotation",group="annotation")) +
-    geom_ribbon(aes(ymin=minsd, ymax=maxsd,group=annotation),fill="lightgray", color="lightgray", alpha=.5)+
-    geom_line(size=1.2)+
-    geom_point(aes(color=annotation),shape=21, size=3,color="black")+
-    theme_classic()+
-    labs(x="time (hours)",y="Size (px)")+
-    theme(strip.background = element_rect(colour = "white", fill = "white"),
-      strip.text.x = element_text(size=20,colour = "black", face = "bold"),
-      axis.text.x = element_text(size=15, face="bold"),
-      axis.title.x = element_text(size=20, face="bold"),
-      axis.text.y = element_text(size=15, face="bold"),
-      axis.title.y = element_text(size=20, face="bold"),
-      axis.line = element_line(colour = 'black', size = 1.2),
-      axis.ticks = element_line(colour = "black", size = 1.2))+
-    scale_fill_manual(values = pal)+
-    scale_color_manual(values = pal)
-}
-
 ```
 
-#make plots
+#plot distribution for all datasets seperately
 ```{r, include=FALSE}
-save_path <- file.path(base_path,"plots","sizes")
+save_path <- file.path(base_path,"plots","sizes","distributions")
 dir.create(save_path)
 
 for(a in unique(imported_data$annotation)){
@@ -156,42 +77,266 @@ for(a in unique(imported_data$annotation)){
     filter(annotation == a)
   
   data_to_plot %>%
-    arrange(hours_rounded) %>%w
+    arrange(hours_rounded) %>%
     mutate(hours_rounded=factor(hours_rounded, levels=unique(hours_rounded))) %>%
     plot_distribution_ridges(., "size", "hours_rounded")+
       ggsave(file.path(save_path,paste0("size_distri_",a,".png")),height=7,width=3.5)
   
+   data_to_plot %>%
+    arrange(hours_rounded) %>%
+    mutate(hours_rounded=factor(hours_rounded, levels=unique(hours_rounded))) %>%
+    plot_distribution_ridges(., "major", "hours_rounded")+
+      ggsave(file.path(save_path,paste0("major_distri_",a,".png")),height=7,width=3.5)
+  
 }
 
+```
+
+#plot pairwise comparisons for selected datasets
+
+#function for plotting comparisons (boxplot, violin, mean with standard deviation)
+```{r, include=FALSE}
+
+parameters <- c("size", "major", "midline")
+
+plots_sizes <- function(selected_annotations, parameter){
+
+  #boxplots
+  plot <- imported_data %>%
+    filter(annotation %in%  selected_annotations) %>%
+    group_by(annotation, dataset_ID,hours_rounded) %>%
+    mutate(number_of_tracks_per_hour=n()) %>%
+    group_by(annotation, dataset_ID) %>%
+    mutate(average_number_of_tracks_per_hour=round(mean(number_of_tracks_per_hour),0)) %>%
+    mutate(annotation = paste0(annotation, "\nav.# tracks/hour: ",average_number_of_tracks_per_hour)) %>%
+    arrange(hours_rounded) %>%
+    mutate(hours_rounded = as.factor(hours_rounded)) %>%
+    ggplot(.,aes_string(x ="hours_rounded" ,y =parameter,fill="annotation")) +
+      geom_boxplot(outlier.shape = NA)+
+      geom_point(alpha=0.05,shape=21,position=position_jitterdodge(0.1))+
+      theme_classic()+
+      expand_limits(y=0)+
+      theme(strip.background = element_rect(colour = "white", fill = "white"),
+        strip.text.x = element_text(size=20,colour = "black", face = "bold"),
+        axis.text.x = element_text(size=15, face="bold"),
+        axis.title.x = element_text(size=20, face="bold"),
+        axis.text.y = element_text(size=15, face="bold"),
+        axis.title.y = element_text(size=20, face="bold"),
+        axis.line = element_line(colour = 'black', size = 1.2),
+        axis.ticks = element_line(colour = "black", size = 1.2))
+    
+  if(parameter=="size"){
+    plot <- plot + labs(x="time (hours)", y="size (px)")
+  }else{
+    plot <- plot + labs(x="time (hours)", y="length (µm)")
+  }
+  
+  plot + ggsave(file.path(save_path,paste0(parameter, "_boxplots_",paste(selected_annotations, collapse="_"), ".png")),height=7,width=10)
+  
+  #smoothed
+  plot <- imported_data %>%
+    filter(annotation %in%  selected_annotations) %>%
+    group_by(annotation, dataset_ID,hours_rounded) %>%
+    mutate(number_of_tracks_per_hour=n()) %>%
+    group_by(annotation, dataset_ID) %>%
+    mutate(average_number_of_tracks_per_hour=round(mean(number_of_tracks_per_hour),0)) %>%
+    mutate(annotation = paste0(annotation, "\nav.# tracks/hour: ",average_number_of_tracks_per_hour)) %>%
+    arrange(hours_rounded) %>%
+    mutate(hours_rounded = as.factor(hours_rounded)) %>%
+    ggplot(.,aes_string(x ="hours_rounded" ,y =parameter,fill="annotation",color="annotation",group="annotation")) +
+      geom_smooth()+
+      geom_point(alpha=0.05,shape=21,position=position_jitterdodge(0.1))+
+      theme_classic()+
+      expand_limits(y=0)+
+      theme(strip.background = element_rect(colour = "white", fill = "white"),
+        strip.text.x = element_text(size=20,colour = "black", face = "bold"),
+        axis.text.x = element_text(size=15, face="bold"),
+        axis.title.x = element_text(size=20, face="bold"),
+        axis.text.y = element_text(size=15, face="bold"),
+        axis.title.y = element_text(size=20, face="bold"),
+        axis.line = element_line(colour = 'black', size = 1.2),
+        axis.ticks = element_line(colour = "black", size = 1.2))
+    
+  if(parameter=="size"){
+    plot <- plot + labs(x="time (hours)", y="size (px)")
+  }else{
+    plot <- plot + labs(x="time (hours)", y="length (µm)")
+  }
+  
+  plot + ggsave(file.path(save_path,paste0(parameter, "_smoothed_",paste(selected_annotations, collapse="_"), ".png")),height=7,width=10)
+  
+  
+  #violins
+  plot <- imported_data %>%
+    filter(annotation %in%  selected_annotations) %>%
+    group_by(annotation, dataset_ID,hours_rounded) %>%
+    mutate(number_of_tracks_per_hour=n()) %>%
+    group_by(annotation, dataset_ID) %>%
+    mutate(average_number_of_tracks_per_hour=round(mean(number_of_tracks_per_hour),0)) %>%
+    mutate(annotation = paste0(annotation, "\nav. # tracks/hour: ",average_number_of_tracks_per_hour)) %>%
+    arrange(hours_rounded) %>%
+    mutate(hours_rounded = as.factor(hours_rounded)) %>%
+    ggplot(.,aes_string(x = "hours_rounded" ,y =parameter, fill="annotation")) +
+      geom_violin(lwd=0.5,alpha=1)+
+      theme_classic()+
+      expand_limits(y=0)+
+      theme(strip.background = element_rect(colour = "white", fill = "white"),
+        strip.text.x = element_text(size=20,colour = "black", face = "bold"),
+        axis.text.x = element_text(size=15, face="bold"),
+        axis.title.x = element_text(size=20, face="bold"),
+        axis.text.y = element_text(size=15, face="bold"),
+        axis.title.y = element_text(size=20, face="bold"),
+        axis.line = element_line(colour = 'black', size = 1.2),
+        axis.ticks = element_line(colour = "black", size = 1.2))
+  
+  if(parameter=="size"){
+    plot <- plot + labs(x="time (hours)", y="size (px)")
+  }else{
+    plot <- plot + labs(x="time (hours)", y="length (µm)")
+  }
+  
+  plot + ggsave(file.path(save_path,paste0(parameter, "_violins_",paste(selected_annotations, collapse="_"), ".png")),height=7,width=10)
+  
+  # #mean with standard deviation
+  plot <- imported_data %>%
+    filter(annotation %in%  selected_annotations) %>%
+    group_by(annotation, dataset_ID,hours_rounded) %>%
+    mutate(number_of_tracks_per_hour=n()) %>%
+    group_by(annotation, dataset_ID) %>%
+    mutate(average_number_of_tracks_per_hour=round(mean(number_of_tracks_per_hour),0)) %>%
+    mutate(annotation = paste0(annotation, "\nav. # tracks/hour: ",average_number_of_tracks_per_hour)) %>%
+    arrange(hours_rounded) %>%
+    group_by(hours_rounded,annotation) %>%
+    summarise(mean_param= mean(eval(as.name(parameter))), maxsd=mean(eval(as.name(parameter)))+sd(eval(as.name(parameter))),minsd=mean(eval(as.name(parameter)))-sd(eval(as.name(parameter)))) %>%
+    mutate(hours_rounded=factor(hours_rounded, levels=unique(hours_rounded))) %>%
+    ggplot(.,aes_string(x = "hours_rounded" ,y ="mean_param",color="annotation",fill="annotation",group="annotation")) +
+      geom_ribbon(aes(ymin=minsd, ymax=maxsd,group=annotation),fill="lightgray", color="lightgray", alpha=.5)+
+      geom_line(size=1.2)+
+      geom_point(aes(color=annotation),shape=21, size=3,color="black")+
+      expand_limits(y=0)+
+      theme_classic()+
+      theme(strip.background = element_rect(colour = "white", fill = "white"),
+        strip.text.x = element_text(size=20,colour = "black", face = "bold"),
+        axis.text.x = element_text(size=15, face="bold"),
+        axis.title.x = element_text(size=20, face="bold"),
+        axis.text.y = element_text(size=15, face="bold"),
+        axis.title.y = element_text(size=20, face="bold"),
+        axis.line = element_line(colour = 'black', size = 1.2),
+        axis.ticks = element_line(colour = "black", size = 1.2))+
+      scale_fill_manual(values = pal)+
+      scale_color_manual(values = pal)
+
+    if(parameter=="size"){
+    plot <- plot + labs(x="size (px)", y="time (hours)")
+  }else{
+    plot <- plot + labs(x="length (µm)", y="time (hours)")
+  }
+
+  plot + ggsave(file.path(save_path,paste0(parameter, "_meansd_",paste(selected_annotations, collapse="_"), ".png")),height=7,width=10)
+  
+
+  #mean with standard deviation (normalized to first hour)
+  plot <- imported_data %>%
+    filter(annotation %in% selected_annotations) %>%
+    group_by(annotation, dataset_ID,hours_rounded) %>%
+    mutate(number_of_tracks_per_hour=n()) %>%
+    mutate(mean_by_hour = mean(eval(as.name(parameter)))) %>%
+    group_by(annotation, dataset_ID) %>%
+    mutate(first_mean_by_hour = first(mean_by_hour)) %>%
+    mutate(param_norm = eval(as.name(parameter)) / first_mean_by_hour) %>%
+    mutate(average_number_of_tracks_per_hour=round(mean(number_of_tracks_per_hour),0)) %>%
+    mutate(annotation = paste0(annotation, "\nav. # tracks/hour: ",average_number_of_tracks_per_hour)) %>%
+    arrange(hours_rounded) %>%
+    group_by(hours_rounded,annotation) %>%
+    summarise(mean_param= mean(param_norm), maxsd=mean(param_norm)+sd(param_norm),minsd=mean(param_norm)-sd(param_norm)) %>%
+    mutate(hours_rounded=factor(hours_rounded, levels=unique(hours_rounded))) %>%
+    ggplot(.,aes_string(x = "hours_rounded" ,y ="mean_param",color="annotation",fill="annotation",group="annotation")) +
+      geom_ribbon(aes(ymin=minsd, ymax=maxsd,group=annotation),fill="lightgray", color="lightgray", alpha=.5)+
+      geom_line(size=1.2)+
+      geom_point(aes(color=annotation),shape=21, size=3,color="black")+
+      theme_classic()+
+      labs(x="time (hours)",y="relative growth")+
+      theme(strip.background = element_rect(colour = "white", fill = "white"),
+        strip.text.x = element_text(size=20,colour = "black", face = "bold"),
+        axis.text.x = element_text(size=15, face="bold"),
+        axis.title.x = element_text(size=20, face="bold"),
+        axis.text.y = element_text(size=15, face="bold"),
+        axis.title.y = element_text(size=20, face="bold"),
+        axis.line = element_line(colour = 'black', size = 1.2),
+        axis.ticks = element_line(colour = "black", size = 1.2))+
+      scale_fill_manual(values = pal)+
+      scale_color_manual(values = pal)
+
+
+  plot + ggsave(file.path(save_path,paste0(parameter, "_meansd_normalized_",paste(selected_annotations, collapse="_"), ".png")),height=7,width=10)
+  
+  #mean with standard error
+  plot <- imported_data %>%
+    filter(annotation %in%  selected_annotations) %>%
+    group_by(annotation, dataset_ID,hours_rounded) %>%
+    mutate(number_of_tracks_per_hour=n()) %>%
+    group_by(annotation, dataset_ID) %>%
+    mutate(average_number_of_tracks_per_hour=round(mean(number_of_tracks_per_hour),0)) %>%
+    mutate(annotation = paste0(annotation, "\nav. # tracks/hour: ",average_number_of_tracks_per_hour)) %>%
+    arrange(hours_rounded) %>%
+    group_by(hours_rounded,annotation) %>%
+    #here we calculate the standard error instead of standard derivation
+    summarise(mean_param= mean(eval(as.name(parameter))), maxsd=mean(eval(as.name(parameter)))+se(eval(as.name(parameter))),minsd=mean(eval(as.name(parameter)))-se(eval(as.name(parameter)))) %>%
+    mutate(hours_rounded=factor(hours_rounded, levels=unique(hours_rounded))) %>%
+    ggplot(.,aes_string(x = "hours_rounded" ,y ="mean_param",color="annotation",fill="annotation",group="annotation")) +
+      geom_ribbon(aes(ymin=minsd, ymax=maxsd,group=annotation),fill="lightgray", color="lightgray", alpha=.5)+
+      geom_line(size=1.2)+
+      geom_point(aes(color=annotation),shape=21, size=3,color="black")+
+      expand_limits(y=0)+
+      theme_classic()+
+      labs(x="time (hours)",y="Size (px)")+
+      theme(strip.background = element_rect(colour = "white", fill = "white"),
+        strip.text.x = element_text(size=20,colour = "black", face = "bold"),
+        axis.text.x = element_text(size=15, face="bold"),
+        axis.title.x = element_text(size=20, face="bold"),
+        axis.text.y = element_text(size=15, face="bold"),
+        axis.title.y = element_text(size=20, face="bold"),
+        axis.line = element_line(colour = 'black', size = 1.2),
+        axis.ticks = element_line(colour = "black", size = 1.2))+
+      scale_fill_manual(values = pal)+
+      scale_color_manual(values = pal)
+
+  plot + ggsave(file.path(save_path,paste0(parameter, "_meanse_",paste(selected_annotations, collapse="_"), ".png")),height=7,width=10)
+}
+  
+```
+# OP50 vs Agar
+```{r, include=FALSE}
+selected_annotations <- c("OP50", "Agar")
+# selected_timepoints <- unique(imported_data$hours_rounded)
+for (parameter in parameters){
+  save_path <- file.path(base_path,"plots","sizes",parameter)
+  dir.create(save_path)
+  plots_sizes(selected_annotations, parameter)
+
+}
+```
+
+```{r, include=FALSE}
+# OP50 vs KQ1366
+selected_annotations <- c("OP50", "KQ1366 OP50")
+for (parameter in parameters){
+  save_path <- file.path(base_path,"plots","sizes",parameter)
+  dir.create(save_path)
+  plots_sizes(selected_annotations, parameter)
+}
+```
 
 
 
-imported_data %>%
-  arrange(time) %>%
-  mutate(time=factor(time, levels=unique(time))) %>%
-  plot_distribution_ridges(., "size", "time")+
-    facet_wrap(vars(annotation))+
-    ggsave(file.path(save_path,paste0("size_distri_fewer_both",".png")),height=7,width=7)
+##Tursun data
+```{r, include=FALSE}
 
-imported_data %>%
-  arrange(time) %>%
-  mutate(time=factor(time, levels=unique(time))) %>%
-  plot_boxplots(., "size", "time")+
-    ggsave(file.path(save_path,paste0("size_boxplot_both",".png")),height=7,width=7)
-
-imported_data %>%
-  arrange(time) %>%
-  mutate(time=factor(time, levels=unique(time))) %>%
-  plot_violins(., "size", "time")+
-    ggsave(file.path(save_path,paste0("size_violins_both",".png")),height=7,width=7)
-
-imported_data %>%
-  arrange(hours_rounded) %>%
-  group_by(hours_rounded,annotation) %>%
-  summarise(mean_size= mean(size), maxsd=mean(size)+sd(size),minsd=mean(size)-sd(size)) %>%
-  mutate(hours_rounded=factor(hours_rounded, levels=unique(hours_rounded))) %>%
-  plot_meansd(., "hours_rounded", "mean_size")+
-    facet_wrap(vars(annotation))+
-    ggsave(file.path(save_path,paste0("size_meansd_both",".png")),height=7,width=14)
-
+# OP50 vs BAT2206
+selected_annotations <- c("OP50", "KQ1366 OP50")
+for (parameter in parameters){
+  save_path <- file.path(base_path,"plots","sizes",parameter)
+  dir.create(save_path)
+  plots_sizes(selected_annotations, parameter)
+}
 ```
