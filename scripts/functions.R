@@ -11,7 +11,7 @@ library("readr")
 library("purrr")
 library("viridis")
 library("png")
-library("RColorBrewer")
+library("RColorBrsewer")
 library("shiny")
 library("shinyWidgets")
 library("ggpointdensity")
@@ -442,6 +442,152 @@ skeleton_frame <- function(data){
   }
   
 }
+
+# this function is adapted from the skeleton frame function above
+# but it just counts number of pixels of the midline of the worm, if skeleton is unclear, no count
+count_midline_pixels <- function(data){
+  #get dimension from table, variables bitmask_dim_Y and bitmask_dim_X
+  dim_Y <- data$bitmask_dim_Y
+  dim_X <- data$bitmask_dim_X
+  # #import the data from bitmask column and transform to matrix with right dimensions
+  bitmask <- data$bitmask
+  bitmask <- strsplit(as.character(unlist(bitmask)),",")
+  bitmask <- as.numeric(unlist(lapply(bitmask,gsub,pattern=".*(\\d+)\\..+", replacement="\\1")))
+  data_imported <- matrix(bitmask,nrow=dim_Y, byrow=TRUE)
+  
+  # #add 2 columns and 2 frames (as a "frame" around the bitmask)
+  data_imported <- rbind(data_imported, rep(0,ncol(data_imported)))
+  data_imported <- rbind(rep(0,ncol(data_imported)),data_imported)
+  data_imported <- cbind(rep(0, nrow(data_imported)),data_imported)
+  data_imported <- cbind(data_imported,rep(0, nrow(data_imported)))
+  #
+  #
+  #add two to get the new dimensions right
+  dim_X <- data$bitmask_dim_X + 2
+  dim_Y <- data$bitmask_dim_Y + 2
+  
+  data_imported <- data_imported %>%
+    melt(.) %>%
+    rename(Y = 1, X = 2,value = 3) %>%
+    mutate(next_px_1_x = 0, next_px_1_y = 0,
+           next_px_2_x = 0, next_px_2_y = 0)
+  
+  
+  # this is a ggplot to check if the skeleton was imported right
+  # ggplot(data_imported %>% filter(value==1), aes(x=X,y=Y))+
+  #   coord_equal() +
+  #   geom_tile(fill="red",color="black") +
+  #   scale_x_continuous(expand = c(0, 0), limits= c(0,dim_X)) +
+  #   scale_y_continuous(expand = c(0, 0),trans="reverse") +
+  #   theme(legend.position="none")+
+  #   ggsave("test.png")
+  
+  pixel_list <- vector(mode="list",length=0)
+  rows_with_value1 <- data_imported %>%
+    mutate(original_rownumber=1:n()) %>%
+    filter(value == 1) %>%
+    pull(original_rownumber)
+  
+  
+  for(i in rows_with_value1){
+    
+    #look for surrounding pixels of those pixels that have value == 1
+    if(data_imported[i+1,"value"] == 1){#0°
+      pixel_list <- append(pixel_list,paste(data_imported[i+1,"X"],data_imported[i+1,"Y"], sep=","))}
+    if(data_imported[i+dim_Y+1,"value"] == 1){#45°
+      pixel_list <- append(pixel_list,paste(data_imported[i+dim_Y+1,"X"],data_imported[i+dim_Y+1,"Y"], sep=","))}
+    if(data_imported[i+dim_Y,"value"] == 1){#90°
+      pixel_list <- append(pixel_list,paste(data_imported[i+dim_Y,"X"],data_imported[i+dim_Y,"Y"], sep=","))}
+    if(data_imported[i+dim_Y-1,"value"] == 1){#135°
+      pixel_list <- append(pixel_list,paste(data_imported[i+dim_Y-1,"X"],data_imported[i+dim_Y-1,"Y"], sep=","))}
+    if(data_imported[i-1,"value"] == 1){#180°
+      pixel_list <- append(pixel_list,paste(data_imported[i-1,"X"],data_imported[i-1,"Y"], sep=","))}
+    if(data_imported[i-dim_Y-1,"value"] == 1){#225°
+      pixel_list <- append(pixel_list,paste(data_imported[i-dim_Y-1,"X"],data_imported[i-dim_Y-1,"Y"], sep=","))}
+    if(data_imported[i-dim_Y,"value"] == 1){#270°
+      pixel_list <- append(pixel_list,paste(data_imported[i-dim_Y,"X"],data_imported[i-dim_Y,"Y"], sep=","))}
+    if(data_imported[i-dim_Y+1,"value"] == 1){#315°
+      pixel_list <- append(pixel_list,paste(data_imported[i-dim_Y+1,"X"],data_imported[i-dim_Y+1,"Y"], sep=","))}
+    
+    
+    #if only one neighbouring pixel is found then it most likely corresponds to the end (head or tail of the worm)
+    if(length(pixel_list) == 1 ){
+      data_imported[i,"next_px_1_x"] <- as.numeric(unlist(strsplit(pixel_list[[1]],split=","))[1])
+      data_imported[i,"next_px_1_y"] <- as.numeric(unlist(strsplit(pixel_list[[1]],split=","))[2])
+      data_imported[i,"is_end"] <- "YES"
+      pixel_list <- vector(mode="list",length=0)
+      #if there are more than one neighbouring pixels than the pixel in question sits somewhere in the middle
+      #so far we only account for more than  two neighbours ...
+    } else if(length(pixel_list) > 1){
+      data_imported[i,"next_px_1_x"] <- as.numeric(unlist(strsplit(pixel_list[[1]],split=","))[1])
+      data_imported[i,"next_px_1_y"] <- as.numeric(unlist(strsplit(pixel_list[[1]],split=","))[2])
+      data_imported[i,"next_px_2_x"] <- as.numeric(unlist(strsplit(pixel_list[[2]],split=","))[1])
+      data_imported[i,"next_px_2_y"] <- as.numeric(unlist(strsplit(pixel_list[[2]],split=","))[2])
+      data_imported[i,"is_end"] <- "NO"
+      pixel_list <- vector(mode="list",length=0)
+    }
+  }
+  
+  
+  
+  # if there is no pixel found with any neighbours set all pixels to is_end == "NO"
+  if (is.null(data_imported$is_end)){
+    data_imported$is_end <- "NO"
+  }
+  
+  data_w_angles <- data_imported %>%
+    #only pixels that have value 1 (== no background)
+    filter(value == 1) %>%
+    #make sure that one endpoint is at the top of the table
+    arrange(desc(is_end)) %>%
+    #group positions (actual and neighbouring ones to one string)
+    mutate(pos = paste(X,Y,sep=",")) %>%
+    mutate(next_pos_1 = paste(next_px_1_x,next_px_1_y,sep=",")) %>%
+    mutate(next_pos_2 = paste(next_px_2_x,next_px_2_y,sep=",")) %>%
+    mutate(direction = data$direction) %>%
+    mutate(direction = ifelse(is.na(direction), "no direction",direction)) %>%
+    mutate(x_dir = data$x_dir) %>%
+    mutate(x_dir = ifelse(is.na(x_dir), "no direction",x_dir)) %>%
+    mutate(y_dir = data$y_dir) %>%
+    mutate(y_dir = ifelse(is.na(y_dir), "no direction",y_dir)) %>%
+    mutate(location_x = data$location_x) %>%
+    mutate(location_y =data$location_y) %>%
+    select(-c(next_px_1_x,next_px_1_y,next_px_2_x,next_px_2_y))
+  
+  #only do the following for worms that have 2 ends
+  if(length(data_w_angles[data_w_angles$is_end == "YES","is_end"]) == 2){
+    #start from one end (because we ordered by is_end above)
+    pos_list <- data_w_angles[1, "pos"]
+    
+    
+    # looks for the next position until the next end is found
+    #if there is a round structure this can go into a endless loop, therefore don't make the list longer than the total number of pixels with value == 1
+    while(tail(pos_list, n=1) != "0,0" && length(pos_list) < length(data_w_angles$value)){
+      next_pos <- data_w_angles[which(data_w_angles$pos == tail(pos_list, n=1)),"next_pos_1"]
+      if(next_pos %in% pos_list){
+        pos_list <- append(pos_list, data_w_angles[which(data_w_angles$pos == tail(pos_list, n=1)),"next_pos_2"])
+      }else{
+        pos_list <- append(pos_list, next_pos)
+      }
+      if(length(unique(pos_list)) != length(pos_list)){
+        pos_list <- NA
+        break
+      }
+    }
+    
+    data <- data %>%
+      mutate(midline_length = length(pos_list))
+    
+  } else {
+    data <- data %>%
+      mutate(midline_length = NA)
+    
+  }
+  
+}
+
+
+
 skeleton_head <- function(data){
   #if for that frame we have an idea about the direction in which the worm moves (see above), we will try finding a head structure based on this
   if(!is.na(unique(data$direction))){
@@ -1009,6 +1155,7 @@ skeleton_head_estimate_old <- function(data) {
   }
   
 }
+
 
 
 
