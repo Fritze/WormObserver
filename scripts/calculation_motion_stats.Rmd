@@ -3,6 +3,7 @@
 base_path <- "/media/fpreuss/raid5/timelapses/analysis/200703/"
 ```
 
+#we look into the "data" folder for "raw_data" files but only processes those that are not already in the processed "motion"folder
 ```{r, include=FALSE}
 
 target_path <- file.path(base_path, "data")
