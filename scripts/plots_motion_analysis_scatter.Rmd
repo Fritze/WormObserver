@@ -6,7 +6,6 @@
 #define base path  
 base_path <- "/media/fpreuss/raid5/timelapses/analysis/200703"
 
-
 #Until how many hours
 show_until <- 12
 
@@ -18,7 +17,7 @@ show_until <- 12
 target_path <- file.path(base_path,"data","motion")
 
 #list of centroid tracking .rds files in data folder
-files_to_process <- list.files(target_path, paste0("centroid_tracking_",average,".rds"),full.names = TRUE, ignore.case = TRUE)
+files_to_process <- list.files(target_path, paste0("centroid_tracking_"),full.names = TRUE, ignore.case = TRUE)
   
 data <- map_dfr(files_to_process,readRDS) %>%
     mutate(hours = minutes / 60) %>%
@@ -89,7 +88,17 @@ plot_scatterdensity <- function(data_to_plot){
 
 ```
 
+```{r, echo=TRUE}
+library(rayshader)
+plot <- data %>%
+  filter(annotation == "OP50") %>%
+  filter(hours_rounded == 2) %>%
+  plot_scatterdensity(.)
 
+plot_gg(plot,multicore=TRUE,width=5,height=5)+
+  ggsave(file.path(save_path,paste0("scatterdensity_ray_test",".png")),height=15,width=35)
+
+```
 
 
 #plot all 10s windows per annotation AND dataset_ID (both as points and density)
