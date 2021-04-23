@@ -109,14 +109,15 @@ for (a in unique(data$annotation)){
 
 save_path <- file.path(base_path,"plots","scatterdensity")
 dir.create(save_path)
-  
+
 for (a in unique(data$annotation)){
   data_to_plot <- data %>%
     filter(annotation == a)
 
   plot_scatterdensity(data_to_plot)+
+    scale_fill_viridis(option = "turbo")+
     ggsave(file.path(save_path,paste0("scatterdensity_",a,".png")),height=15,width=35)
-  
+
 }
 ```
 
@@ -125,7 +126,7 @@ for (a in unique(data$annotation)){
 #additionally also as seperate file for every annotation
 ```{r, echo=TRUE}
 save_path <- file.path(base_path,"plots","scatterdensity")
-
+dir.create(save_path)
 plot_scatterdensity(data)+
   facet_wrap(vars(annotation,hours_rounded),ncol=length(unique(data$hours_rounded)),scales="free_x")+
   ggsave(file.path(save_path,paste0("scatterdensity_all",".png")),bg="black",height=30,width=40)
@@ -135,13 +136,23 @@ plot_scatterdensity(data)+
   scale_fill_viridis(option = "inferno")+
   ggsave(file.path(save_path,paste0("scatterdensity_all_inferno",".png")),bg="black",height=30,width=40)
 
+plot_scatterdensity(data)+
+  facet_wrap(vars(annotation,hours_rounded),ncol=length(unique(data$hours_rounded)),scales="free_x")+
+  scale_fill_viridis(option = "turbo")+
+  ggsave(file.path(save_path,paste0("scatterdensity_all_turbo",".png")),bg="black",height=30,width=40)
+
 for (a in unique(data$annotation)){
   data_to_plot <- data %>%
     filter(annotation == a)
   
  plot_scatterdensity(data_to_plot)+
     facet_wrap(vars(annotation,hours_rounded),ncol=length(unique(data$hours_rounded)),scales="free_x")+
-    ggsave(file.path(save_path,paste0("scatterdensity_",a,".png")),height=7.5,width=45)
+    ggsave(file.path(save_path,paste0("scatterdensity_bw_",a,".png")),height=7.5,width=45)
+ 
+ plot_scatterdensity(data_to_plot)+
+    facet_wrap(vars(annotation,hours_rounded),ncol=length(unique(data$hours_rounded)),scales="free_x")+
+    scale_fill_viridis(option = "turbo")+
+    ggsave(file.path(save_path,paste0("scatterdensity_turbo_",a,".png")),height=7.5,width=45)
     
 }  
 
