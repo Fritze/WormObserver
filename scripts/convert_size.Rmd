@@ -16,7 +16,6 @@ save_path <- file.path(base_path,"plots")
 files_to_process <- list.files(target_path, "raw_data.rds", full.names = TRUE, ignore.case = TRUE)
 
 
-
 #pixel to µm conversion
 #this is with magnification 3.2
 conversion_factor <- 6.25
@@ -24,6 +23,10 @@ conversion_factor <- 6.25
 
 #load all .rds files and append to one data frame ('imported_data')
 for (file in files_to_process){
+  
+  filename <- gsub("(.+)\\_raw_data.rds", "\\1",basename(file))
+  cat(paste0("\nConverting ", filename))
+  
   imported_data_temp <- readRDS(file) %>%
     #minimal track displacement to exclude artifacts of aggregating worms happening after ca. 16h
     filter(Track_displacement > 100) %>%
@@ -56,9 +59,8 @@ for (file in files_to_process){
   save_path <- file.path(target_path,"converted")
   dir.create(save_path)
 
-  annotation <- unique(imported_data_temp$annotation)
-  saveRDS(imported_data_temp, file.path(save_path, paste0("size_converted_",annotation ,".RDS")))
-  print(paste0(annotation, " was converted and saved."))
+    saveRDS(imported_data_temp, file.path(save_path, paste0("size_converted_",filename ,".RDS")))
+  cat(paste0("\n",annotation, " was converted and saved."))
 }
 
 
