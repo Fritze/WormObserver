@@ -96,7 +96,8 @@ for(a in unique(imported_data$annotation)){
 
 #function for plotting comparisons (boxplot, violin, mean with standard deviation)
 ```{r, include=FALSE}
-
+library(wesanderson)
+pal <- wes_palette("Darjeeling1")[c(5,1)]
 parameters <- c("size", "major", "midline")
 
 plots_sizes <- function(selected_annotations, parameter){
