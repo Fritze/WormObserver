@@ -1,16 +1,23 @@
 
+#define filepaths etc
 ```{r, include=FALSE}
 
-base_path <- "/media/fpreuss/raid5/timelapses/analysis/200703/"
-target_folder<- file.path(base_path, "data", "posture", "skeletonized_filtered")
+#define base path
+base_path <- "~/Desktop/"
+target_folder<- file.path(base_path, "skeletonized_filtered_old")
 files_to_process <- list.files(target_folder,"skeletonized_filtered.rds", full.names = TRUE, ignore.case = TRUE)
 
-selected_annotation <-  c("N2_1:10_OP50_skel")
+selected_annotation <-  c("Agar_")
 files_to_process <- grep(selected_annotation,files_to_process,value = TRUE)
 
+conversion_factor <- 6.25
+
+#define save path
+save_path <- file.path(base_path,"plots")
+dir.create(save_path)
 ```
 
-
+#load data here
 ```{r, include=FALSE}
 
 skeleton_data_filtered <- files_to_process %>%
@@ -26,28 +33,93 @@ annotation <- unique(skeleton_data_filtered$annotation)
 ```
 
 
+
+#filter out data to have only moving worms and tracks over a certain length
 ```{r, include=FALSE}
+timeranges <- list(c(1:4),c(8:12))
+# timeranges <- list(c(1:12))
+
+skeleton_data_filtered2 <- skeleton_data_filtered %>%
+      filter(hours_rounded %in% unlist(timeranges)) %>%
+      group_by(ID,dataset_ID, tp, TrackID,frame,location_x,location_y) %>%
+      nest() %>%
+      group_by(dataset_ID,tp,TrackID) %>%
+      mutate(x_lag=lag(location_x,n=1) - location_x, y_lag = lag(location_y, n=1) - location_y) %>%
+      mutate(x_lead=lead(location_x, n=1) - location_x, y_lead=lead(location_y, n=1) - location_y) %>%
+      # calculate the angle and convert to degrees
+      mutate(angle_track = suppressWarnings(180 - (as.numeric(mapply(angle,x_lag,y_lag,x_lead,y_lead)))*180/pi)) %>%
+      # measure distance between current point and 1 second before
+      mutate(local_distance=suppressWarnings(as.numeric(mapply(distance,lag(location_x,n=2),lag(location_y,n=2),location_x,location_y)))) %>%
+      #this will result in velocity based on local distance (mm/s)
+      mutate(velocity = local_distance*conversion_factor/2/1000) %>%
+      #filter out still or slow moving worm skeletons (over the whole track)
+      filter(velocity > 0.01) %>%
+      #the track should not have any missing frames
+      mutate(length_track = n(), length_track2=last(frame)-first(frame)+1) %>%
+      filter(length_track == length_track2) %>%
+      #only tracks longer than 30 secs (> 60 frames == 30 seconds if 2 fps)
+      filter(length_track > 60) %>%
+      select(-c(length_track2,local_distance, x_lag, x_lead)) %>%
+      unnest(cols= c(data)) %>%
+      mutate(dataset_trackID = paste0(dataset_ID,"_", tp,"_", TrackID))
+
+# saveRDS(skeleton_data_filtered2,file.path(base_path, "N2_1:10_OP50_skelelton_filtered2.rds"))
+
+#How many tracks per hours_rounded?
+skeleton_data_filtered2 %>%
+  group_by(dataset_trackID,hours_rounded) %>%
+  nest() %>%
+  group_by(hours_rounded) %>%
+  summarise(n=n())
+
+```
+
+
+#calculate cumulative differences between relative eigenworm contributions
+```{r, include=FALSE}
+#functions for doing PCA code and calculating cumulative differences between relative eigenworm contributions. 
+
+#this is the function for performing pca and calculating cumulative difference between to timepoints
 pca_for_eigenworms <- function(dataset, timeranges){
+  
   eigenworms_per_hour <- NULL
   eigenworm_contr_per_hour <- NULL
   for (timerange in timeranges){
     # print(hour)
+  
+    #prepare data for pca
+    #one row is one skeleton, columns are the angles
     data_for_pca <- dataset %>%
+      #only skeletons within the selected timeframe
       filter(hours_rounded %in% timerange) %>%
+      #make an ID specific for each TRACK (not skeleton)
+      mutate(dataset_trackID = paste0(dataset_ID,"_", tp,"_", TrackID)) %>%
+      #one row per each track
+      group_by(dataset_trackID) %>%
+      nest() %>%
+      ungroup()%>%
+      # #sample 400 tracks
+      sample_n(400) %>%
+      unnest(cols=c(data)) %>%
       dcast(ID ~ index,value.var = "angle") %>%
       #make IDs the rowname so that this column is not part of the clustering data
       tibble::column_to_rownames(var = "ID") %>%
       #take out first and last angle
       select(-c(1,ncol(.)))
     
-    pca <- prcomp(data_for_pca,scale=TRUE)
+    #perform pca
+    pca <<- prcomp(data_for_pca,scale=TRUE)
+    
+    #extract first six eigenworms (==eigenvectors)
     six_eigenworms <- melt(pca$rotation[,1:6]) %>%
       rename(index = 1, eigenworm = 2, angle = 3) %>%
+      #use lower timepoint as new hours_rounded time variable
       mutate(hours_rounded = min(timerange))
     
+    #this will append rows to the already calculated time interval
     eigenworms_per_hour <- rbind(eigenworms_per_hour,six_eigenworms)
     
-    
+    #calculate relative contribution per eigenworm
     pca_con <- setNames(data.frame(1:length(pca$sdev),pca$sdev^2),c("eigenworm","value")) %>%
       mutate(cumsum_eigenvalue = cumsum(value)) %>%
       mutate(var_contr_cumsum = cumsum_eigenvalue/sum(value)) %>%
@@ -55,7 +127,7 @@ pca_for_eigenworms <- function(dataset, timeranges){
       filter(eigenworm %in% c(1:6)) %>%
       mutate(hours_rounded = min(timerange))
     
-    
+    #append this again to already calculated timerange
     eigenworm_contr_per_hour <- rbind(eigenworm_contr_per_hour,pca_con)
     
   }
@@ -79,56 +151,90 @@ pca_for_eigenworms <- function(dataset, timeranges){
       mutate(cumsum_diff = cumulative_difference)
   
   eigenworms_per_hour <<- eigenworms_per_hour
+  
 }
 
 
-timeranges <- list(c(1:3),c(10:12))
-shuffle_cycles_nr <- 500
 
-list_of_cumsum_diffs <- NULL
-for (i in 1:shuffle_cycles_nr){
-  print(i)
-  #only skeletons within the selected timeframe
-  skeleton_data_filtered_resampled <- skeleton_data_filtered %>%
-    filter(hours_rounded %in% unlist(timeranges)) %>%
-    group_by(ID) %>%
-  #assign every skeleton a new, random time ID
-    mutate(hours_rounded = sample(unlist(timeranges),1))
-
-  #perform pca
-  pca_for_eigenworms(skeleton_data_filtered_resampled,timeranges)
-  #select the cumsum difference
-  list_of_cumsum_diffs <<- rbind(list_of_cumsum_diffs,unique(eigenworm_contr_per_hour$cumsum_diff))
-  rm(eigenworm_contr_per_hour)
-  rm(eigenworms_per_hour)
-  gc()
-}
-cumsum_diff_shuffled <- max(list_of_cumsum_diffs)
-print(cumsum_diff_shuffled)
+```
 
 
-pca_for_eigenworms(skeleton_data_filtered,timeranges)
+```{r, include=FALSE}
+#Cumulative difference betweeen two time intervals, here the time variable is randomly shuffled between the two intervals
+#this approach is analogous to the one in Hums et al, 2016, Figure 2B
+
+#the number of times we want to re-shuffle the data (this is the control)
+# shuffle_cycles_nr <- 500
+# 
+# list_of_cumsum_diffs <- NULL
+# for (i in 1:shuffle_cycles_nr){
+#   print(i)
+#   #only skeletons within the selected timeframe
+#   skeleton_data_filtered_resampled <- skeleton_data_filtered %>%
+#     filter(hours_rounded %in% unlist(timeranges)) %>%
+#     group_by(ID) %>%
+#     #assign every skeleton a new, random time ID
+#     mutate(hours_rounded = sample(unlist(timeranges),1))
+# 
+#   #perform pca
+#   pca_for_eigenworms(skeleton_data_filtered_resampled,timeranges)
+#   #select the cumsum difference
+#   list_of_cumsum_diffs <<- rbind(list_of_cumsum_diffs,unique(eigenworm_contr_per_hour$cumsum_diff))
+#   rm(eigenworm_contr_per_hour)
+#   rm(eigenworms_per_hour)
+#   gc()
+# }
+# cumsum_diff_shuffled <- max(list_of_cumsum_diffs)
+# print(cumsum_diff_shuffled)
+
+
+#prepare the list of generated cumsum_diffs (those are the ones with shuffle time variables) for saving
+# cumsum_diffs_total <- list_of_cumsum_diffs %>%
+#   as.data.frame() %>%
+#   mutate(shuffle_cycle_nr = 1:n()) %>%
+#   mutate(timeranges = paste(unlist(timeranges),collapse = ",")
+# ) %>%
+#   mutate(cumsum_diff_timeranges = cumsum_diff)
+
+# save_path <- file.path(base_path,"data","posture","eigenworms")
+# dir.create(save_path)
+# saveRDS(cumsum_diffs_total, file=file.path(save_path,paste0(shuffle_cycles_nr,"_shuffle_cycle_nr_1-3_and_10-12_hours.RDS")))
+```
+
+```{r, include=FALSE}
+#calculate for pca and cumulative difference for unshuffled data
+pca_for_eigenworms(skeleton_data_filtered2,timeranges)
 cumsum_diff <- unique(eigenworm_contr_per_hour$cumsum_diff)
 print(cumsum_diff)
-
-cumsum_diffs_total <- list_of_cumsum_diffs %>%
-  as.data.frame() %>%
-  mutate(shuffle_cycle_nr = 1:n()) %>%
-  mutate(timeranges = paste(unlist(timeranges),collapse = ",")
-) %>%
-  mutate(cumsum_diff_timeranges = cumsum_diff)
-
-save_path <- file.path(base_path,"data","posture","eigenworms")
-dir.create(save_path)
-saveRDS(cumsum_diffs_total, file=file.path(save_path,paste0(shuffle_cycles_nr,"_shuffle_cycle_nr_1-3_and_10-12_hours.RDS")))
 
 ```
 
 ```{r}
-save_path <- file.path(base_path,"plots","posture","eigenworms")
+save_path <- file.path(base_path,"plots")
 dir.create(save_path)
 
-plot_eigenworms <- ggplot(eigenworms_per_hour, aes(index,angle,color=as.character(hours_rounded))) +
+#first we can check eigenworms for each timerange here
+#ggplot(eigenworms_per_hour, aes(index,angle,color=as.character(hours_rounded))) +
+#   geom_point(size=2)+
+#   geom_line(size=1)+
+#   # scale_y_continuous(limits=c(-0.5,0.5))+
+#   facet_wrap(vars(eigenworm),ncol=6)+
+#   labs(x="# segment angle", y="angle (rad)")+
+#   theme_classic()+
+#   coord_fixed(ratio=10)+
+#   theme(
+#     legend.position = "none"
+#   )
+
+#our skeletinazion method is not aware of dorsal/ventral side of the worm
+#therefore eigenworms can be mirrored if PCA is run twice 
+#here we correct for this manually
+plot_eigenworms <- eigenworms_per_hour %>%
+  mutate(angle=ifelse(eigenworm == "PC3" & hours_rounded == 8,-angle, angle)) %>%
+  mutate(angle=ifelse(eigenworm == "PC4" & hours_rounded == 8,-angle, angle)) %>%
+  mutate(angle=ifelse(eigenworm == "PC5" & hours_rounded == 8,-angle, angle)) %>%
+  mutate(angle=ifelse(eigenworm == "PC6" & hours_rounded == 8,-angle, angle)) %>%
+  ggplot(., aes(index,angle,color=as.character(hours_rounded))) +
   geom_point(size=2)+
   geom_line(size=1)+
   # scale_y_continuous(limits=c(-0.5,0.5))+
@@ -138,10 +244,8 @@ plot_eigenworms <- ggplot(eigenworms_per_hour, aes(index,angle,color=as.characte
   coord_fixed(ratio=10)+
   theme(
     legend.position = "none"
-  )+
-  ggsave(file.path(save_path,paste0(annotation,"_eigenworms.png")),height=5,width=20)
-
-
+  ) +
+  ggsave(file.path(save_path,paste0(annotation,"_eigenworms.png")),height=10,width=20)
 
 plot_contr <- ggplot(eigenworm_contr_per_hour,aes(eigenworm,var_contr_cumsum*100,fill=as.character(hours_rounded))) +
   geom_bar(aes(x = eigenworm,y = var_contr_rel*100  ,fill = as.character(hours_rounded)),stat="identity", position = "dodge")+ 
@@ -170,5 +274,822 @@ plot_eigenworms /
   plot_contr +
   plot_layout(heights = unit(c(5,15), c('cm', 'cm')))+
   ggsave(file.path(save_path,paste0(annotation,"_eigenworms_with_contributions.png")),height=10,width=20)
+
+```
+
+
+
+#plotting functions
+```{r}
+plot_skeleton_movie <- function(data_to_plot,X,Y,second){
+  
+  data_to_plot_temp <- data_to_plot %>%
+    filter(seconds == second)
+  
+  ggplot(data_to_plot_temp, aes_string(x=X,y=Y,color="angle"))+
+    geom_point(size=2.5) +
+    geom_point(data=filter(data_to_plot_temp, index==1), aes(x=X,y=Y), color="gold",shape=17,size=4)+
+    scale_x_continuous(limits=c(min(data_to_plot$X),max(data_to_plot$X)))+
+    scale_y_continuous(limits=c(min(data_to_plot$Y),max(data_to_plot$Y)))+
+    # geom_path(size=2,lineend = "round") +
+    theme_void()+
+    coord_fixed(ratio = 1)+
+    scale_color_gradient2(low = "deepskyblue", mid = "lavender",
+                          high = "deeppink",midpoint=0,limits=c(-1,1),na.value="grey") +
+    theme(plot.title = element_text(face = "bold"),
+          strip.text.x = element_blank()) +
+    facet_wrap(vars(dataset_trackID),ncol=1)
+
+}
+
+
+plot_wave <- function(dataset){
+  
+  data_to_plot <<- dataset %>%
+    group_by(dataset_trackID) %>%
+    filter(!index %in% c(1,2,25,26)) %>%
+    mutate(min_frame = min(frame)) %>%
+    mutate(seconds = (frame - min_frame)/2)
+    
+
+  ggplot(data_to_plot, aes(x=seconds,y=index,fill=angle))+
+    geom_tile()+
+    scale_x_continuous(limits=c(0,max(data_to_plot$seconds)))+
+    scale_y_continuous(trans="reverse")+
+    scale_fill_gradient2(low = "cornflowerblue",mid ="white",high = "brown2",midpoint=0,na.value="white") +
+    theme_classic()+
+    theme(
+          legend.position = "top")+
+    labs(x="seconds")+
+    theme(strip.text.x = element_text(size = 10))+
+    labs(fill = "Intersegment angle (rad)") +
+    facet_wrap(vars(dataset_trackID))+
+    coord_equal()
+}
+
+plot_wave_movie <- function(data_to_plot,second){
+  
+    ggplot(data_to_plot, aes(x=seconds,y=index,fill=angle))+
+      geom_tile()+
+      geom_vline(aes(xintercept=second),linetype="longdash")+
+      scale_x_continuous(limits=c(0,max(data_to_plot$seconds)))+
+      scale_y_continuous(trans="reverse")+
+      scale_fill_gradient2(low = "cornflowerblue",mid ="white",high = "brown2",midpoint=0,na.value="white") +
+      theme_classic()+
+      theme(
+            legend.position = "top")+
+      labs(x="seconds")+
+      theme(strip.text.x = element_text(size = 10))+
+      labs(fill = "Intersegment angle (rad)") +
+      facet_wrap(vars(dataset_trackID))+
+      coord_equal()
+}
+
+plot_PCs_movie <- function(data_to_plot,second){
+  
+    data_to_plot_temp <- data_to_plot %>%
+      filter(seconds <= second)
+    
+    ggplot(data_to_plot_temp, aes(x=PC1, PC2,color=seconds))+
+      scale_x_continuous(limits=c(min(data_to_plot$PC1),max(data_to_plot$PC1)))+
+      scale_y_continuous(limits=c(min(data_to_plot$PC2),max(data_to_plot$PC2)))+
+      geom_path()+
+      geom_point(size=1.5)+
+      facet_wrap(vars(time),ncol=1)+
+      scale_color_viridis(option="mako")+
+      theme_classic()
+
+}
+```
+
+
+#functions for simulating roaming worms
+```{r}
+
+simulate <- function(a,b,c,d,n){
+  one_track <- NULL
+  all_tracks <- NULL
+  for (m in seq(1:n)){
+    for (i in seq(1,25)){
+      
+      #How many seconds should be simulated?
+      t <- seq(0,(c-0.5), by=0.5)
+      #What is the error we want to add?
+      c.unif <- runif(c*2,min=-d,max=d)
+      #this generates a sinus function with parameters a and b for each INDEX over time
+      one_index <- tibble(angle = rep(NA,c*2)) %>%
+        mutate(angle = a*sin(b*t-i/2)+ c.unif) %>%
+        mutate(seconds = t) %>%
+        #the segment number
+        mutate(index = i)
+
+      one_track <- rbind(one_track,one_index)
+    }
+    one_track <- one_track %>%
+      #generate random trackID
+      mutate(dataset_trackID= as.character(sample(1:10^6,1))) %>%
+      #ID is specific for second (in this case == frame) and dataset_trackID
+      mutate(ID = paste0(dataset_trackID, "_",seconds))
+    
+    all_tracks <- rbind(all_tracks,one_track)
+    one_track <- NULL
+  }
+  return(all_tracks)
+}
+  
+simulate_w_plot <- function(a,b,c,d,n){
+  
+  simulate(a,b,c,d,n) %>%
+    ggplot(., aes(x=seconds,y=index,fill=angle))+
+      geom_tile()+
+      scale_y_continuous(trans="reverse")+
+      scale_fill_gradient2(low = "cornflowerblue",mid ="white",high = "brown2",midpoint=0,na.value="white") +
+      theme_classic()+
+      theme(
+            legend.position = "top")+
+      labs(x="seconds")+
+      theme(strip.text.x = element_text(size = 10))+
+      labs(fill = "Intersegment angle (rad)") +
+      coord_equal()+
+      facet_wrap(dataset_trackID)
+}
+
+```
+
+
+
+
+
+#generate simulated worm data, final result is stored in "eigenvalues_sim"
+```{r}
+
+early_m <- early_s <- simulate(e,3,60,0.075,400) %>%
+  mutate(time = "early") %>%
+  #dummy time
+  mutate(hours_rounded = 1)
+
+late_m <- simulate(l,3,60,0.075,400) %>%
+  mutate(time = "late") %>%
+  #dummy time
+  mutate(hours_rounded = 10)
+
+simulated_m <- rbind(early_m, late_m) %>%
+  mutate(ID= paste0(ID,"_",time))
+
+pca_sim <- simulated_m %>%
+  dcast(ID ~ index,value.var = "angle") %>%
+  #make IDs the rowname so that this column is not part of the clustering data
+  tibble::column_to_rownames(var = "ID") %>%
+  #take out first and last angle
+  select(-c(1,ncol(.))) %>%
+  prcomp(., center=TRUE)
+
+
+eigenvalues_sim <- pca_sim$x %>%
+  #convert_to_dataframe
+  as.data.frame() %>%
+  #new variable from rowname
+  tibble::rownames_to_column("ID") %>%
+  #split ID to get information
+  separate(ID, c("dataset_trackID","seconds","time"),sep = "([\\_])",remove=FALSE) %>%
+  #get types right
+  mutate(seconds = as.numeric(seconds))%>%
+  #number each frame relatively for each track individually
+  group_by(dataset_trackID) %>%
+  mutate(numbering =1:n()) %>%
+  #length of a track (in frames)
+  mutate(length_frames=max(numbering)) %>%
+  ungroup()
+
+```
+
+
+#prepare real data for analysing PCA eigenvalues
+```{r}
+#how many tracks do we want to sample at the end?
+number_sampled_tracks <- 400
+
+
+#from the filtered dataset, for each skeleton get ID and local velocity
+IDvelo <- skeleton_data_filtered2 %>%
+  group_by(ID,velocity) %>%
+  nest() %>%
+  select(c(ID, velocity))
+
+#perform ONE pca for all skeletons in filtered dataset
+#here we don't downsample yet
+pca <- skeleton_data_filtered2 %>%
+  dcast(ID ~ index,value.var = "angle") %>%
+  #make IDs the rowname so that this column is not part of the clustering data
+  tibble::column_to_rownames(var = "ID") %>%
+  #take out first and last angle
+  select(-c(1,ncol(.))) %>%
+  prcomp(., center=TRUE)
+
+#after pca, get back ID, tp, TrackID etc
+#add information for each track and subset 400 tracks per timepoint (early vs late) 
+eigenvalues <- pca$x %>%
+  #convert_to_dataframe
+  as.data.frame() %>%
+  #new variable from rowname
+  tibble::rownames_to_column("ID") %>%
+  #keep only first 6 eigenworms
+  select(!matches("(PC[1-9][0-9]|PC[7-9])")) %>%
+  #split ID to get information
+  separate(ID, c("dataset_ID_date","dataset_ID_time","tp","TrackID_track","TrackID_ID","frame"),sep = "([\\_])",remove=FALSE) %>%
+  #get types right
+  mutate(frame = as.numeric(frame))%>%
+  #since splitting happens on "_", some variables (dataset_ID and TrackID) have to be glued together again
+  #indeed, not very elegant
+  unite(dataset_ID,dataset_ID_date:dataset_ID_time) %>%
+  unite(TrackID, TrackID_track:TrackID_ID) %>%
+  #add ID column that is specific for a TRACK
+  mutate(dataset_trackID = paste0(dataset_ID,"_", tp,"_", TrackID)) %>%
+  #number each frame relatively for each track individually
+  group_by(dataset_trackID) %>%
+  mutate(numbering =1:n()) %>%
+  #length of a track (in frames)
+  mutate(length_frames=max(numbering)) %>%
+  #convert this to seconds
+  mutate(min_frame = min(frame)) %>%
+  #the division by 2 corresponds to fps == 2
+  mutate(seconds = (frame - min_frame)/2) %>%
+  ungroup() %>%
+  mutate(tp=as.numeric(tp)) %>%
+  #estimate 15 minutes as lag before experiment
+  mutate(minutes = 15 + ((tp-1)*8+(tp-1)*0)) %>%
+  #round to full hours steps
+  mutate(hours_rounded = ceiling(minutes/60)) %>%
+  # mutate(time=hours_rounded) %>%
+  mutate(time=ifelse(hours_rounded <= 4,"early", "late")) %>%
+  group_by(time, dataset_trackID) %>%
+  nest() %>%
+  #sample tracks (variable: number_sampled_tracks)
+  group_by(time) %>%
+  sample_n(number_sampled_tracks) %>%
+  unnest(cols=c(data)) %>%
+  left_join(IDvelo, by="ID") %>%
+  ungroup()
+
+```
+
+
+
+
+
+
+
+
+#plotting eigenworms
+```{r}
+#which data to plot
+# type "real" or "simulated"
+data_type <- "real" #or"simulated"
+
+save_path_temp <- file.path(save_path,"eigenworms")
+dir.create(save_path_temp)
+
+plot_size = 5
+
+if (data_type == "simulated"){
+  data <- pca_sim
+  annotation <- "simulated"
+  }else{
+    data <- pca
+    annotation <- unique(skeleton_data_filtered$annotation)
+}
+
+six_eigenworms <- melt(pca$rotation[,1:6]) %>%
+      rename(index = 1, eigenworm = 2, angle = 3)
+
+plot_eigenworms <- six_eigenworms %>%
+  ggplot(., aes(index,angle)) +
+  # geom_point(size=2)+
+  geom_path(size=4,lineend="round")+
+  scale_y_continuous(limits=c(-0.5,0.5))+
+  facet_wrap(vars(eigenworm),ncol=6)+
+  labs(x="# segment angle", y="angle (rad)")+
+  theme_classic()+
+  coord_fixed(ratio=10)+
+  theme(
+    legend.position = "none"
+  )
+
+pca_con <- setNames(data.frame(1:length(pca$sdev),pca$sdev^2),c("eigenworm","value")) %>%
+      mutate(cumsum_eigenvalue = cumsum(value)) %>%
+      mutate(var_contr_cumsum = cumsum_eigenvalue/sum(value)) %>%
+      mutate(var_contr_rel = value/sum(value)) %>%
+      filter(eigenworm %in% c(1:6))
+
+plot_contr <- ggplot(pca_con,aes(eigenworm,var_contr_cumsum*100)) +
+  geom_bar(aes(x = eigenworm,y = var_contr_rel*100),stat="identity", position = "dodge",color="black",fill="white",lwd=1.5)+ 
+  geom_line(size=1) +
+  geom_point(size=5,color="black")+
+  scale_y_continuous(limits=c(0,100),breaks=c(0,10,20,30,40,50,60,70,80,90,100)) +
+  scale_x_continuous(breaks=c(0,1,2,3,4,5,6)) +
+  labs(x="# eigenworm", y="variance contribution (%)") +
+  theme_classic()+
+  theme(aspect.ratio=1,
+        legend.position = "top",
+        legend.direction="horizontal",
+        strip.background = element_rect(colour = "white", fill = "white"),
+        panel.spacing = unit(1, "lines"),
+        strip.text.x = element_text(size=15,colour = "black", face = "bold"),
+        axis.text.x = element_text(size=30),
+        axis.title.x = element_text(size=20),
+        axis.text.y = element_text(size=30),
+        axis.title.y = element_text(size=20),
+        axis.ticks=element_line(size=1.5),
+        axis.ticks.length=unit(0.25,"cm"),
+        axis.line = element_line(colour = 'black', size = 1.5))
+
+
+plot_eigenworms /
+  plot_contr +
+  plot_layout(heights = unit(c(5,15), c('cm', 'cm')))+
+  ggsave(file.path(save_path_temp,paste0(annotation,"_eigenworms_with_contributions.png")),height=10,width=20)
+
+
+
+```
+
+
+#plotting distribution of angles for the two timeranges (subsampled to 30k skeletons)
+```{r}
+#which data to plot
+# type "real" or "simulated"
+data_type <- "simulated" #or"simulated"
+
+save_path_temp <- file.path(save_path,"angle_distris")
+dir.create(save_path_temp)
+
+plot_size = 5
+
+if (data_type == "simulated"){
+  data <- simulated_m
+  annotation <- "simulated"
+  }else{
+    data <- eigenvalues
+    annotation <- unique(skeleton_data_filtered$annotation)
+}
+
+if (data_type == "real"){
+#by starting from the eigenvalues we obtain the same 400 sampled tracks that are used for PCA
+thirtyk_skeletons <- data %>%
+  left_join(skeleton_data_filtered2,by = intersect(names(skeleton_data_filtered2), names(data))) %>%
+  mutate(time=ifelse(hours_rounded <= 4,"early", "late")) %>%
+  #filter out first and last segment as these will have angle  == NA
+  filter(index != 1 ) %>%
+  filter(index != 26) %>%
+  group_by(dataset_trackID,time,frame) %>%
+  nest() %>%
+  group_by(time) %>%
+  sample_n(30000) %>%
+  unnest(cols=c(data))
+
+}else{
+  #for simulated data: also subsample 30000 skeletons randomly across all tracks and seconds
+  thirtyk_skeletons <- data %>%
+    group_by(dataset_trackID,time,seconds) %>%
+    nest() %>%
+    group_by(time) %>%
+    sample_n(30000) %>%
+    unnest(cols=c(data)) %>%
+    arrange(seconds)
+}
+
+#get list of absolute angles from early timepoints
+ee <- thirtyk_skeletons %>%
+  filter(time == "early") %>%
+  mutate(angle_abs = abs(angle)) %>%
+  pull(angle_abs)
+
+#get list of absolute angles from late timepoints
+ll <- thirtyk_skeletons %>%
+  filter(time == "late") %>%
+  mutate(angle_abs = abs(angle)) %>%
+  pull(angle_abs)
+
+#save the means of both distributations, so we can use this later as basis for our simulations
+e <- mean(ee)
+l <- mean(ll)
+
+#do a wilcox test to check significance
+wilcox_t <- wilcox.test(ll,ee,paired=FALSE)
+
+thirtyk_skeletons %>%
+  ggplot(., aes(x=angle,fill=time))+
+    geom_histogram(size=1,binwidth = 0.05) +
+    scale_x_continuous(limits = c(-1.5,1.5),breaks=c(-1.5,-1,-0.5,0,0.5,1,1.5))+
+    facet_wrap(vars(time)) +
+    scale_fill_manual(values=c("#E69F00", "#56B4E9"))+
+    ggsave(file.path(save_path_temp, paste0(annotation,"_angles_histo.png")),width=plot_size,height=plot_size)
+
+thirtyk_skeletons %>%
+  ggplot(., aes(x=angle,fill=time))+
+    geom_density(alpha=0.5) +
+    scale_x_continuous(limits = c(-1.5,1.5),breaks=c(-1.5,-1,-0.5,0,0.5,1,1.5))+
+    scale_fill_manual(values=c("#E69F00", "#56B4E9")) +
+    ggsave(file.path(save_path_temp, paste0(annotation,"_angles_density.png")),width=plot_size,height=plot_size)
+
+thirtyk_skeletons %>%
+  mutate(angle_abs = abs(angle)) %>%
+  ggplot(., aes(x=angle_abs,fill=time))+
+    geom_density(alpha=0.5) +
+    scale_x_continuous(limits = c(0,1.6),breaks=c(0,0.5,1,1.5))+
+    theme_bw()+
+    scale_fill_manual(values=c("#E69F00", "#56B4E9")) +
+     ggsave(file.path(save_path_temp, paste0(annotation,"_angles_absolute_values_density.png")),width=plot_size,height=plot_size)
+ 
+   
+```
+
+
+
+#All vs all PC plots
+```{r}
+#which data to plot
+data_type <- "simulated" #or "simulated"
+
+if (data_type == "simulated"){
+  data <- eigenvalues_sim
+  annotation <- "simulated"
+}else{
+  data <- eigenvalues
+  annotation <- unique(skeleton_data_filtered$annotation)
+}
+
+save_path_temp <- file.path(save_path,"PC_correlations")
+dir.create(save_path_temp)
+
+plot_size = 5
+
+#plot all eigenvalues against each other
+PCs <- c("PC1","PC2","PC3","PC4","PC5","PC6")
+
+for (j in PCs){
+  for (k in PCs){
+
+  #define plot
+  density_plot <- data %>%
+    ggplot(., aes_string(x=j, y=k))+
+      scale_x_continuous(breaks=c(-1.5,-1,-0.5,0,0.5,1,1.5))+
+      scale_y_continuous(breaks=c(-1.5,-1,-0.5,0,0.5,1,1.5))+
+      stat_density_2d(aes(fill = ..ndensity..), geom = "raster", contour = FALSE)+
+      facet_wrap(vars(time))+
+      theme_classic()+
+      coord_equal()
+  
+  #rocket
+  density_plot +
+    scale_fill_viridis(option="rocket") +
+    ggsave(file.path(save_path_temp, paste0(annotation, "_", j, "_vs_", k, "_rocket.png")),width=plot_size, height=plot_size)
+  
+  #turbo
+  density_plot +
+    scale_fill_viridis(option="turbo") +
+    ggsave(file.path(save_path_temp, paste0(annotation, "_", j, "_vs_", k, "_turbo.png")),width=plot_size, height=plot_size)
+  
+  #viridis
+  density_plot +
+    scale_fill_viridis(option="turbo") +
+    ggsave(file.path(save_path_temp, paste0(annotation, "_", j, "_vs_", k, "_viridis.png")),width=plot_size, height=plot_size)
+  
+  }
+}  
+
+
+for (m in PCs){
+  for (n in PCs){
+
+  #colored
+  dot_plot <- data %>%
+    ggplot(., aes_string(x=m, y=n))+
+      scale_x_continuous(breaks=c(-1.5,-1,-0.5,0,0.5,1,1.5))+
+      scale_y_continuous(breaks=c(-1.5,-1,-0.5,0,0.5,1,1.5))+
+      geom_point(aes(fill=time),alpha=0.01,shape=21)+ 
+      facet_wrap(vars(time))+
+      theme_classic()+
+      coord_equal()+
+      scale_fill_manual(values=c("#E69F00", "#56B4E9"))
+      
+  dot_plot +
+    ggsave(file.path(save_path_temp, paste0(annotation, "_", m, "_vs_", n, "_colored.png")),width=plot_size, height=plot_size)  
+
+  }
+}  
+    
+```
+#Density distribution plots for eigenvalues
+```{r}
+
+#which data to plot
+data_type <- "real" #or "simulated"
+
+if (data_type == "simulated"){
+  data <- eigenvalues_sim
+  annotation <- "simulated"
+}else{
+  data <- eigenvalues
+  annotation <- unique(skeleton_data_filtered$annotation)
+}
+
+save_path_temp <- file.path(save_path,"PC_value_distris")
+dir.create(save_path_temp)
+
+plot_size = 5
+
+#check if both timeranges have roughly equal number of skeletons
+number_skeletons <- data %>%
+  group_by(time) %>%
+  summarise(n=n())
+
+
+#save number of skeletons per timerange
+number_skeletons %>%
+  write.table(file.path(save_path_temp, paste0(annotation, "_number_skeletons.txt")))
+
+
+
+data %>%
+  select(ID, time,matches("PC1$|PC2$|PC3|PC4|PC5|PC6")) %>%
+  pivot_longer(!c(ID,time)) %>%
+  ggplot(., aes(x=value,fill=time)) +
+    geom_density(alpha=0.5,size=1)+
+    theme_classic()+
+    facet_wrap(vars(name))+
+    scale_fill_manual(values=c("#E69F00", "#56B4E9"))+
+    ggsave(file.path(save_path_temp, paste0(annotation,"_density.png")),width=plot_size, height=plot_size)
+```
+
+#1D heatmap per PC for eigenvalue distribution
+```{r}
+
+#which data to plot
+data_type <- "simulated" #or "simulated"
+
+if (data_type == "simulated"){
+  data <- eigenvalues_sim
+  annotation <- "simulated"
+}else{
+  data <- eigenvalues
+  annotation <- unique(skeleton_data_filtered$annotation)
+}
+
+
+save_path_temp <- file.path(save_path,"PC_value_distris_heat")
+dir.create(save_path_temp)
+
+plot_size = 7
+
+#here we divide in 50 equally spaced bins c(value,50)
+#and heatmap based on this
+PCs <- c("PC1$","PC2$","PC3","PC4","PC5","PC6")
+for (i in PCs){
+
+    binned <- data %>%
+      select(ID, time,matches(i)) %>%
+      pivot_longer(!c(ID,time)) %>%
+      mutate(class = cut(value, 50)) %>%
+      group_by(time, name,class) %>%
+      summarise(n_class = n())
+    
+    ggplot(binned, aes(x=class,y=time,fill=n_class)) +
+      geom_tile() +
+      facet_wrap(vars(name),ncol=1) +
+      scale_fill_viridis(option="viridis")+
+      theme_classic()+
+      coord_equal()+
+      theme(axis.text.x = element_text(angle = 90))+
+      ggsave(file.path(save_path_temp, paste0(annotation,"_",i,"_density.png")),width=plot_size, height=plot_size)
+  
+}
+```
+
+
+
+
+#generate overview videos for two tracks (i.e. one from each timerange)
+```{r}
+
+save_path <- file.path(base_path,"plots","PC_video")
+dir.create(save_path)
+
+#sample 1 track per timepoint (early vs late)
+sampled_tracks <- eigenvalues %>%
+  filter(length_frames > 100) %>%
+  group_by(dataset_trackID,time) %>%
+  nest() %>%
+  group_by(time) %>%
+  sample_n(1) %>%
+  pull(dataset_trackID)
+
+
+two_tracks <- skeleton_data_filtered2 %>%
+  filter(dataset_trackID %in% sampled_tracks) %>%
+  left_join(eigenvalues,by = intersect(names(skeleton_data_filtered2), names(eigenvalues)))
+
+ggplot(two_tracks, aes(x=PC1, PC2,color=seconds))+
+    scale_x_continuous(limits=c(min(two_tracks$PC1),max(two_tracks$PC1)))+
+    scale_y_continuous(limits=c(min(two_tracks$PC2),max(two_tracks$PC2)))+
+    geom_path()+
+    geom_point(size=1.5)+
+    facet_wrap(vars(time),ncol=1)+
+    scale_color_viridis(option="mako")+
+    theme_classic()+
+    coord_equal()
+
+i<-0
+for (s in unique(two_tracks$seconds)){
+  
+  
+  plot_wave <- plot_wave_movie(two_tracks, s)
+  # plot_wave
+  
+  plot_skeleton <- plot_skeleton_movie(two_tracks,"X","Y", s)
+  # plot_skeleton
+  
+  plot_PCs <- plot_PCs_movie(two_tracks,s)
+  # plot_PCs
+  
+  plot_skeleton +
+    plot_PCs +
+    ggsave(file.path(save_path, paste0("PC_video_",paste(sampled_tracks,collapse="_"),"_",i , ".png")))
+  
+  i <- i+ 1
+  
+}
+
+
+```
+
+
+```{r}
+
+
+
+# "2020-06-22_17-58-37_21_track_133"
+#"2020-06-25_17-58-07_20_track_216"
+#"2020-06-23_17-58-40_20_track_97"
+#"2020-06-22_17-58-37_17_track_28"
+
+#"2020-06-25_17-58-07_8_track_77" #late type
+
+#"2020-06-22_17-58-37_57_track_47" 
+# "2020-06-23_17-58-40_82_track_48"
+
+skeleton_data_filtered2 %>%
+  mutate(dataset_trackID = paste0(dataset_ID,"_", tp,"_", TrackID)) %>%
+  filter(dataset_trackID %in% sampled_tracks) %>%
+  plot_wave()
+
+```
+
+
+```{r}
+
+early_s <- simulate(0.2,2,60,0.05,1) %>%
+  mutate(time = "early")
+
+late_s <- simulate(0.4,2,60,0.05,1) %>%
+  mutate(time = "late")
+
+
+two_simulated <- rbind(early_s,late_s) %>%
+  #define initial values needed for estimating position from angles
+  mutate(new_angle=0, X=1, Y=1) %>%
+  group_by(time,seconds) %>%
+  #estimate the positions for each clusterID independently
+  group_modify(~ estimate_positions_from_angles(.x)) %>%
+  #turn the coordinates so that the worm's orientations are similar
+  group_modify(~ turn_worm(.x)) %>%
+  select(-new_angle) %>%
+  ungroup()
+
+i<-0
+for (s in unique(two_simulated$seconds)){
+
+  plot_skeleton_movie(two_simulated,"X","Y", s) +
+    facet_wrap(vars(dataset_trackID),ncol=2)+
+    ggtitle(s)+
+    ggsave(file.path(save_path, paste0(i, ".png")))
+  i <- i + 1 
+}
+
+```
+
+
+
+
+```{r}
+
+
+
+#sample 1 track per timepoint (early vs late)
+two_tracks_sim <- eigenvalues_sim %>%
+  group_by(dataset_trackID,time) %>%
+  nest() %>%
+  group_by(time) %>%
+  sample_n(1) %>%
+  unnest(cols=c(data)) %>%
+  #bring back angles
+  left_join(simulated_m,by = intersect(names(simulated_m), names(eigenvalues_sim))) %>%
+  #define initial values needed for estimating position from angles
+  mutate(new_angle=0, X=1, Y=1) %>%
+  group_by(dataset_trackID,seconds) %>%
+  #estimate the positions for each clusterID independently
+  group_modify(~ estimate_positions_from_angles(.x)) %>%
+  #turn the coordinates so that the worm's orientations are similar
+  group_modify(~ turn_worm(.x)) %>%
+  select(-new_angle) %>%
+  ungroup()
+
+
+
+ggplot(two_tracks_sim, aes(x=PC1, PC2,color=seconds))+
+    scale_x_continuous(limits=c(min(two_tracks$PC1),max(two_tracks$PC1)))+
+    scale_y_continuous(limits=c(min(two_tracks$PC2),max(two_tracks$PC2)))+
+    geom_path()+
+    geom_point(size=1.5)+
+    facet_wrap(vars(time),ncol=1)+
+    scale_color_viridis(option="mako")+
+    theme_classic()+
+    coord_equal()
+
+i<-0
+for (s in unique(two_tracks_sim$seconds)){
+  
+   
+  plot_skeleton <- plot_skeleton_movie(two_tracks_sim,"X","Y", s) +
+    theme_void()+
+    facet_wrap(vars(time),ncol=1)+
+    theme(panel.spacing.y = unit(15, "lines"))
+  
+  # plot_skeleton
+  
+  plot_PCs <- plot_PCs_movie(two_tracks_sim,s)
+  # plot_PCs
+  
+  plot_skeleton +
+    plot_PCs +
+    ggsave(file.path(save_path, paste0("PC_video_sim_",i , ".png")))
+  
+  i <- i + 1
+  
+}
+
+
+```
+
+
+
+```{r}
+
+
+eigenvalues %>%
+  filter(dataset_trackID %in% sampled_tracks) %>%
+  ggplot(.,aes(x=numbering))+
+    geom_line(aes(y=PC1),color="red")+
+    geom_line(aes(y=PC2),color="lightblue")+
+    geom_line(aes(y=PC3),color="gold")+
+    facet_wrap(vars(dataset_trackID),ncol = 5)+
+  ggsave(file.path(base_path,"test.png"),height=10,width=10)
+
+
+sampled_tracks <- sample(unique(eigenvalues_v$dataset_trackID),1)
+PC1 <- eigenvalues_v %>%
+  filter(dataset_trackID %in% sampled_tracks)
+PC1 <- ggplot(PC1, aes(x=numbering, y=PC1))+
+  geom_line()+
+  ggtitle(PC1$ID) +
+  scale_y_continuous(limits=c(-1.5,1.5))
+
+
+
+PC2 <- eigenvalues_v %>%
+  filter(dataset_trackID %in% sampled_tracks) %>%
+  ggplot(., aes(x=numbering, y=PC2))+
+    geom_line() +
+    scale_y_continuous(limits=c(-1.5,1.5))
+
+
+PC3 <- eigenvalues_v %>%
+  filter(dataset_trackID %in% sampled_tracks) %>%
+  ggplot(., aes(x=numbering, y=PC3))+
+    geom_line() +
+    scale_y_continuous(limits=c(-1.5,1.5))
+
+velocity <- eigenvalues_v %>%
+  filter(dataset_trackID %in% sampled_tracks) %>%
+  ggplot(., aes(x=numbering, y=velocity))+
+    geom_line()
+
+
+
+
+PC1 / PC2 / PC3 / velocity +
+  ggsave(file.path(base_path,"test.png"),height=7)
+
+hist(eigenvalues$Duration_of_track)
 
 ```
