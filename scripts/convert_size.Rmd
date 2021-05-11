@@ -10,7 +10,7 @@ base_path <- "/media/fpreuss/raid5/timelapses/analysis/200703/"
 ```{r, include=FALSE}
 
 target_path <- file.path(base_path,"data", "other_raw")
-save_path <- file.path(base_path,"plots")
+
 
 #list of .rds files in data folder
 files_to_process <- list.files(target_path, "raw_data.rds", full.names = TRUE, ignore.case = TRUE)
@@ -60,7 +60,7 @@ for (file in files_to_process){
   dir.create(save_path)
 
     saveRDS(imported_data_temp, file.path(save_path, paste0("size_converted_",filename ,".RDS")))
-  cat(paste0("\n",annotation, " was converted and saved."))
+  cat(paste0("\n",filename, " was converted and saved."))
 }
 
 
