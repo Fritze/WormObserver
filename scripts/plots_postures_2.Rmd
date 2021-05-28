@@ -1,7 +1,7 @@
 #Select paths
 ```{r, include=FALSE}
 base_path <- "/media/fpreuss/raid5/timelapses/analysis/200703/"
-target_folder <- "/media/fpreuss/raid5/timelapses/analysis/200703/data/posture/posture_groups/"
+target_folder <- "/media/fpreuss/raid5/timelapses/analysis/200703/data/posture/postures_clustered"
 
 ```
 
@@ -12,12 +12,12 @@ target_folder <- "/media/fpreuss/raid5/timelapses/analysis/200703/data/posture/p
 #ID to unify posture IDs across annotations
 load_cc <- function(x){
   readRDS(x) %>%
-    mutate(annotation=gsub("\\d+_(.+)_cluster_centers_reduced.RDS", "\\1",basename(x))) %>%
+    mutate(annotation=gsub("^(.+)_cluster_centers_reduced.RDS", "\\1",basename(x))) %>%
     mutate(ID = paste0(newID, "_", annotation))
 }
 
 #all posture libraries (aka "cluster centers reduced") have to be in one folder
-cc_list <- list.files(target_folder,"_cluster_centers_reduced.RDS", full.names = TRUE)
+cc_list <- list.files(target_folder,"_cluster_centers_reduced.RDS", full.names = TRUE,recursive = TRUE)
 
 #load data
 cluster_centers_reduced <- cc_list %>%
@@ -32,6 +32,8 @@ unique(cluster_centers_reduced$annotation)
 #this is done by another round of kmeans clustering this time only on posture libraries but across annotations/datasets
 #also we now cluster (unified) x/y positions instead of angles, this seems to work better...
 ```{r, include=FALSE}
+#define the number of k for kmeans
+how_many_clusters <- 4
 
 plot_posture_examples <- function(data_to_plot,X,Y){
   ggplot(data_to_plot, aes_string(x=X,y=Y,color="angle"))+
@@ -57,7 +59,7 @@ ccr_for_clustering <- filter(cluster_centers_reduced,newID_sub == 1) %>%
   # mutate(newID = paste0("posture_", newID)) %>%
   column_to_rownames(var = "ID")
 
-#the functions below perform the "elbow plot" for finding the right number of k clusters
+# #the functions below perform the "elbow plot" for finding the right number of k clusters
 # # function to compute total within-cluster sum of square
 # wss <- function(k) {
 #   kmeans(ccr_for_clustering, k)$tot.withinss
@@ -75,7 +77,7 @@ ccr_for_clustering <- filter(cluster_centers_reduced,newID_sub == 1) %>%
 #        ylab="Total within-clusters sum of squares")
 
 #kmeans clustering is performed here
-k_ccr <- kmeans(ccr_for_clustering, 6)
+k_ccr <- kmeans(ccr_for_clustering, how_many_clusters)
 
 #new dataframe that contains the ID (posture ID (newID) combined with annotatation) and the new posture group the new ID belongs to(after clustering)
 postures_grouped <- data.frame(posture_grouped= as.character(k_ccr$cluster), ID = rownames(ccr_for_clustering),stringsAsFactors = FALSE)
@@ -87,7 +89,7 @@ cluster_centers_reduced_grouped <- left_join(cluster_centers_reduced, postures_g
   select(annotation,newID,index,X,Y,angle, posture_grouped)
 
 #plot overview seperately for each posture group (across annotations)
-for (i in seq(1,6)){
+for (i in seq(1,how_many_clusters)){
 data_to_plot <- cluster_centers_reduced_grouped %>%
     filter(posture_grouped == paste0("group_",i))
 number_of_IDs <- length(unique(data_to_plot$newID))
@@ -95,7 +97,7 @@ plot_posture_examples(data_to_plot, "X","Y") +
   geom_point(data=filter(data_to_plot,index == 2), aes(X,Y),color="orange",size=7,shape=17) +
   facet_wrap(vars(posture_grouped,newID,annotation),ncol=sqrt(number_of_IDs)) +
   theme(strip.text.x = element_text(size = 20,face="bold"))+
-  ggsave(file.path(save_path,paste0("group_",i,".png")),height=sqrt(number_of_IDs)*5,width=30,limitsize=FALSE)
+  ggsave(file.path(save_path,paste0("group_",i,"_k_",how_many_clusters,".png")),height=sqrt(number_of_IDs)*5,width=30,limitsize=FALSE)
 }
 
 ```
@@ -106,20 +108,21 @@ plot_posture_examples(data_to_plot, "X","Y") +
 #function to load posture library
 #ID to unify posture IDs across annotations
 load_cc <- function(x){
-  readRDS(x)
+  readRDS(x) %>%
+  mutate(annotation = gsub("^(..+)_angle_data_postures_per_dataset.RDS","\\1",basename(x)))
 }
 
 #all posture libraries (aka "cluster centers reduced") have to be in one folder
-cc_list <- list.files(target_folder,"_angle_data_postures_per_dataset.RDS", full.names = TRUE)
-cc_list
+cc_list <- list.files(target_folder,"_angle_data_postures_per_dataset.RDS", full.names = TRUE,recursive=TRUE)
 
 #load data
 angle_data_postures_per_dataset <- cc_list %>%
   map_df(., load_cc) %>%
-  mutate(ID = paste0(newID, "_", annotation)) %>%
+  mutate(ID = paste0(newID, "_", gsub(" ","_",annotation))) %>%
   left_join(postures_grouped, by="ID") %>%
   select(-ID)
 
+unique(angle_data_postures_per_dataset$posture_grouped)
 unique(angle_data_postures_per_dataset$annotation)
 ```
 
@@ -147,52 +150,30 @@ postures_grouped_statistics <- angle_data_postures_per_dataset %>%
   
 
 unique(postures_grouped_statistics$annotation)
-selected_annotation <-unique(postures_grouped_statistics$annotation)
+unique(postures_grouped_statistics$posture_grouped)
 
-data_for_plotting <- postures_grouped_statistics %>%
-  filter(annotation %in% selected_annotation)
 
-ggplot(data_for_plotting, aes(y=perc_norm_per_posture_grouped_per_dataset,x=hours_rounded,color=annotation))+
+ggplot(postures_grouped_statistics, aes(y=perc_norm_per_posture_grouped_per_dataset,x=hours_rounded,color=annotation))+
   geom_point(alpha=0.5)+
   scale_y_continuous(limits = c(-3,3))+
-  scale_x_continuous(breaks = c(0,6,12))+
+  scale_x_continuous(breaks = seq(1,12))+
   geom_smooth()+
-  theme_minimal()+
-        theme(
-        strip.background = element_rect(colour = "white", fill = "white"),
-        panel.spacing = unit(1, "lines"),
-        strip.text.x = element_text(size=15,colour = "black", face = "bold"),
-        axis.text.x = element_text(size=30),
-        axis.title.x = element_text(size=20),
-        axis.text.y = element_text(size=30),
-        axis.title.y = element_text(size=20),
-        axis.ticks=element_line(size=1.5),
-        axis.ticks.length=unit(0.25,"cm"),
-        axis.line = element_line(colour = 'black', size = 1.5),
-        legend.key.size = unit(2.5, "cm"))+
+  theme_bw()+
+  theme(
+  strip.background = element_rect(fill="white"))+
   facet_wrap(vars(posture_grouped,annotation),ncol=length(selected_annotation),scales="free")+
-  ggsave(file.path(save_path,"posture_groups_relative_occurences_norm.png"),height=30,width=25)
+  ggsave(file.path(save_path,"posture_groups_relative_occurences_norm.png"),height=7,width=12)
 
-ggplot(data_for_plotting, aes(y=perc_per_posture_grouped_per_dataset,x=hours_rounded,color=annotation))+
+ggplot(postures_grouped_statistics, aes(y=perc_per_posture_grouped_per_dataset,x=hours_rounded,color=annotation))+
   geom_point(alpha=0.5)+
   scale_y_continuous(limits = c(0,0.4))+
-  scale_x_continuous(breaks = c(0,6,12))+
+  scale_x_continuous(breaks = seq(1,12))+
   geom_smooth()+
-  theme_minimal()+
-        theme(
-        strip.background = element_rect(colour = "white", fill = "white"),
-        panel.spacing = unit(1, "lines"),
-        strip.text.x = element_text(size=15,colour = "black", face = "bold"),
-        axis.text.x = element_text(size=30),
-        axis.title.x = element_text(size=20),
-        axis.text.y = element_text(size=30),
-        axis.title.y = element_text(size=20),
-        axis.ticks=element_line(size=1.5),
-        axis.ticks.length=unit(0.25,"cm"),
-        axis.line = element_line(colour = 'black', size = 1.5),
-        legend.key.size = unit(2.5, "cm"))+
+  theme_bw()+
+  theme(
+  strip.background = element_rect(fill="white"))+
   facet_wrap(vars(posture_grouped,annotation),ncol=length(selected_annotation),scales="free")+
-  ggsave(file.path(save_path,"posture_groups_relative_occurences.png"),height=30,width=25)
+  ggsave(file.path(save_path,"posture_groups_relative_occurences.png"),height=7,width=12)
 
 
 ```
