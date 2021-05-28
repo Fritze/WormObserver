@@ -3,7 +3,7 @@
 #We need the clustering file containing the mean positions of each cluster as well as the skeletons filtered file with clusters attached
 ```{r, include=FALSE}
 base_path <- "/media/fpreuss/raid5/timelapses/analysis/200703/"
-target_folder <- "/media/fpreuss/raid5/timelapses/analysis/200703/data/posture/daf2/"
+target_folder <- "/media/fpreuss/raid5/timelapses/analysis/200703/data/posture/postures_clustered"
 ```
 
 #Load data (clustered postures) for analysis
@@ -13,9 +13,20 @@ skeletons_filtered_clustered_filepath <- list.files(path = target_folder,pattern
 clustering_filepath <- list.files(path = target_folder,pattern="clustering.RDS",ignore.case = TRUE, full.names = TRUE)
 cluster_centers_reduced_filepath <- list.files(path = target_folder,pattern="cluster_centers_reduced.RDS",ignore.case = TRUE, full.names = TRUE)
 
-skeleton_data_clustered <- readRDS(skeletons_filtered_clustered_filepath) 
-cluster <- readRDS(clustering_filepath)
-cluster_centers_reduced <- readRDS(cluster_centers_reduced_filepath)
+
+#function to load postures
+load_cp <- function(x){
+  readRDS(x)
+}
+
+#load data
+skeleton_data_clustered <- skeletons_filtered_clustered_filepath %>%
+  map_df(., load_cp)
+
+unique(cluster_centers_reduced$annotation)
+
+#cluster <- readRDS(clustering_filepath)
+#cluster_centers_reduced <- readRDS(cluster_centers_reduced_filepath)
 
 ```
 
