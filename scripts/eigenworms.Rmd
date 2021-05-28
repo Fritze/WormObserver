@@ -3,11 +3,11 @@
 ```{r, include=FALSE}
 
 #define base path
-base_path <- "~/Desktop/"
-target_folder<- file.path(base_path, "skeletonized_filtered_old")
+base_path <- "~/Desktop/data"
+target_folder<- file.path(base_path, "skeletonized_filtered")
 files_to_process <- list.files(target_folder,"skeletonized_filtered.rds", full.names = TRUE, ignore.case = TRUE)
 
-selected_annotation <-  c("Agar_")
+selected_annotation <-  c("OP50_skeletonized_")
 files_to_process <- grep(selected_annotation,files_to_process,value = TRUE)
 
 conversion_factor <- 6.25
@@ -20,50 +20,55 @@ dir.create(save_path)
 #load data here
 ```{r, include=FALSE}
 
+timeranges <- list(c(1:2),c(8:10))
+# timeranges <- list(c(1:12))
+
 skeleton_data_filtered <- files_to_process %>%
   map_df(., function(x) readRDS(x)) %>%
   mutate(ID = paste0(dataset_ID, "_",tp,"_",TrackID,"_",frame)) %>%
   #estimate 15 minutes as lag before experiment
   mutate(minutes = 15 + ((tp-1)*8+(tp-1)*0)) %>%
   #round to full hours steps
-  mutate(hours_rounded = ceiling(minutes/60))
+  mutate(hours_rounded = ceiling(minutes/60)) %>%
+  filter(hours_rounded %in% unlist(timeranges)) %>%
+  group_by(annotation,ID,dataset_ID, tp,hours_rounded, TrackID,frame,location_x,location_y) %>%
+  nest() %>%
+  group_by(annotation,dataset_ID,tp,hours_rounded,TrackID) %>%
+  mutate(x_lag=lag(location_x,n=1) - location_x, y_lag = lag(location_y, n=1) - location_y) %>%
+  mutate(x_lead=lead(location_x, n=1) - location_x, y_lead=lead(location_y, n=1) - location_y) %>%
+  # calculate the angle and convert to degrees
+  mutate(angle_track = suppressWarnings(180 - (as.numeric(mapply(angle1,x_lag,y_lag,x_lead,y_lead)))*180/pi)) %>%
+  # measure distance between current point and 1 second before
+  mutate(local_distance=suppressWarnings(as.numeric(mapply(distance,lag(location_x,n=2),lag(location_y,n=2),location_x,location_y)))) %>%
+  #this will result in velocity based on local distance (mm/s)
+  mutate(velocity = local_distance*conversion_factor/2/1000)
 
 annotation <- unique(skeleton_data_filtered$annotation)
-
+ggplot(skeleton_data_filtered,aes(x=velocity))+
+  geom_histogram(binwidth=0.001)+
+  scale_x_continuous(limits=c(0,0.1))
 ```
 
 
 
 #filter out data to have only moving worms and tracks over a certain length
 ```{r, include=FALSE}
-timeranges <- list(c(1:4),c(8:12))
-# timeranges <- list(c(1:12))
+#velocity limit for Agar and Agar Az = 0.01
 
 skeleton_data_filtered2 <- skeleton_data_filtered %>%
-      filter(hours_rounded %in% unlist(timeranges)) %>%
-      group_by(ID,dataset_ID, tp, TrackID,frame,location_x,location_y) %>%
-      nest() %>%
-      group_by(dataset_ID,tp,TrackID) %>%
-      mutate(x_lag=lag(location_x,n=1) - location_x, y_lag = lag(location_y, n=1) - location_y) %>%
-      mutate(x_lead=lead(location_x, n=1) - location_x, y_lead=lead(location_y, n=1) - location_y) %>%
-      # calculate the angle and convert to degrees
-      mutate(angle_track = suppressWarnings(180 - (as.numeric(mapply(angle,x_lag,y_lag,x_lead,y_lead)))*180/pi)) %>%
-      # measure distance between current point and 1 second before
-      mutate(local_distance=suppressWarnings(as.numeric(mapply(distance,lag(location_x,n=2),lag(location_y,n=2),location_x,location_y)))) %>%
-      #this will result in velocity based on local distance (mm/s)
-      mutate(velocity = local_distance*conversion_factor/2/1000) %>%
-      #filter out still or slow moving worm skeletons (over the whole track)
-      filter(velocity > 0.01) %>%
-      #the track should not have any missing frames
-      mutate(length_track = n(), length_track2=last(frame)-first(frame)+1) %>%
-      filter(length_track == length_track2) %>%
-      #only tracks longer than 30 secs (> 60 frames == 30 seconds if 2 fps)
-      filter(length_track > 60) %>%
-      select(-c(length_track2,local_distance, x_lag, x_lead)) %>%
-      unnest(cols= c(data)) %>%
-      mutate(dataset_trackID = paste0(dataset_ID,"_", tp,"_", TrackID))
+  group_by(annotation,dataset_ID,tp,TrackID) %>%
+  #filter out still or slow moving worm skeletons (over the whole track)
+  filter(velocity > 0.01) %>%
+  #the track should not have any missing frames
+  mutate(length_track = n(), length_track2=last(frame)-first(frame)+1) %>%
+  filter(length_track == length_track2) %>%
+  #only tracks longer than 10 secs (> 20 frames == 10 seconds if 2 fps)
+  filter(length_track > 20) %>%
+  select(-c(length_track2,local_distance, x_lag, x_lead)) %>%
+  unnest(cols= c(data)) %>%
+  mutate(dataset_trackID = paste0(dataset_ID,"_", tp,"_", TrackID))
 
-# saveRDS(skeleton_data_filtered2,file.path(base_path, "N2_1:10_OP50_skelelton_filtered2.rds"))
+# # saveRDS(skeleton_data_filtered2,file.path(base_path, "N2_1:10_OP50_skelelton_filtered2.rds"))
 
 #How many tracks per hours_rounded?
 skeleton_data_filtered2 %>%
@@ -200,7 +205,6 @@ pca_for_eigenworms <- function(dataset, timeranges){
 # dir.create(save_path)
 # saveRDS(cumsum_diffs_total, file=file.path(save_path,paste0(shuffle_cycles_nr,"_shuffle_cycle_nr_1-3_and_10-12_hours.RDS")))
 ```
-
 ```{r, include=FALSE}
 #calculate for pca and cumulative difference for unshuffled data
 pca_for_eigenworms(skeleton_data_filtered2,timeranges)
@@ -208,7 +212,6 @@ cumsum_diff <- unique(eigenworm_contr_per_hour$cumsum_diff)
 print(cumsum_diff)
 
 ```
-
 ```{r}
 save_path <- file.path(base_path,"plots")
 dir.create(save_path)
@@ -279,6 +282,8 @@ plot_eigenworms /
 
 
 
+
+
 #plotting functions
 ```{r}
 plot_skeleton_movie <- function(data_to_plot,X,Y,second){
@@ -306,10 +311,7 @@ plot_skeleton_movie <- function(data_to_plot,X,Y,second){
 plot_wave <- function(dataset){
   
   data_to_plot <<- dataset %>%
-    group_by(dataset_trackID) %>%
-    filter(!index %in% c(1,2,25,26)) %>%
-    mutate(min_frame = min(frame)) %>%
-    mutate(seconds = (frame - min_frame)/2)
+    filter(!index %in% c(1,2,25,26))
     
 
   ggplot(data_to_plot, aes(x=seconds,y=index,fill=angle))+
@@ -360,11 +362,42 @@ plot_PCs_movie <- function(data_to_plot,second){
       theme_classic()
 
 }
+
+
+plot_PCs_linear_movie <- function(data_to_plot,second){
+  
+    data_to_plot_temp <- data_to_plot %>%
+      group_by(ID,seconds,PC1,PC2,PC3) %>%
+      summarise() %>%
+      select(ID,matches("PC1|PC2|PC3"),seconds) %>%
+      pivot_longer(!c(ID,seconds)) %>%
+      arrange(seconds)
+
+    ggplot(data_to_plot_temp, aes(x=seconds,y=value,color=name))+
+      geom_path()+
+      geom_vline(aes(xintercept=second),linetype="longdash")+
+      scale_x_continuous(limits=c(0,max(data_to_plot$seconds)))+
+      scale_y_continuous(trans="reverse")+
+      scale_fill_gradient2(low = "cornflowerblue",mid ="white",high = "brown2",midpoint=0,na.value="white") +
+      theme_classic()+
+      theme(
+            legend.position = "top")+
+      labs(x="seconds")+
+      theme(strip.text.x = element_text(size = 10),
+            legend.position = "none")+
+      labs(fill = "amplitude") +
+      facet_wrap(vars(name),ncol=1)
+}
+
+
 ```
+
+
 
 
 #functions for simulating roaming worms
 ```{r}
+
 
 simulate <- function(a,b,c,d,n){
   one_track <- NULL
@@ -378,11 +411,10 @@ simulate <- function(a,b,c,d,n){
       c.unif <- runif(c*2,min=-d,max=d)
       #this generates a sinus function with parameters a and b for each INDEX over time
       one_index <- tibble(angle = rep(NA,c*2)) %>%
-        mutate(angle = a*sin(b*t-i/2)+ c.unif) %>%
+        mutate(angle = a*sin(b*t-i)+ c.unif) %>%
         mutate(seconds = t) %>%
         #the segment number
         mutate(index = i)
-
       one_track <- rbind(one_track,one_index)
     }
     one_track <- one_track %>%
@@ -396,6 +428,7 @@ simulate <- function(a,b,c,d,n){
   }
   return(all_tracks)
 }
+
   
 simulate_w_plot <- function(a,b,c,d,n){
   
@@ -411,24 +444,44 @@ simulate_w_plot <- function(a,b,c,d,n){
       theme(strip.text.x = element_text(size = 10))+
       labs(fill = "Intersegment angle (rad)") +
       coord_equal()+
-      facet_wrap(dataset_trackID)
+      facet_wrap(vars(dataset_trackID))
 }
 
+# simulate(e,4.19,30,0.0075,1) %>%
+#   filter(index ==5) %>%
+#   ggplot(., aes(y=angle,x=seconds))+
+#     geom_path()
+# 
+# simulate(l,3.75,30,0.0075,1) %>%
+#   filter(index ==5) %>%
+#   ggplot(., aes(y=angle,x=seconds))+
+#     geom_path()
+# 
+# mean_phase_shift <- function(data){
+#   max_boo <- rollapply(as.zoo(data$angle), width=3, function(x) which.max(x)==2,align="center")
+#   
+#   index <- index(max_boo)[coredata(max_boo)]
+#   t <- data$seconds[index]
+#   mean_ps <- mean(diff(t))
+#   data$mean_ps <- mean_ps
+#   return(data)
+# }
+
+#early 1.507562	 == 4.19
+#late 1.678985 == 3.75
 ```
 
 
 
-
-
-#generate simulated worm data, final result is stored in "eigenvalues_sim"
+#generate simulated worm data, final result is stored in "PC_values_sim"
 ```{r}
 
-early_m <- early_s <- simulate(e,3,60,0.075,400) %>%
+early_m <- early_s <- simulate(e,4.19,30,0.0075,400) %>%
   mutate(time = "early") %>%
   #dummy time
   mutate(hours_rounded = 1)
 
-late_m <- simulate(l,3,60,0.075,400) %>%
+late_m <- simulate(l,3.75,30,0.0075,400) %>%
   mutate(time = "late") %>%
   #dummy time
   mutate(hours_rounded = 10)
@@ -445,7 +498,7 @@ pca_sim <- simulated_m %>%
   prcomp(., center=TRUE)
 
 
-eigenvalues_sim <- pca_sim$x %>%
+PC_values_sim <- pca_sim$x %>%
   #convert_to_dataframe
   as.data.frame() %>%
   #new variable from rowname
@@ -464,9 +517,12 @@ eigenvalues_sim <- pca_sim$x %>%
 ```
 
 
-#prepare real data for analysing PCA eigenvalues
+
+
+#prepare real data for analysing PCA PC_values
 ```{r}
 #how many tracks do we want to sample at the end?
+#number sampled tracks Agar 400
 number_sampled_tracks <- 400
 
 
@@ -486,9 +542,12 @@ pca <- skeleton_data_filtered2 %>%
   select(-c(1,ncol(.))) %>%
   prcomp(., center=TRUE)
 
+# fviz_eig(pca)
+
+
 #after pca, get back ID, tp, TrackID etc
 #add information for each track and subset 400 tracks per timepoint (early vs late) 
-eigenvalues <- pca$x %>%
+PC_values <- pca$x %>%
   #convert_to_dataframe
   as.data.frame() %>%
   #new variable from rowname
@@ -508,7 +567,7 @@ eigenvalues <- pca$x %>%
   #number each frame relatively for each track individually
   group_by(dataset_trackID) %>%
   mutate(numbering =1:n()) %>%
-  #length of a track (in frames)
+  # length of a track (in frames)
   mutate(length_frames=max(numbering)) %>%
   #convert this to seconds
   mutate(min_frame = min(frame)) %>%
@@ -524,14 +583,29 @@ eigenvalues <- pca$x %>%
   mutate(time=ifelse(hours_rounded <= 4,"early", "late")) %>%
   group_by(time, dataset_trackID) %>%
   nest() %>%
-  #sample tracks (variable: number_sampled_tracks)
+  #sample tracks per timerange (variable: number_sampled_tracks)
   group_by(time) %>%
   sample_n(number_sampled_tracks) %>%
   unnest(cols=c(data)) %>%
   left_join(IDvelo, by="ID") %>%
+  #the following calculates "phase velocity" based on the first two principal components (for each track)
+  group_by(dataset_trackID) %>%
+  mutate(next_PC1 = lead(PC1,n=1), next_PC2 = lead(PC2,n=1)) %>%
+  mutate(prev_PC1 = lag(PC1,n=1),prev_PC2 = lag(PC2,n=1)) %>%
+  mutate(diff_prev_PC1 =  PC1 - prev_PC1, diff_prev_PC2 = PC2 - prev_PC2) %>%
+  mutate(diff_next_PC1 = next_PC1 - PC1, diff_next_PC2 = next_PC2 - PC2) %>%
+  mutate(angle_velo=suppressWarnings(as.numeric(mapply(angle2,diff_prev_PC1,diff_prev_PC2,diff_next_PC1,diff_next_PC2)))) %>%
+  #normalize to the range (-pi,pi), this will keep directionality, i.e. clockwise will be negative
+  mutate(angle_velo=ifelse(angle_velo < -pi,angle_velo+2*pi,angle_velo)) %>%
+  mutate(angle_velo=ifelse(angle_velo > pi, angle_velo-2*pi, angle_velo)) %>%
   ungroup()
 
+
+saveRDS(PC_values, file.path(save_path,paste0(annotation,"_400tracks_PC_values.RDS")))
+
 ```
+
+
 
 
 
@@ -614,27 +688,122 @@ plot_eigenworms /
 ```
 
 
+
+
+#plotting distribution of local velocity (same subsampled 400 tracks per time range)
+```{r}
+save_path_temp <- file.path(save_path,"velocity_distris")
+dir.create(save_path_temp)
+
+plot_size = 3
+
+#checking again if we have equal number of tracks per condition
+PC_values %>%
+  group_by(time) %>%
+  summarise(n_tracks = n_distinct(dataset_trackID))
+
+
+#get list of velocities from tracks in early timepoints
+ee <- PC_values %>%
+  filter(time == "early") %>%
+  pull(velocity)
+
+#get list of absolute angles from late timepoints
+ll <- PC_values %>%
+  filter(time == "late") %>%
+  pull(velocity)
+
+#do a wilcox test to check significance
+wilcox_t <- wilcox.test(ll,ee,paired=FALSE)
+
+#the plot
+ggplot(PC_values,aes(x=velocity,fill=time))+
+  geom_density(alpha=0.5)+
+  theme_bw()+
+  scale_fill_manual(values=c("#E69F00", "#56B4E9"))+
+  ggsave(file.path(save_path_temp, paste0(annotation,"_velocity_density.png")),width=plot_size,height=plot_size-1)
+  
+
+
+```
+
+#plotting distribution of phase velocity and local velocity vs phase velocity (same subsampled 400 tracks per time range)
+```{r}
+save_path_temp <- file.path(save_path,"phase_velocity")
+dir.create(save_path_temp)
+
+plot_size = 3
+
+
+#get list of velocities from tracks in early timepoints
+ee <- PC_values %>%
+  filter(time == "early") %>%
+  pull(angle_velo)
+
+#get list of absolute angles from late timepoints
+ll <- PC_values %>%
+  filter(time == "late") %>%
+  pull(angle_velo)
+
+#do a wilcox test to check significance
+wilcox_t <- wilcox.test(ll,ee,paired=FALSE)
+
+PC_values %>%
+  #filter out the first and last frames of each track as the corresponding angles for phase velocity will be NA
+  filter(numbering != length_frames) %>%
+  filter(numbering != 1) %>%
+  ggplot(., aes(x=angle_velo,fill=time))+
+    geom_density(alpha=0.5)+
+    theme_bw()+
+    scale_fill_manual(values=c("#E69F00", "#56B4E9"))+
+    ggsave(file.path(save_path_temp, paste0(annotation,"_phase_velocity_density.png")),width=plot_size,height=plot_size-1)
+
+#for correlation plots only look at phase velocity > 0 (forward moving worms)
+PC_values %>%
+  filter(angle_velo > 0) %>%
+  ggplot(., aes(x=velocity, y=angle_velo,fill=time))+
+    geom_point(alpha=0.01,shape=21)+
+    theme_bw()+
+    scale_fill_manual(values=c("#E69F00", "#56B4E9"))+
+    facet_wrap(vars(time))+
+    ggsave(file.path(save_path_temp, paste0(annotation,"_phase_velocity_correlation_colored.png")),width=plot_size+2,height=plot_size)
+
+PC_values %>%
+  filter(angle_velo > 0) %>%
+  ggplot(., aes(x=velocity, y=angle_velo,fill=time))+
+    stat_density_2d(aes(fill = ..ndensity..), geom = "raster", contour = FALSE) +
+    theme_classic()+
+    scale_fill_viridis(option="viridis")+
+    facet_wrap(vars(time))+
+    ggsave(file.path(save_path_temp, paste0(annotation,"_phase_velocity_correlation_viridis.png")),width=plot_size+2,height=plot_size)
+
+
+```
+
 #plotting distribution of angles for the two timeranges (subsampled to 30k skeletons)
 ```{r}
 #which data to plot
 # type "real" or "simulated"
-data_type <- "simulated" #or"simulated"
+data_type <- "real" #or"simulated"
 
 save_path_temp <- file.path(save_path,"angle_distris")
 dir.create(save_path_temp)
 
+#OP50 + Az = 4000
+#Agar = 30000
+subsampled_to = 15000
 plot_size = 5
 
 if (data_type == "simulated"){
   data <- simulated_m
   annotation <- "simulated"
   }else{
-    data <- eigenvalues
+    data <- PC_values
     annotation <- unique(skeleton_data_filtered$annotation)
 }
 
 if (data_type == "real"){
-#by starting from the eigenvalues we obtain the same 400 sampled tracks that are used for PCA
+#by starting from the PC_values we obtain the same 400 sampled tracks that are used for PCA
 thirtyk_skeletons <- data %>%
   left_join(skeleton_data_filtered2,by = intersect(names(skeleton_data_filtered2), names(data))) %>%
   mutate(time=ifelse(hours_rounded <= 4,"early", "late")) %>%
@@ -644,7 +813,7 @@ thirtyk_skeletons <- data %>%
   group_by(dataset_trackID,time,frame) %>%
   nest() %>%
   group_by(time) %>%
-  sample_n(30000) %>%
+  sample_n(subsampled_to) %>%
   unnest(cols=c(data))
 
 }else{
@@ -653,7 +822,7 @@ thirtyk_skeletons <- data %>%
     group_by(dataset_trackID,time,seconds) %>%
     nest() %>%
     group_by(time) %>%
-    sample_n(30000) %>%
+    sample_n(subsampled_to) %>%
     unnest(cols=c(data)) %>%
     arrange(seconds)
 }
@@ -694,7 +863,7 @@ thirtyk_skeletons %>%
 
 thirtyk_skeletons %>%
   mutate(angle_abs = abs(angle)) %>%
-  ggplot(., aes(x=angle_abs,fill=time))+
+  ggplot(., aes(x=angle_abs,fill=time,..scaled..))+
     geom_density(alpha=0.5) +
     scale_x_continuous(limits = c(0,1.6),breaks=c(0,0.5,1,1.5))+
     theme_bw()+
@@ -706,16 +875,17 @@ thirtyk_skeletons %>%
 
 
 
+
 #All vs all PC plots
 ```{r}
 #which data to plot
-data_type <- "simulated" #or "simulated"
+data_type <- "real" #or "simulated"
 
 if (data_type == "simulated"){
-  data <- eigenvalues_sim
+  data <- PC_values_sim
   annotation <- "simulated"
 }else{
-  data <- eigenvalues
+  data <- PC_values
   annotation <- unique(skeleton_data_filtered$annotation)
 }
 
@@ -724,7 +894,7 @@ dir.create(save_path_temp)
 
 plot_size = 5
 
-#plot all eigenvalues against each other
+#plot all PC_values against each other
 PCs <- c("PC1","PC2","PC3","PC4","PC5","PC6")
 
 for (j in PCs){
@@ -780,17 +950,17 @@ for (m in PCs){
 }  
     
 ```
-#Density distribution plots for eigenvalues
+#Density distribution plots for PC_values
 ```{r}
 
 #which data to plot
 data_type <- "real" #or "simulated"
 
 if (data_type == "simulated"){
-  data <- eigenvalues_sim
+  data <- PC_values_sim
   annotation <- "simulated"
 }else{
-  data <- eigenvalues
+  data <- PC_values
   annotation <- unique(skeleton_data_filtered$annotation)
 }
 
@@ -812,7 +982,7 @@ number_skeletons %>%
 
 
 data %>%
-  select(ID, time,matches("PC1$|PC2$|PC3|PC4|PC5|PC6")) %>%
+  select(ID, time,matches("^PC1$|^PC2$|^PC3$|^PC4$|^PC5$|^PC6$")) %>%
   pivot_longer(!c(ID,time)) %>%
   ggplot(., aes(x=value,fill=time)) +
     geom_density(alpha=0.5,size=1)+
@@ -826,13 +996,13 @@ data %>%
 ```{r}
 
 #which data to plot
-data_type <- "simulated" #or "simulated"
+data_type <- "real" #or "simulated"
 
 if (data_type == "simulated"){
-  data <- eigenvalues_sim
+  data <- PC_values_sim
   annotation <- "simulated"
 }else{
-  data <- eigenvalues
+  data <- PC_values
   annotation <- unique(skeleton_data_filtered$annotation)
 }
 
@@ -844,17 +1014,24 @@ plot_size = 7
 
 #here we divide in 50 equally spaced bins c(value,50)
 #and heatmap based on this
-PCs <- c("PC1$","PC2$","PC3","PC4","PC5","PC6")
+PCs <- c("^PC1$","^PC2$","^PC3$","^PC4$","^PC5$","^PC6$")
+
+#bin data (all PCs) into 50 equally spaced bins
+binned <- data %>%
+  select(ID, time,matches(PCs)) %>%
+  pivot_longer(!c(ID,time)) %>%
+  mutate(class = cut(value, 50))
+
+
 for (i in PCs){
 
-    binned <- data %>%
-      select(ID, time,matches(i)) %>%
-      pivot_longer(!c(ID,time)) %>%
-      mutate(class = cut(value, 50)) %>%
+    data_to_plot <- binned %>%
+      select(ID, time,name, class, value) %>%
+      filter(grepl(i, name)) %>%
       group_by(time, name,class) %>%
-      summarise(n_class = n())
+      summarise(n_class = n()) 
     
-    ggplot(binned, aes(x=class,y=time,fill=n_class)) +
+    ggplot(data_to_plot, aes(x=class,y=time,fill=n_class)) +
       geom_tile() +
       facet_wrap(vars(name),ncol=1) +
       scale_fill_viridis(option="viridis")+
@@ -869,14 +1046,87 @@ for (i in PCs){
 
 
 
+
+
+
+
+#generate overview videos/plot for one track (linear skeleton and PCs)
+```{r}
+
+save_path <- file.path(base_path,"plots","PC_video_one_track")
+dir.create(save_path)
+
+#sample 1 track
+sampled_track <- PC_values %>%
+  filter(length_frames > 100) %>%
+  sample_n(1) %>%
+  pull(dataset_trackID)
+
+
+PC_values %>%
+  filter(dataset_trackID %in% sampled_track)
+
+one_track <- skeleton_data_filtered2 %>%
+  filter(dataset_trackID %in% sampled_track) %>%
+  left_join(PC_values,by = intersect(names(skeleton_data_filtered2), names(PC_values))) %>%
+  ungroup()
+
+ggplot(one_track, aes(x=PC1, PC2,color=seconds))+
+    scale_x_continuous(limits=c(-1.5,1.5))+
+    scale_y_continuous(limits=c(-1.5,1.5))+
+    geom_path()+
+    geom_point(size=1.5)+
+    facet_wrap(vars(time),ncol=1)+
+    scale_color_viridis(option="mako")+
+    theme_classic()+
+    coord_equal()
+
+ggplot(one_track, aes(x=PC1, PC2,color=angle_velo))+
+    scale_x_continuous(limits=c(min(one_track$angle_velo),max(one_track$angle_velo)))+
+    scale_y_continuous(limits=c(min(one_track$angle_velo),min(one_track$angle_velo)))+
+    geom_path()+
+    geom_point(size=1.5)+
+    scale_color_viridis(option="turbo",limits=c(min(one_track$angle_velo),max(one_track$angle_velo)))+
+    # scale_color_viridis(option="turbo",limits=c(0,180))+
+    theme_classic()+
+    coord_equal()
+
+
+i<-0
+for (s in unique(one_track$seconds)){
+  
+  
+  plot_wave <- plot_wave_movie(one_track,s)+
+    theme(legend.position = "none")
+  plot_skeleton <- plot_skeleton_movie(one_track,"X","Y", s)+
+    theme(legend.position = "none")
+  plot_PCs <- plot_PCs_movie(one_track,s)
+  plot_PCs_linear <- plot_PCs_linear_movie(one_track,s)
+  
+  (plot_skeleton / 
+    plot_wave /
+    plot_PCs_linear)+
+  plot_layout(heights = c(0.5, 1,1))+
+  ggsave(file.path(save_path, paste0("PC_video_",paste(sampled_track,collapse="_"),"_",i , ".png")),width=5, height=10)
+
+  
+  i <- i+ 1
+  
+}
+
+```
+
+
+
+
 #generate overview videos for two tracks (i.e. one from each timerange)
 ```{r}
 
-save_path <- file.path(base_path,"plots","PC_video")
+save_path <- file.path(base_path,"plots","PC_video_two_tracks")
 dir.create(save_path)
 
 #sample 1 track per timepoint (early vs late)
-sampled_tracks <- eigenvalues %>%
+sampled_tracks <- PC_values %>%
   filter(length_frames > 100) %>%
   group_by(dataset_trackID,time) %>%
   nest() %>%
@@ -887,7 +1137,7 @@ sampled_tracks <- eigenvalues %>%
 
 two_tracks <- skeleton_data_filtered2 %>%
   filter(dataset_trackID %in% sampled_tracks) %>%
-  left_join(eigenvalues,by = intersect(names(skeleton_data_filtered2), names(eigenvalues)))
+  left_join(PC_values,by = intersect(names(skeleton_data_filtered2), names(PC_values)))
 
 ggplot(two_tracks, aes(x=PC1, PC2,color=seconds))+
     scale_x_continuous(limits=c(min(two_tracks$PC1),max(two_tracks$PC1)))+
@@ -986,14 +1236,14 @@ for (s in unique(two_simulated$seconds)){
 
 
 #sample 1 track per timepoint (early vs late)
-two_tracks_sim <- eigenvalues_sim %>%
+two_tracks_sim <- PC_values_sim %>%
   group_by(dataset_trackID,time) %>%
   nest() %>%
   group_by(time) %>%
   sample_n(1) %>%
   unnest(cols=c(data)) %>%
   #bring back angles
-  left_join(simulated_m,by = intersect(names(simulated_m), names(eigenvalues_sim))) %>%
+  left_join(simulated_m,by = intersect(names(simulated_m), names(PC_values_sim))) %>%
   #define initial values needed for estimating position from angles
   mutate(new_angle=0, X=1, Y=1) %>%
   group_by(dataset_trackID,seconds) %>%
@@ -1046,7 +1296,7 @@ for (s in unique(two_tracks_sim$seconds)){
 ```{r}
 
 
-eigenvalues %>%
+PC_values %>%
   filter(dataset_trackID %in% sampled_tracks) %>%
   ggplot(.,aes(x=numbering))+
     geom_line(aes(y=PC1),color="red")+
@@ -1056,8 +1306,8 @@ eigenvalues %>%
   ggsave(file.path(base_path,"test.png"),height=10,width=10)
 
 
-sampled_tracks <- sample(unique(eigenvalues_v$dataset_trackID),1)
-PC1 <- eigenvalues_v %>%
+sampled_tracks <- sample(unique(PC_values_v$dataset_trackID),1)
+PC1 <- PC_values_v %>%
   filter(dataset_trackID %in% sampled_tracks)
 PC1 <- ggplot(PC1, aes(x=numbering, y=PC1))+
   geom_line()+
@@ -1066,20 +1316,20 @@ PC1 <- ggplot(PC1, aes(x=numbering, y=PC1))+
 
 
 
-PC2 <- eigenvalues_v %>%
+PC2 <- PC_values_v %>%
   filter(dataset_trackID %in% sampled_tracks) %>%
   ggplot(., aes(x=numbering, y=PC2))+
     geom_line() +
     scale_y_continuous(limits=c(-1.5,1.5))
 
 
-PC3 <- eigenvalues_v %>%
+PC3 <- PC_values_v %>%
   filter(dataset_trackID %in% sampled_tracks) %>%
   ggplot(., aes(x=numbering, y=PC3))+
     geom_line() +
     scale_y_continuous(limits=c(-1.5,1.5))
 
-velocity <- eigenvalues_v %>%
+velocity <- PC_values_v %>%
   filter(dataset_trackID %in% sampled_tracks) %>%
   ggplot(., aes(x=numbering, y=velocity))+
     geom_line()
@@ -1090,6 +1340,6 @@ velocity <- eigenvalues_v %>%
 PC1 / PC2 / PC3 / velocity +
   ggsave(file.path(base_path,"test.png"),height=7)
 
-hist(eigenvalues$Duration_of_track)
+hist(PC_values$Duration_of_track)
 
 ```
