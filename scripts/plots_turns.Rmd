@@ -2,8 +2,8 @@
 ```{r, include=FALSE}
 
 #Set the location folder of the raw data (of all experiments you want to plot)
-base_path <- "/media/fpreuss/raid5/timelapses/analysis/200703/"
-target_path <- file.path(base_path,"data")
+base_path <- "/Users/fpreuss/Desktop/data/"
+target_path <- file.path(base_path,"raw_data")
 save_path <- file.path(base_path,"plots","turns")
 dir.create(save_path)
 ```
@@ -14,7 +14,7 @@ dir.create(save_path)
 
 #list of .rds files in data folder
 files_to_process <- list.files(target_path, "raw_data.rds", full.names = TRUE, ignore.case = TRUE)
-files_to_process <- grep("Agar_raw|Agar_with_NAD_raw|daf2_raw|MT14984_raw|OP50_raw|OP50_with_Az_NGM_raw", files_to_process, value=TRUE)
+files_to_process <- grep("Agar_raw|Agar_with_NAD_raw|OP50_raw|OP50_with_Az_NGM_raw", files_to_process, value=TRUE)
 
 
 #lower velocity limit for mode == roaming
@@ -28,6 +28,8 @@ angle_r <-15
 #load all .rds files and append to one data frame ('imported_data')
 load_and_summarise <- function(x) {
     readRDS(x) %>%
+    #estimate 15 minutes as lag before experiment
+    mutate(minutes = 15 + ((tp-1)*8+(tp-1)*0)) %>%
     mutate(hours = minutes / 60) %>%
     #round per hour
     mutate(hours_rounded = ceiling(hours)) %>%
@@ -46,8 +48,8 @@ imported_data <- files_to_process %>%
   map_df(.,load_and_summarise)
   
 
-created_file_path <- file.path(save_path,"201125_omega_turns.rds")
-saveRDS(imported_data, file = created_file_path)
+# created_file_path <- file.path(save_path,"201125_omega_turns.rds")
+# saveRDS(imported_data, file = created_file_path)
 
 ```
 
