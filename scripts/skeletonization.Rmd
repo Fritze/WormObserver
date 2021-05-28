@@ -108,6 +108,8 @@ for (file in files_to_process){
 ```{r message=FALSE, include=FALSE}
 
 target_path <- file.path(base_path, "data","posture")
+save_path <- file.path(base_path, "data", "posture","skeletonized_filtered")
+dir.create(save_path)
 
 min_frames <- 10
 
@@ -118,7 +120,7 @@ files_to_process <- list.files(target_path, "skeletonized.rds", full.names = TRU
 files_to_process_annotations <- unique(gsub("(.+)_timepoint.+","\\1",basename(files_to_process)))
 
 #get annotations that have already been processed
-annotations_processed <- gsub("\\d+\\_(.+)_skeletonized_filtered.+","\\1",list.files(save_path,pattern="filtered"))
+annotations_processed <- gsub("(.+)_skeletonized_filtered.+","\\1",list.files(save_path,pattern="filtered"))
 
 #get timepoints of this dataset that still have to be processed
 files_to_process_annotations <- files_to_process_annotations[!files_to_process_annotations %in% annotations_processed]
@@ -140,7 +142,7 @@ for (annotation in files_to_process_annotations){
       ungroup()
 
   cat("\nskeleton filtering done. now saving.")
-  created_file_path <- file.path(target_path,paste0(,annotation,"_skeletonized_filtered.rds"))
+  created_file_path <- file.path(target_path,paste0(annotation,"_skeletonized_filtered.rds"))
   saveRDS(imported_data, file = created_file_path)
   cat(paste0("\ndataset: ",annotation," was filtered \nand saved under: ", created_file_path))
   rm(imported_data)
