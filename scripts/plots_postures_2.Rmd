@@ -103,14 +103,14 @@ cluster_centers_reduced_grouped <- left_join(cluster_centers_reduced, postures_g
   select(annotation,newID,index,X,Y,angle, posture_grouped)
 
 #save clustering
-# saveRDS(cluster_centers_reduced_grouped,file.path(target_folder,paste0("cluster_centers_reduced_grouped","_k_",how_many_clusters,".RDS")))
+saveRDS(cluster_centers_reduced_grouped,file.path(target_folder,paste0("cluster_centers_reduced_grouped","_k_",how_many_clusters,".RDS")))
 
 ```
 
 #here we can load a dataset that was already clustered 
 ```{r, include=FALSE}
-path <- list.files(target_folder, pattern="cluster_centers_reduced_grouped",full.names = TRUE)
-cluster_centers_reduced_grouped <- readRDS(path)
+# path <- list.files(target_folder, pattern="cluster_centers_reduced_grouped",full.names = TRUE)
+# cluster_centers_reduced_grouped <- readRDS(path)
 
 ```
 
@@ -312,9 +312,24 @@ ggplot(data_for_plotting, aes(y=first_d,x=hours_rounded,color=annotation,fill=an
   facet_wrap(vars(posture_grouped,annotation),nrow=how_many_clusters,scales="free")+
   scale_fill_manual(values = pal)+
   scale_color_manual(values = pal)
-  ggsave(file.path(save_path,"firstd_posture_groups_relative_occurences_norm.png"),height=4,width=8)
+  ggsave(file.path(save_path,"firstd_posture_groups_relative_occurences_norm.png"),height=4,width=9)
 
 ```
+
+#plotting average curvature per posture groups
+```{r, include=FALSE}
+#
+ggplot(cluster_centers_reduced_grouped, aes(x=angle,fill=posture_grouped))+
+  geom_density(alpha=0.5,lwd=1)+
+  scale_x_continuous(limits=c(-1,1))+
+  theme_classic()+
+  scale_fill_manual(values=c("#EC008C", "#00A651"))+
+  ggsave(file.path(save_path, "postures_grouped_angle_density.png"),height=3,width=6)
+
+
+
+```
+
 
 #Use after calculating relative occurence of clusters
 ```{r, include=FALSE}
