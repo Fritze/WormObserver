@@ -23,18 +23,14 @@ cc_list <- list.files(target_folder,"_cluster_centers_reduced.RDS", full.names =
 cluster_centers_reduced <- cc_list %>%
   map_df(., load_cc)
 
-unique(cluster_centers_reduced$annotation)
 
 ```
 
 
 
-#clustering of posture libraries across annotations
-#this is done by another round of kmeans clustering this time only on posture libraries but across annotations/datasets
+#prepare data for clustering of posture libraries across annotations
 #also we now cluster (unified) x/y positions instead of angles, this seems to work better...
 ```{r, include=FALSE}
-#define the number of k for kmeans
-how_many_clusters <- 4
 
 plot_posture_examples <- function(data_to_plot,X,Y){
   ggplot(data_to_plot, aes_string(x=X,y=Y,color="angle"))+
@@ -60,22 +56,39 @@ ccr_for_clustering <- filter(cluster_centers_reduced,newID_sub == 1) %>%
   # mutate(newID = paste0("posture_", newID)) %>%
   column_to_rownames(var = "ID")
 
-# #the functions below perform the "elbow plot" for finding the right number of k clusters
-# # function to compute total within-cluster sum of square
-# wss <- function(k) {
-#   kmeans(ccr_for_clustering, k)$tot.withinss
-# }
-# 
-# # Compute and plot wss for k = 1 to k = 15
-# k.values <- 1:15
-# 
-# # extract wss for 2-15 clusters
-# wss_values <- map_dbl(k.values, wss)
-# 
-# plot(k.values, wss_values,
-#        type="b", pch = 19, frame = FALSE,
-#        xlab="Number of clusters K",
-#        ylab="Total within-clusters sum of squares")
+```
+
+#here we perform the "elbow plot" for finding the right number of k clusters
+```{r, include=FALSE}
+
+# function to compute total within-cluster sum of square
+wss <- function(k) {
+  k <- kmeans(ccr_for_clustering, k)
+  perc <- k$betweenss / k$totss
+  return(perc)
+}
+
+# Compute and plot wss for k = 1 to k = 15
+k_values <- 1:15
+
+# extract wss for 2-15 clusters
+wss_values <- data.frame(expvar = map_dbl(k_values, wss)) %>%
+  mutate(k=k_values)
+
+#do the plot
+ggplot(data=wss_values,aes(x=k, y=expvar))+
+  geom_point()+
+  geom_line()+
+  scale_x_continuous(breaks = seq(min(k_values), max(k_values)))+
+  theme_classic()
+
+```
+
+#perform the clustering
+#this is done by another round of kmeans clustering this time only on posture libraries but across annotations/datasets
+```{r, include=FALSE}
+#define the number of k for kmeans
+how_many_clusters <- 2
 
 #kmeans clustering is performed here
 k_ccr <- kmeans(ccr_for_clustering, how_many_clusters)
@@ -89,8 +102,17 @@ cluster_centers_reduced_grouped <- left_join(cluster_centers_reduced, postures_g
   mutate(posture_grouped = paste0("group_",posture_grouped)) %>%
   select(annotation,newID,index,X,Y,angle, posture_grouped)
 
+#save clustering
+# saveRDS(cluster_centers_reduced_grouped,file.path(target_folder,paste0("cluster_centers_reduced_grouped","_k_",how_many_clusters,".RDS")))
+
 ```
 
+#here we can load a dataset that was already clustered 
+```{r, include=FALSE}
+path <- list.files(target_folder, pattern="cluster_centers_reduced_grouped",full.names = TRUE)
+cluster_centers_reduced_grouped <- readRDS(path)
+
+```
 
 #Load data for quantifying posture group occurences (this is the angle_data_postures_per_dataset from "plot_postures.Rmd")
 #we also need this to get ID2 (which is the names of postures in the heatmap)
@@ -175,22 +197,45 @@ for (a in unique(angle_data_postures_per_dataset$annotation)){
 ```{r, include=FALSE}
 
 postures_grouped_statistics <- angle_data_postures_per_dataset %>%
-  #do this seperately for each annotation, dataset, timepoint (hours_rounded) and posture group
-  group_by(annotation,dataset_ID, hours_rounded,posture_grouped) %>%
-  #How often members of one posture group (adding all number of cluster members per tp per dataset within this group)
-  mutate(number_of_posture_members_per_tp_per_dataset = sum(number_of_cluster_members_per_tp_per_dataset)) %>%
-  #Normalize this with the numbers of postures per tp per tp 
+  group_by(annotation,dataset_ID, hours_rounded,posture_grouped,postures_per_tp_per_dataset) %>%
+  #Count members of one posture group (adding all number of cluster members per hours_rounded per dataset within this group)
+  summarise(number_of_posture_members_per_tp_per_dataset = sum(number_of_cluster_members_per_tp_per_dataset)) %>%
+  #do this seperately for each dataset, timepoint (== tp == hours_rounded) and posture group
+  group_by(dataset_ID, hours_rounded,posture_grouped) %>%
+  #Normalize this with the numbers of postures per tp per dataset
   mutate(perc_per_posture_grouped_per_dataset = number_of_posture_members_per_tp_per_dataset/postures_per_tp_per_dataset) %>%
-  #the rest is done across time (z-score calculation)
+  #also seperately for each annotation, timepoint (== tp == hours_rounded) and posture group
+  group_by(annotation, hours_rounded,posture_grouped) %>%
+  mutate(number_of_posture_members_per_tp_per_annotation = sum(number_of_posture_members_per_tp_per_dataset)) %>%
+  mutate(postures_per_tp_per_annotation=sum(postures_per_tp_per_dataset)) %>%
+  mutate(perc_per_posture_grouped_per_annotation = number_of_posture_members_per_tp_per_annotation/postures_per_tp_per_annotation) %>%
+  select(dataset_ID,
+         number_of_posture_members_per_tp_per_dataset,
+         postures_per_tp_per_dataset,
+         perc_per_posture_grouped_per_dataset,
+         number_of_posture_members_per_tp_per_annotation,
+         postures_per_tp_per_annotation,
+         perc_per_posture_grouped_per_annotation) %>%
+  arrange(hours_rounded) %>%
+  #the rest is done across time (z-score calculation) per dataset
   group_by(dataset_ID, posture_grouped) %>%
   mutate(sd_perc_per_posture_grouped_per_dataset = sd(perc_per_posture_grouped_per_dataset)) %>%
   mutate(mean_perc_per_posture_grouped_per_dataset = mean(perc_per_posture_grouped_per_dataset)) %>%
   mutate(perc_norm_per_posture_grouped_per_dataset =  (perc_per_posture_grouped_per_dataset-mean_perc_per_posture_grouped_per_dataset)/sd_perc_per_posture_grouped_per_dataset) %>%
+  #the rest is done across time (z-score calculation) per annotation
+  group_by(annotation, posture_grouped) %>%
+  mutate(sd_perc_per_posture_grouped_per_annotation = sd(perc_per_posture_grouped_per_annotation)) %>%
+  mutate(mean_perc_per_posture_grouped_per_annotation = mean(perc_per_posture_grouped_per_annotation)) %>%
+  mutate(perc_norm_per_posture_grouped_per_annotation =  (perc_per_posture_grouped_per_annotation-mean_perc_per_posture_grouped_per_annotation)/sd_perc_per_posture_grouped_per_annotation) %>%
   group_by(annotation, dataset_ID, hours_rounded, posture_grouped,
            perc_per_posture_grouped_per_dataset,
+           perc_per_posture_grouped_per_annotation,
            sd_perc_per_posture_grouped_per_dataset,
            mean_perc_per_posture_grouped_per_dataset,
-           perc_norm_per_posture_grouped_per_dataset) %>%
+           perc_norm_per_posture_grouped_per_dataset,
+           sd_perc_per_posture_grouped_per_annotation,
+           mean_perc_per_posture_grouped_per_annotation,
+           perc_norm_per_posture_grouped_per_annotation) %>%
   summarise()
   
 
@@ -213,33 +258,63 @@ data_for_plotting <- postures_grouped_statistics %>%
 
 ggplot(data_for_plotting, aes(y=perc_norm_per_posture_grouped_per_dataset,x=hours_rounded,color=annotation))+
   geom_point(alpha=0.5)+
+  # geom_point(data=data_for_plotting, aes(y=perc_norm_per_posture_grouped_per_annotation, x=hours_rounded),color="black",fill="black",shape=21,alpha=0.75)+
+  geom_line(data=data_for_plotting, aes(y=perc_norm_per_posture_grouped_per_annotation, x=hours_rounded),color="black")+
   scale_y_continuous(limits = c(-3,3))+
   scale_x_continuous(breaks = seq(1,12))+
-  geom_smooth()+
+  # geom_smooth()+
   theme_bw()+
   theme(
   strip.background = element_rect(fill="white"))+
-  facet_wrap(vars(posture_grouped,annotation),ncol=how_many_clusters,scales="free")+
+  facet_wrap(vars(posture_grouped,annotation),nrow=how_many_clusters,scales="free")+
   scale_fill_manual(values = pal)+
   scale_color_manual(values = pal)+
-  ggsave(file.path(save_path,"posture_groups_relative_occurences_norm.png"),height=7,width=8)
+  ggsave(file.path(save_path,"posture_groups_relative_occurences_norm.png"),height=4,width=8)
 
 ggplot(data_for_plotting, aes(y=perc_per_posture_grouped_per_dataset,x=hours_rounded,color=annotation))+
   geom_point(alpha=0.5)+
-  scale_y_continuous(limits = c(0,0.5))+
+  geom_line(data=data_for_plotting, aes(y=perc_per_posture_grouped_per_annotation, x=hours_rounded),color="black")+
+  scale_y_continuous(limits = c(0,1))+
   scale_x_continuous(breaks = seq(1,12))+
-  geom_smooth()+
   theme_bw()+
   theme(
   strip.background = element_rect(fill="white"))+
-  facet_wrap(vars(posture_grouped,annotation),ncol=how_many_clusters,scales="free")+
+  facet_wrap(vars(posture_grouped,annotation),nrow=how_many_clusters,scales="free")+
   scale_fill_manual(values = pal)+
   scale_color_manual(values = pal)+
-  ggsave(file.path(save_path,"posture_groups_relative_occurences.png"),height=7,width=8)
+  ggsave(file.path(save_path,"posture_groups_relative_occurences.png"),height=4,width=8)
 
 
 ```
 
+#plotting first derivatives of relative occurence of (sub-)posture groups
+#only for z-score normalized data
+```{r, include=FALSE}
+selected_annotations <- c("Agar","OP50_with_Az_NGM","OP50","daf2")
+
+
+data_for_plotting <- postures_grouped_statistics %>%
+  filter(annotation %in% selected_annotations) %>%
+  mutate(annotation=factor(annotation, levels=selected_annotations)) %>%
+  group_by(dataset_ID,posture_grouped) %>%
+  mutate(first_d = perc_norm_per_posture_grouped_per_annotation - lag(perc_norm_per_posture_grouped_per_annotation)) %>%
+  select(dataset_ID, annotation,hours_rounded,posture_grouped,first_d) %>%
+  ungroup()
+
+
+ggplot(data_for_plotting, aes(y=first_d,x=hours_rounded,color=annotation,fill=annotation))+
+  # geom_line(color="black")+
+  geom_smooth()+
+  scale_x_continuous(breaks = seq(1,12))+
+  theme_bw()+
+  theme(
+  strip.background = element_rect(fill="white"))+
+  facet_wrap(vars(posture_grouped,annotation),nrow=how_many_clusters,scales="free")+
+  scale_fill_manual(values = pal)+
+  scale_color_manual(values = pal)
+  ggsave(file.path(save_path,"firstd_posture_groups_relative_occurences_norm.png"),height=4,width=8)
+
+```
 
 #Use after calculating relative occurence of clusters
 ```{r, include=FALSE}
