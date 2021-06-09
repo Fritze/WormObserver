@@ -102,15 +102,6 @@ cluster_centers_reduced_grouped <- left_join(cluster_centers_reduced, postures_g
   mutate(posture_grouped = paste0("group_",posture_grouped)) %>%
   select(annotation,newID,index,X,Y,angle, posture_grouped)
 
-#save clustering
-saveRDS(cluster_centers_reduced_grouped,file.path(target_folder,paste0("cluster_centers_reduced_grouped","_k_",how_many_clusters,".RDS")))
-
-```
-
-#here we can load a dataset that was already clustered 
-```{r, include=FALSE}
-# path <- list.files(target_folder, pattern="cluster_centers_reduced_grouped",full.names = TRUE)
-# cluster_centers_reduced_grouped <- readRDS(path)
 
 ```
 
@@ -290,7 +281,7 @@ ggplot(data_for_plotting, aes(y=perc_per_posture_grouped_per_dataset,x=hours_rou
 #plotting first derivatives of relative occurence of (sub-)posture groups
 #only for z-score normalized data
 ```{r, include=FALSE}
-selected_annotations <- c("Agar","OP50_with_Az_NGM","OP50","daf2")
+selected_annotations <- c("Agar","OP50_with_Az_NGM","OP50")
 
 
 data_for_plotting <- postures_grouped_statistics %>%
@@ -299,7 +290,8 @@ data_for_plotting <- postures_grouped_statistics %>%
   group_by(dataset_ID,posture_grouped) %>%
   mutate(first_d = perc_norm_per_posture_grouped_per_annotation - lag(perc_norm_per_posture_grouped_per_annotation)) %>%
   select(dataset_ID, annotation,hours_rounded,posture_grouped,first_d) %>%
-  ungroup()
+  ungroup() %>%
+  filter(posture_grouped == 1)
 
 
 ggplot(data_for_plotting, aes(y=first_d,x=hours_rounded,color=annotation,fill=annotation))+
@@ -309,10 +301,10 @@ ggplot(data_for_plotting, aes(y=first_d,x=hours_rounded,color=annotation,fill=an
   theme_bw()+
   theme(
   strip.background = element_rect(fill="white"))+
-  facet_wrap(vars(posture_grouped,annotation),nrow=how_many_clusters,scales="free")+
+  facet_wrap(vars(posture_grouped,annotation),nrow=1,scales="free_x")+
   scale_fill_manual(values = pal)+
-  scale_color_manual(values = pal)
-  ggsave(file.path(save_path,"firstd_posture_groups_relative_occurences_norm.png"),height=4,width=9)
+  scale_color_manual(values = pal)+
+  ggsave(file.path(save_path,"firstd_posture_groups_relative_occurences_norm.png"),height=3,width=9)
 
 ```
 
