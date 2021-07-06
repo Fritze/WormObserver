@@ -322,113 +322,33 @@ ggplot(cluster_centers_reduced_grouped, aes(x=angle,fill=posture_grouped))+
 
 ```
 
-
-#Use after calculating relative occurence of clusters
+#plotting average posture
 ```{r, include=FALSE}
-# #define color palette for plots
-# library(wesanderson)
-# mr3 <- wes_palettes$Moonrise3[3:2]
-# 
-# save_path <- file.path(base_path,"plots","posture","boxplots_posture_freqs")
-# dir.create(save_path)
-# 
-# 
-# #new function to plot posture examples
-# plot_posture_examples <- function(data_to_plot,X,Y){
-#   ggplot(data_to_plot, aes_string(x=X,y=Y,color="angle"))+
-#     geom_point(size=4) +
-#     geom_path(size=2,lineend = "round") +
-#     theme_void()+
-#     coord_fixed(ratio = 1)+
-#     #add some buffer on y axis to show full skeleton
-#     scale_y_continuous(limits=c(0,1.1))+
-#     scale_color_gradient2(low = "deepskyblue", mid = "lavender",
-#                           high = "deeppink",midpoint=0,limits=c(-1,1),na.value="grey") +
-#     # scale_color_viridis(option = "plasma",limits=c(-1,1))+
-#     theme(plot.title = element_text(face = "bold"))
-# }
-# #get names of all newIDs
-# all_IDs <- unique(cluster_centers_reduced$newID)
-# 
-# #for every cluster ID, calculate wilcoxon rank test pvalue between time bins and append to one matrix
-# all_ps <- NULL
-# for (i in all_IDs) {
-#   p <- angle_data_postures_per_dataset %>%
-#     #only one clusterID
-#     filter(newID == i) %>%
-#     #only for timepoints lower than 6 hours
-#     filter(hours_rounded <= 6) %>%
-#     #create time bins
-#     mutate(time_bin = ifelse(hours_rounded <= 3, "< 3","> 3")) %>%
-#     #calculate pvalue for only annotation
-#     filter(annotation == "N2 RT no food") %>%
-#     select(perc_per_dataset,time_bin) %>%
-#     #use the perc_per_dataset for calculation
-#     summarise(Wilcox = wilcox.test(perc_per_dataset~time_bin, data=., paired=FALSE)$p.value) %>%
-#     mutate(newID = i) %>%
-#     mutate(Wilcox = as.numeric(Wilcox))
-#   
-#   all_ps <- rbind(all_ps, p)
-# }
-# 
-# all_ps %>%
-#   arrange(Wilcox) %>%
-#   slice(1:30)
-# 
-# #take the clusterIDs with the lowest pvalue
-# significant_IDs <- all_ps %>%
-#   arrange(Wilcox) %>%
-#   slice(1:30) %>%
-#   pull(newID)
-# 
-# #for all IDs plot boxplot and corresponding plosture
-# for (i in all_IDs){
-#   
-#   pvalue <- all_ps %>%
-#     filter(newID == i) %>%
-#     select(Wilcox) %>%
-#     pull()
-#   
-#   data_to_plot <- angle_data_postures_per_dataset %>%
-#     filter(newID %in% i) %>%
-#     #only for timepoints lower than 6 hours
-#     filter(hours_rounded <= 6) %>%
-#     mutate(time_bin = ifelse(hours_rounded <= 3, "< 3h","> 3h")) %>%
-#     #frequency * 1000
-#     mutate(perc_per_dataset = perc_per_dataset * 1000)
-#   
-#   data_to_plot$annotation <- factor(data_to_plot$annotation, levels=rev(unique(data_to_plot$annotation)))
-#   
-#   boxplots <- ggplot(data_to_plot, aes(x=time_bin, y=perc_per_dataset))+
-#    geom_boxplot(aes(fill=annotation),lwd=1.2,outlier.shape=NA)+
-#    geom_point(aes(fill=annotation),position = position_jitterdodge(),shape=21,size=2.5)+
-#    xlab("hours") + ylab("frequency / 1000")+
-#     scale_fill_manual(values=mr3)+
-#     theme_classic()+
-#     theme(
-#       legend.direction="vertical",
-#       legend.position = "right",
-#       strip.background = element_rect(colour = "white", fill = "white"),
-#       panel.spacing = unit(1, "lines"),
-#       strip.text.x = element_text(size=15,colour = "black", face = "bold"),
-#       axis.text.x = element_text(size=30),
-#       axis.title.x = element_text(size=20),
-#       axis.text.y = element_text(size=30),
-#       axis.title.y = element_text(size=20),
-#       axis.ticks=element_line(size=1.5),
-#       axis.ticks.length=unit(0.25,"cm"),
-#       axis.line = element_line(colour = 'black', size = 1.5),
-#       legend.key.size = unit(2.5, "cm"))
-#   
-#   skeletons <- plot_posture_examples(filter(cluster_centers_reduced,newID %in% i & newID_sub == 1), "X","Y") +
-#     geom_point(data=filter(cluster_centers_reduced,index == 2 & newID == i & newID_sub == 1), aes(X,Y),color="orange",size=5,shape=17)+
-#     ggtitle(paste0("posture_",i,"\npvalue= ",round(pvalue,10)))
-#   
-#   boxplots + skeletons +
-#     plot_layout(heights = unit(c(5, 1), c('cm', 'null')))+
-#     ggsave(file.path(save_path,paste0("boxplot_freq_posture_",i,".png")),width=7,height=5)
-#   
-# }
-# 
+#select one dataset (i.e. OP50)
+s <- cluster_centers_reduced_grouped %>%
+  filter(annotation == "OP50") %>%
+  group_by(index,annotation, posture_grouped) %>%
+  #shift all postures of "group_2 to the left
+  mutate(X=ifelse(posture_grouped == "group_2",-X-0.25,X)) %>%
+  #manually select 2 posture to be highlighted
+  mutate(highlight=ifelse(newID %in% c(82,25),"YES","NO"))
+
+#do the plot
+ggplot(s)+
+  geom_path(data=s,aes(X,Y,group=newID),color="grey",alpha=0.8)+
+  geom_path(data=filter(s,highlight=="YES"),aes(X,Y,group=newID,color=angle))+
+  geom_point(data=filter(s,highlight=="YES"),aes(X,Y,group=newID,fill=angle,color=angle))+
+  geom_point(data=filter(s,highlight=="YES" & index==2), aes(X,Y),color="orange",size=3,shape=17) +
+  scale_color_gradient2(low = "deepskyblue", mid = "lavender",
+                        high = "deeppink",midpoint=0,limits=c(-1,1),na.value="grey") +
+  scale_fill_gradient2(low = "deepskyblue", mid = "lavender",
+                        high = "deeppink",midpoint=0,limits=c(-1,1),na.value="grey") +
+  # theme_classic()+
+  theme_void()+
+  facet_wrap(vars(annotation))+
+  coord_fixed(ratio = 1)+
+  ggsave(file.path(save_path, "postures_grouped_overlay_OP50.png"),height=3,width=6)
+
+
 
 ```
