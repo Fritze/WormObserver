@@ -3,7 +3,7 @@
 For any question, please drop me a line at:
 Friedrich.Preusser[at]mdc-berlin.de
 
-![Sketch](https://github.com/Fritze/WormObserver/blob/master/images_readme/WormObserver_sketch.png)
+![Sketch](https://github.com/Fritze/WormObserver/blob/master/images_readme/wormobserver_scheme_new.png)
 
 # A lightweight solution for adding a Raspberry Pi Camera to a stereoscopic microscope
 

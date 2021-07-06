@@ -2,8 +2,8 @@
 #Select files to load
 #We need the clustering file containing the mean positions of each cluster as well as the skeletons filtered file with clusters attached
 ```{r, include=FALSE}
-base_path <- "/media/fpreuss/raid5/timelapses/analysis/200703/"
-target_folder <- "/media/fpreuss/raid5/timelapses/analysis/200703/data/posture/postures_clustered"
+base_path <- "/Users/fpreuss/Desktop/data/"
+target_folder <- "/Users/fpreuss/Desktop/data/postures_clustered"
 
 annotations_to_process<-list.files(target_folder,full.names = TRUE)
 
@@ -35,10 +35,6 @@ for (i in annotations_to_process){
   #cluster <- readRDS(clustering_filepath)
   #cluster_centers_reduced <- readRDS(cluster_centers_reduced_filepath)
   
-  
-  
-  
-  #calculate relative occurence of clusters
   
   #add clusters to initial skeleton dataset that was used for kmeans clustering
   #also calculate relative occurences of postures (i.e. clusters) both total and per annotation
@@ -175,8 +171,7 @@ for (i in annotations_to_process){
     arrange(newID,hours_rounded,annotation,dataset_ID)
   
   annotation <- unique(angle_data_postures$annotation)
-  saveRDS(angle_data_postures_per_dataset, file.path(target_folder,paste0(annotation,"_angle_data_postures_per_dataset.RDS")))
-  
+
   
   
   #Plot heatmaps for relative occurence of posture
@@ -208,7 +203,7 @@ for (i in annotations_to_process){
   #get all annotations
   annotations <- unique(angle_data_postures$annotation)
   #define the normalizations underlying the heatmap plots
-  normalizations <- c("perc","perc_norm","rM_norm")
+  normalizations <- c("perc_norm")
   
   
   for (a in annotations){
@@ -317,7 +312,10 @@ for (i in annotations_to_process){
       ggsave(file.path(save_path,paste0("heatmap_",paste0(a,collapse="+"),"_",n,".png")),width=49,height=30)
     
    
+      #for each annotation save data frame with relative occurence of posters and newID2 (ordering like in heatmap)
+  saveRDS(heatmap_data_to_plot_per_dataset, file.path(target_folder,paste0(annotation,"_",n,"_angle_data_postures_per_dataset.RDS")))
     }
+
   }
 }
 ```
