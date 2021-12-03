@@ -1,74 +1,29 @@
+# Use this script after running the KNIME image analysis workflow for all datasets you want to analyse.
+# Needed: A metadata file that is located in the parent folder (i.e. one directory above of the timelapses folder that contains the analysed datasets)
+# This file should be named "timelapses_metadata.txt" and contain the information about the condition in the following format: dataset_ID condition
+# To run the script type: Rscript data_grouping.R "the location of your timelapses folder", e.g. Rscript data_grouping.R /media/fpreuss/raid5/timelapses/analysis/paper/timelapses
 
+# This script does four things:
+# 1: for each experiment, it groups all timepoint .zip files (as given out by the KNIME workflow) and appends them to one large table
+# 2: for each experiment, it appends the metadata information from the metadata.txt file (that is created on the Raspberry Pi at the beginning of the acquisition) to the table
+# 3: All experiments of the same condition (as indicated by the timelapses_metadata.txt file) are grouped together
+# 4: For each condition, one RDS file with the ending "_raw_data.rds" is created.
 
-```{r, include=FALSE}
+library("tidyverse")
+library("data.table")
 
-#define data paths
-base_path <- "/media/fpreuss/raid5/timelapses/"
-
-```
-
-```{r, include=FALSE}
-
-save_path <- file.path(base_path,"analysis", "paper","data")
+#get file path from command line
+timelapses_file_path <- commandArgs(trailingOnly = TRUE)[1]
+#create file path for saving
+save_path <- file.path(dirname(timelapses_file_path),"data","raw")
+#catch timelapses_metadata.txt location
+metadata_file_path <- file.path(file.path(dirname(timelapses_file_path), "timelapses_metadata.txt"))
+#create the save path directories
 dir.create(save_path)
 
-
-
-list_of_datasets <- matrix(c(
-  # "2020-06-22_17-58-37", "OP50",
-  # "2020-06-23_17-58-40", "OP50",
-  # "2020-06-25_17-58-07", "OP50",
-  # "2020-11-18_18-54-57", "OP50 with Az NGM",
-  # "2020-11-20_18-41-05", "OP50 with Az NGM",
-  # "2020-11-23_17-13-46","OP50 with Az NGM"
-  "2021-04-15_18-05-05", "OP50 with Az NGM_long_1",
-  "2021-04-23_16-36-29", "OP50 with Az NGM_long_2"
-  # "2019-03-25_18-10-06", "NGM",
-  # "2019-11-18_18-43-57", "NGM",
-  # "2019-11-20_17-29-55", "NGM",
-  # "2020-05-25_18-48-32", "NGM RT",
-  # "2020-05-26_18-19-46", "NGM RT",
-  # "2020-05-27_20-33-10", "NGM RT",
-  # "2020-06-04_19-04-35", "Agar",
-  # "2020-06-08_17-57-26", "Agar",
-  # "2020-12-03_13-21-25", "Agar"
-  # "2020-07-16_18-36-46","Agar with NAD",
-  # "2020-07-17_12-47-20", "Agar with NAD",
-  # "2020-07-24_19-06-57", "Agar with NAD",
-  # "2020-07-27_16-34-21", "Agar with NAD",
-  # "2020-08-27_12-06-16", "MT14984",
-  # "2020-09-02_18-49-24", "MT14984",
-  # "2020-09-09_18-42-17","MT14984",
-  # "2019-04-23_17-46-08", "daf2",
-  # "2019-05-07_12-15-40", "daf2",
-  # "2020-02-20_18-53-49", "OP50 after 6h exit",
-  # "2020-02-21_15-58-43", "OP50 after 6h exit",
-  # "2020-03-03_19-35-55", "OP50 after 6h exit",
-  # "2020-02-26_18-31-08", "NGM after 6h exit",
-  # "2020-02-27_17-51-43", "NGM after 6h exit",
-  # "2020-02-28_17-38-15", "NGM after 6h exit",
-  # "2020-11-11_11-14-36", "OP50_long_1",
-  # "2020-11-02_14-47-38", "OP50_long_2",
-  # "2020-11-03_17-51-40", "Agar_long_1",
-  # "2020-12-04_12-19-53", "Agar_long_2",
-  # "2021-03-29_17-50-33", "KQ1366 OP50",
-  # "2021-03-30_17-52-54","KQ1366 OP50",
-  # # "2021-04-14_17-37-14", "KQ1366 OP50"
-  # "2021-03-30_17-52-54","KQ1366_long_1",
-  # "2021-04-14_17-37-14", "KQ1366_long_2",
-  # "2021-03-25_13-19-30","BAT2206",
-  # "2021-03-25_13-19-30","BAT2206_long_1"
-  # "2021-04-03_17-56-49","BAT2206",
-  #"2021-04-20_17-38-47", "BAT2198",
-  # "2021-04-20_17-38-47", "BAT2198_long_1",
-  # "2021-04-21_18-39-40", "HB101",
-  # "2021-04-21_18-39-40", "HB101_long_1",
-  # "2021-06-07_18-01-28", "Agar_short_1",
-  # "2021-06-07_18-28-13", "OP50_long_3",
-  # "2021-06-08_17-46-49", "Agar_short_2",
-  # "2021-06-08_18-19-12", "OP50_long_4"
-  # 
-  ),byrow = TRUE,ncol=2)
+#extract list of datasets to process from "timelapses_metadata.txt" file
+list_of_datasets <- as.matrix(read.table(metadata_file_path))
+# print(list_of_datasets)
 
 colnames(list_of_datasets) <- c("dataset_ID", "annotation")
 
@@ -80,10 +35,11 @@ nested_list_of_datasets <- list_of_datasets %>%
 for (row in 1:nrow(nested_list_of_datasets)){
   target_folder_general <-as.character(pull(unnest(nested_list_of_datasets[row,2],cols=c(data))))
   annotation <- as.character(pull(nested_list_of_datasets[row,1]))
-  target_folder_analysis <- file.path(base_path, target_folder_general, "analysis")
-  
+  cat("\n\nCurrently processing ", annotation, "\n\n")
+  target_folder_analysis <- file.path(timelapses_file_path, target_folder_general, "analysis")
+
   #load metadata (for all datasets)
-  metadata_file <- list.files(file.path(base_path,target_folder_general),pattern=".+\\_metadata.txt$", full.names = TRUE)
+  metadata_file <- list.files(file.path(timelapses_file_path,target_folder_general),pattern=".+\\_metadata.txt$", full.names = TRUE)
   metadata <- data.frame(sapply(metadata_file, function (x) read.delim(x,header=FALSE,check.names = FALSE)))
   colnames(metadata) <- metadata_file
   colnames(metadata) <- as.character(gsub(".+\\/", "",colnames(metadata)))
@@ -91,25 +47,25 @@ for (row in 1:nrow(nested_list_of_datasets)){
   time_elapsed <- apply(metadata,2, function(x) as.numeric(gsub(".+\\s([0-9]+).*", "\\1",x[grepl("Time elapsed.+\\:\\s(.+)",x)])))
   time_elapsed <- as.data.frame(time_elapsed)
   time_elapsed$dataset <- colnames(metadata)
-  
-  
+
+
   #timepoint length, in minutes
   #attention to divide everything by 60, because this value is entered in seconds
   timepoint_length <- apply(metadata,2, function(x) as.numeric(gsub(".+\\:\\s(.+)", "\\1",x[grepl("Timepoint length\\:\\s(.+)\\.",x)])))/60
   timepoint_length <- as.data.frame(timepoint_length)
   timepoint_length$dataset <- colnames(metadata)
-  
-  
+
+
   #timestep, in minutes
   timestep_length <- apply(metadata,2, function(x) as.numeric(gsub(".+every(.+)minutes\\.", "\\1",x[grepl(".+every(.+)minutes\\.",x)])))
   timestep_length <- as.data.frame(timestep_length)
   timestep_length$dataset <- colnames(metadata)
-  
+
   #plate type
   plate_type <- apply(metadata,2, function(x) gsub(".+\\,(.+)\\,.+", "\\1",x[grepl("Timelapse plate type\\:",x)]))
   plate_type <- as.data.frame(plate_type)
   plate_type$dataset <- colnames(metadata)
-  
+
   #worm type
   worm_type <- apply(metadata,2, function(x) gsub(".+\\:\\s(.+)", "\\1",x[grepl("Used line\\:",x)]))
   worm_type <- as.data.frame(worm_type)
@@ -121,11 +77,12 @@ for (row in 1:nrow(nested_list_of_datasets)){
     files <- sort(as.numeric(gsub("(\\d+)\\..+","\\1",list.files(target_folder_analysis,pattern=".zip"))))
     file.path(target_folder_analysis,paste0(files, ".csv.zip"))
   }
-  
-  
+
+
   imported_data <-  unlist(map(target_folder_analysis,find_zip_files)) %>%
-    map_df(.,function(x) read_csv(x, col_types=cols(),col_names=TRUE) %>%
-    mutate(file_name=x)) %>%
+    #we select only certain columns to be read in to reduce memory usage
+    map_df(.,function(x) fread(cmd=paste0("unzip -cq ", x),head=TRUE, select=c(1:23,37:41, 44:47)) %>%
+             mutate(file_name=x)) %>%
     mutate(dataset_ID = gsub(".+\\/([0-9]+\\-[0-9]+\\-[0-9]+\\_[0-9]+\\-[0-9]+\\-[0-9]+)\\/.+", "\\1",file_name)) %>%
     #replace all whitespaces in column names with "_"
     rename_all(list(~gsub("\\s", "_",.))) %>%
@@ -140,22 +97,17 @@ for (row in 1:nrow(nested_list_of_datasets)){
     mutate(annotation = annotation) %>%
     select(c(TrackID, Number_of_gaps, Mean_velocity, Maximal_velocity, Minimal_velocity, Median_velocity,
              Velocity_standard_deviation, Duration_of_track, Track_start, Track_stop, Track_displacement,
-             location_x, location_y, Size, Circularity, Convexity, Eccentricity, Main, Minimum, Maximum,
-             Major, Minor, Boundary, Boxivity, Roundness, Solidity, Prediction, Prediction_confidence,
+             location_x, location_y, Size, Circularity, Prediction, Prediction_confidence,
              frame, recorded_fps, downsampled_to, bitmask, bitmask_dim_X, bitmask_dim_Y, tp, file_name,
              dataset_ID, time_elapsed, timepoint_length, timestep_length, plate_type, worm_type,
              minutes, annotation))
-  
 
-    annotation_underscored <- gsub(" ", "_", annotation)
-    created_file_path <- file.path(save_path,paste0(annotation_underscored, "_raw_data.rds"))
-    saveRDS(imported_data, file = created_file_path)
-    cat(paste0("\n\ndatasets ",paste(unique(imported_data$dataset_ID), collapse=" & "), " were processed \nand saved under: ", created_file_path))
-    rm(imported_data)
-    gc()
-    
+
+  annotation_underscored <- gsub(" ", "_", annotation)
+  created_file_path <- file.path(save_path,paste0(annotation_underscored, "_raw_data.rds"))
+  saveRDS(imported_data, file = created_file_path)
+  cat(paste0("\n\ndatasets ",paste(unique(imported_data$dataset_ID), collapse=" & "), " were processed \nand saved under: ", created_file_path))
+  rm(imported_data)
+  gc()
+
 }
-
-
-```
-
