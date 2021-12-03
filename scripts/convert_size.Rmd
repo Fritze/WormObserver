@@ -30,7 +30,7 @@ for (file in files_to_process){
   imported_data_temp <- readRDS(file) %>%
     #minimal track displacement to exclude artifacts of aggregating worms happening after ca. 16h
     filter(Track_displacement > 150) %>%
-    #only tracks that are longer than 10s
+    #only tracks that are longer than 20s
     #same as for calculating motion parameters
     mutate(Duration_of_track_in_s = Duration_of_track/downsampled_to) %>%
     filter(Duration_of_track_in_s > 20) %>%
