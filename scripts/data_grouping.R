@@ -1,5 +1,5 @@
 # Use this script after running the KNIME image analysis workflow for all datasets you want to analyse.
-# Needed: A metadata file that is located in the parent folder (i.e. one directory above of the timelapses folder that contains the analysed datasets)
+# Needed: A metadata file that is located in the timelapses folder (i.e. the directory that containts the acquired experiments)
 # This file should be named "timelapses_metadata.txt" and contain the information about the condition in the following format: dataset_ID condition
 # To run the script type: Rscript data_grouping.R "the location of your timelapses folder", e.g. Rscript data_grouping.R /media/fpreuss/raid5/timelapses/analysis/paper/timelapses
 
@@ -15,21 +15,27 @@ library("data.table")
 #get file path from command line
 timelapses_file_path <- commandArgs(trailingOnly = TRUE)[1]
 #create file path for saving
-save_path <- file.path(dirname(timelapses_file_path),"data","raw")
+save_path <- file.path(dirname(timelapses_file_path),"data","skeletonized")
 #catch timelapses_metadata.txt location
-metadata_file_path <- file.path(file.path(dirname(timelapses_file_path), "timelapses_metadata.txt"))
+metadata_file_path <- file.path(file.path(timelapses_file_path, "timelapses_metadata.txt"))
 #create the save path directories
 dir.create(save_path)
 
 #extract list of datasets to process from "timelapses_metadata.txt" file
 list_of_datasets <- as.matrix(read.table(metadata_file_path))
 # print(list_of_datasets)
+#get conditions that are already processed
+conditions_processed <- gsub("(.+)\\_raw_data.rds","\\1",list.files(save_path))
+
 
 colnames(list_of_datasets) <- c("dataset_ID", "annotation")
 
 nested_list_of_datasets <- list_of_datasets %>%
   as.data.frame(.) %>%
-  nest(data=c(dataset_ID))
+  nest(data=c(dataset_ID)) %>%
+  #filter out conditions that were already processed
+  filter(!annotation %in% conditions_processed)
+
 
 
 for (row in 1:nrow(nested_list_of_datasets)){
@@ -81,7 +87,7 @@ for (row in 1:nrow(nested_list_of_datasets)){
 
   imported_data <-  unlist(map(target_folder_analysis,find_zip_files)) %>%
     #we select only certain columns to be read in to reduce memory usage
-    map_df(.,function(x) fread(cmd=paste0("unzip -cq ", x),head=TRUE, select=c(1:23,37:41, 44:47)) %>%
+    map_df(.,function(x) fread(cmd=paste0("unzip -cq ", x),head=TRUE, select=c(1,5:23,37:41, 44:47)) %>%
              mutate(file_name=x)) %>%
     mutate(dataset_ID = gsub(".+\\/([0-9]+\\-[0-9]+\\-[0-9]+\\_[0-9]+\\-[0-9]+\\-[0-9]+)\\/.+", "\\1",file_name)) %>%
     #replace all whitespaces in column names with "_"
