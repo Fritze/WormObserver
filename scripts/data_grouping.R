@@ -13,9 +13,11 @@ library("tidyverse")
 library("data.table")
 
 #get file path from command line
-timelapses_file_path <- commandArgs(trailingOnly = TRUE)[1]
+# timelapses_file_path <- commandArgs(trailingOnly = TRUE)[1]
+timelapses_file_path <- "/media/fpreuss/raid5/timelapses/analysis/paper/timelapses"
+
 #create file path for saving
-save_path <- file.path(dirname(timelapses_file_path),"data","skeletonized")
+save_path <- file.path(dirname(timelapses_file_path),"data","raw")
 #catch timelapses_metadata.txt location
 metadata_file_path <- file.path(file.path(timelapses_file_path, "timelapses_metadata.txt"))
 #create the save path directories
@@ -27,6 +29,7 @@ list_of_datasets <- as.matrix(read.table(metadata_file_path))
 #get conditions that are already processed
 conditions_processed <- gsub("(.+)\\_raw_data.rds","\\1",list.files(save_path))
 
+#print(conditions_processed)
 
 colnames(list_of_datasets) <- c("dataset_ID", "annotation")
 
@@ -36,7 +39,7 @@ nested_list_of_datasets <- list_of_datasets %>%
   #filter out conditions that were already processed
   filter(!annotation %in% conditions_processed)
 
-
+#print(nested_list_of_datasets)
 
 for (row in 1:nrow(nested_list_of_datasets)){
   target_folder_general <-as.character(pull(unnest(nested_list_of_datasets[row,2],cols=c(data))))
