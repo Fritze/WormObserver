@@ -60,6 +60,9 @@ centroids_summarise_per_bin <- function(data_input,conversion_factor, offset,bin
     filter(Number_of_gaps <= max_gaps) %>%
     # only tracks longer than duration
     filter(Duration_of_track >= duration) %>%
+    # only tracks above minimal mean velocity value to sort out segmentation artifacts
+    filter(Mean_velocity >= min_mean_velocity) %>%
+    filter(Duration_of_track >= duration) %>%
     # all calculations now done per individual worm (==track)
     # (uniqueness ensured by grouping by dataset, tp and TrackID)
     group_by(grouping) %>%
@@ -117,6 +120,7 @@ duration = 20 #==10 seconds
 # duration <- as.numeric(commandArgs(trailingOnly = TRUE)[5])
 binning_factor = 20 #==10 seconds
 # binning_factor <- duration <- as.numeric(commandArgs(trailingOnly = TRUE)[6])
+min_mean_velocity = 5
 
 #create file path for saving
 save_path <- file.path(dirname(dataraw_file_path),"motion")
