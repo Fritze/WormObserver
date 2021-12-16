@@ -13,8 +13,7 @@ library("tidyverse")
 library("data.table")
 
 #get file path from command line
-# timelapses_file_path <- commandArgs(trailingOnly = TRUE)[1]
-timelapses_file_path <- "/media/fpreuss/raid5/timelapses/analysis/paper/timelapses"
+timelapses_file_path <- commandArgs(trailingOnly = TRUE)[1]
 
 #create file path for saving
 save_path <- file.path(dirname(timelapses_file_path),"data","raw")
