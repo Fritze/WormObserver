@@ -7,7 +7,7 @@ base_path <- "~/Desktop/data"
 target_folder<- file.path(base_path, "raw_data")
 files_to_process <- list.files(target_folder,"raw_data", full.names = TRUE, ignore.case = TRUE)
 
-selected_annotation <- "OP50"
+selected_annotation <- "HB101"
 files_to_process <- grep(selected_annotation,files_to_process,value = TRUE)
 conversion_factor <- 6.25
 
@@ -20,7 +20,7 @@ dir.create(save_path)
 #Load data
 ```{r, echo=FALSE}
 #select which timepoints
-selected_hours <- c(4,12)
+selected_hours <- c(3,12)
 
 
 #load data
