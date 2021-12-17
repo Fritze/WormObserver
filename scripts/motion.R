@@ -6,7 +6,7 @@
 # To run the script type: Rscript motion.R "the location of your raw data folder" "conversion factor" 
 # e.g. Rscript motion.R /media/fpreuss/raid5/timelapses/analysis/paper/raw 6.25
 
-library("tidyverse")
+library(tidyverse)
 
 ############### functions ###############
 #1 Small helper functions
