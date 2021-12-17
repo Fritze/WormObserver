@@ -1,4 +1,11 @@
+# Use this script for plotting motion measurements.
+# Needed: "...centroid_tracking_bins.RDS" as written by the "motion.R" script
+
+# To run the script type: Rscript plots_motion.R "the location of your motion data folder" 
+# e.g. Rscript plots_motion.R /Users/fpreuss/Desktop/data/motion/
   
+
+
 #Define locations
 #Also define timerange to be plotted
 ```{r, echo=FALSE}
@@ -37,15 +44,6 @@ data <- map_dfr(files_to_process,readRDS) %>%
     mutate(hours_rounded = ceiling(hours)) %>%
     #filter out first 30 mins
     filter(hours > 0.5) %>%
-    #take out one condition
-    filter(!annotation %in% c(
-                              # "Agar with NAD",
-                              "NGM RT",
-                              "NGM",
-                              "DA465",
-                              "NGM after 6h exit"
-                              # "OP50 with Az Agar"
-                              )) %>%
     mutate(annotation = gsub("\\s", "_",annotation))%>% 
     na.omit() %>%
     # scale velocity to mm/s
@@ -142,7 +140,7 @@ library(wesanderson)
 #lower velocity limit for mode == roaming
 velocity_r <- 0.01
 #upper angle limit for mode == roaming
-angle_r <-15
+angle_r <- 15
 # upper velocity limit for mode == still
 velocity_s <- 0.001
 
@@ -214,7 +212,7 @@ for (a in unique(data$annotation)){
     scale_y_continuous()+
     facet_wrap(vars(annotation,hours_rounded),ncol=length(unique(data$hours_rounded)),scales="free_x")+
     scale_fill_viridis(option = "viridis")
-  ggsave(file.path(save_path_temp,paste0("scatterdensity_viridis_",a,"NOT_LOG.png")),height=6,width=45)
+  ggsave(file.path(save_path_temp,paste0("scatterdensity_viridis_",a,"_NOT_LOG.png")),height=6,width=45)
  
   plot_scatterdensity(data_to_plot)+
     facet_wrap(vars(annotation,hours_rounded),ncol=length(unique(data$hours_rounded)),scales="free_x")+
