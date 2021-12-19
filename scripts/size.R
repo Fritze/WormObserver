@@ -256,7 +256,8 @@ if (length(files_to_process_cleaned) > 0){
       mutate(time = ifelse(hours_rounded <= 20 & hours_rounded > 15, 20, time)) %>%
       na.omit() %>%
       #multiply by pixel conversion factor to get values in µm
-      mutate(major = conversion_factor * major, minor = conversion_factor * minor, midline = conversion_factor * midline) %>%
+      # mutate(major = conversion_factor * major, minor = conversion_factor * minor, midline = conversion_factor * midline) %>%
+      mutate(midline = conversion_factor * midline) %>%
       #get annotation from file name
       mutate(annotation = gsub("(.+)\\_long.+","\\1", annotation))
     
