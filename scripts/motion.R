@@ -53,18 +53,17 @@ replace_f <- function(x,y){
 
 #2 Calculate centroid tracking statistics per track
 
-centroids_summarise_per_bin <- function(data_input,conversion_factor, offset,binning_factor, max_gaps, duration){
+centroids_summarise_per_bin <- function(data_input,conversion_factor, min_track_displacement,offset,binning_factor, max_gaps, duration){
   data_input %>%
     mutate(grouping = paste0(dataset_ID, "_", tp, "_", TrackID)) %>%
     # only tracks with less gaps than max_gaps allowed 
     filter(Number_of_gaps <= max_gaps) %>%
     # only tracks longer than duration
     filter(Duration_of_track >= duration) %>%
-    # only tracks above minimal mean velocity value to sort out segmentation artifacts
-    filter(Mean_velocity >= min_mean_velocity) %>%
-    filter(Duration_of_track >= duration) %>%
-    # all calculations now done per individual worm (==track)
-    # (uniqueness ensured by grouping by dataset, tp and TrackID)
+    # only tracks above minimal track displacement
+    filter(Track_displacement > min_track_displacement) %>%
+    #all calculations now done per individual worm (==track)
+    #(uniqueness ensured by grouping by dataset, tp and TrackID)
     group_by(grouping) %>%
     # track displacement as measured by TrackMate times conversion factor to get µm
     mutate(Track_displacement=Track_displacement * conversion_factor) %>%
@@ -74,10 +73,9 @@ centroids_summarise_per_bin <- function(data_input,conversion_factor, offset,bin
     # normally: vector one points to position t-1 and vector two points to position t+1
     mutate(x_lag=lag(location_x,n=offset/2) - location_x, y_lag = lag(location_y, n=offset/2) - location_y) %>%
     mutate(x_lead=lead(location_x, n=offset/2) - location_x, y_lead=lead(location_y, n=offset/2) - location_y) %>%
-    # calculate the angle and convert to degrees
-    #this will result in degrees/s if the offset chosen above corresponds to 1s 
+    #calculate the angle and convert to degrees
+    #this will result in degrees/s if the offset chosen above corresponds to 1s
     mutate(angle=suppressWarnings(180 - (as.numeric(mapply(angle1,x_lag,y_lag,x_lead,y_lead)))*180/pi)) %>%
-    # mutate(angle=suppressWarnings(as.numeric(mapply(angle2,x_lag,y_lag,x_lead,y_lead)))*(180/pi)) %>%
     # measure distance between current point and 1 second before
     mutate(local_distance=suppressWarnings(as.numeric(mapply(distance,lag(location_x,n=offset),lag(location_y,n=offset),location_x,location_y)))) %>%
     # this will result in velocity based on local distance (µm/s)
@@ -85,7 +83,7 @@ centroids_summarise_per_bin <- function(data_input,conversion_factor, offset,bin
     # calculate aspect ratio of worm bitmask
     # mutate(aspect_ratio=Minor/Major) %>%
     na.omit() %>%
-    #set up binning depending on binning_factor
+    # set up binning depending on binning_factor
     mutate(binning=rep(0:n(),each=binning_factor,length.out=n())) %>%
     ungroup() %>%
     na.omit() %>%
@@ -101,7 +99,8 @@ centroids_summarise_per_bin <- function(data_input,conversion_factor, offset,bin
     mutate(offset = offset,
            max_gaps = max_gaps,
            duration = duration,
-           binning_factor = binning_factor)
+           binning_factor = binning_factor,
+           min_track_displacement = min_track_displacement)
 }
 
 #######################################################
@@ -120,7 +119,7 @@ duration = 20 #==10 seconds
 # duration <- as.numeric(commandArgs(trailingOnly = TRUE)[5])
 binning_factor = 20 #==10 seconds
 # binning_factor <- duration <- as.numeric(commandArgs(trailingOnly = TRUE)[6])
-min_mean_velocity = 5
+min_track_displacement = 25
 
 #create file path for saving
 save_path <- file.path(dirname(dataraw_file_path),"motion")
@@ -137,7 +136,7 @@ files_to_process <- paste0(paste0(file.path(dataraw_file_path,list_of_datasets),
 
 
 #list of .rds files in data folder that were already analysed for centroid tracking
-names_already_processed <- unique(gsub(".+\\/(.+)\\_centroid.+","\\1",list.files(save_path, "centroid_tracking", full.names = TRUE, ignore.case = TRUE)))
+names_already_processed <- unique(gsub(".+\\/(.+)\\_centroid.+","\\1",list.files(save_path, "_tracked", full.names = TRUE, ignore.case = TRUE)))
 files_already_processed <- paste0(paste0(file.path(dataraw_file_path,names_already_processed),"_raw_data.rds"))
 
 if(length(files_already_processed) > 0){
@@ -152,6 +151,7 @@ if (length(files_to_process_cleaned) > 0){
   number_files_to_process <- length(files_to_process_cleaned)
   cat("The following files will be processed:\n", paste(files_to_process_cleaned, collapse = "\n"))
   # for each of these files calculate the centroid tracking statistics
+  file <- files_to_process_cleaned[1]
   for (file in files_to_process_cleaned){
     cat("\n\nNow processing: ", file)
     imported_data <- readRDS(file)
@@ -160,8 +160,8 @@ if (length(files_to_process_cleaned) > 0){
 
 
     #calculate centroid tracking statistics per bin
-    centroids_tracking_bins <- centroids_summarise_per_bin(imported_data,conversion_factor,offset,binning_factor,max_gaps,duration)
-    created_file_path <- file.path(save_path,paste0(annotation_underscored,"_centroid_tracking_bins.RDS"))
+    centroids_tracking_bins <- centroids_summarise_per_bin(imported_data,conversion_factor,min_track_displacement,offset,binning_factor,max_gaps,duration)
+    created_file_path <- file.path(save_path,paste0(annotation_underscored,"_tracked.RDS"))
     number_files_to_process <<- number_files_to_process - 1
     saveRDS(centroids_tracking_bins, file=created_file_path)
     cat(paste0("\n\nCentroids tracked, averaged over bins. \nDataset ", file, " was processed\nand saved under ", created_file_path, "\n", number_files_to_process, " datasets waiting to be processed.\n\n"))
@@ -170,6 +170,6 @@ if (length(files_to_process_cleaned) > 0){
     rm(imported_data)
     gc()
   }
-}else{
+} else {
   cat("All datasets in ", dataraw_file_path," already processed.")
 }
