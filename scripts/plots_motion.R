@@ -3,65 +3,15 @@
 
 # To run the script type: Rscript plots_motion.R "the location of your motion data folder" 
 # e.g. Rscript plots_motion.R /Users/fpreuss/Desktop/data/motion/
-  
 
-
-#Define locations
-#Also define timerange to be plotted
-```{r, echo=FALSE}
 #for everything good
 library(tidyverse)
 #for colors
 library(wesanderson)
 library(viridis)
 
-#define base path  
-base_path <- "/Users/fpreuss/Desktop/data/motion/"
-#define save path
-save_path <- file.path("/Users/fpreuss/Desktop/data/plots/", "motion")
-dir.create(save_path)
-
-
-#list of centroid tracking .rds files in data folder
-files_to_process <- list.files(base_path, paste0("centroid_tracking_"),full.names = TRUE, ignore.case = TRUE)
-
-#Until how many hours
-show_until <- 12
-
-```
-
-
-
-
-#load data
-```{r, echo=FALSE}
-
-data <- map_dfr(files_to_process,readRDS) %>%
-    mutate(hours = minutes / 60) %>%
-    #round per half an hour
-    # mutate(hours_rounded= floor(hours * 2) / 2) %>%
-    #round per hour
-    mutate(hours_rounded = ceiling(hours)) %>%
-    #filter out first 30 mins
-    filter(hours > 0.5) %>%
-    mutate(annotation = gsub("\\s", "_",annotation))%>% 
-    na.omit() %>%
-    # scale velocity to mm/s
-    mutate(p_mean_velocity = p_mean_velocity / 1000) %>%
-    group_by(annotation, hours_rounded) %>%
-    filter(hours_rounded <= show_until) %>%
-    #count tracks per hour per condition
-    mutate(number_of_tracks_in_this_hour = n_distinct(dataset_ID,tp,TrackID)) %>%
-    ungroup()
-
-
-# unique(imported_data$annotation)
-
-
-```
-
-#plotting functions
-```{r, echo=TRUE}
+############### functions ###############
+#1 Plotting functions
 
 plot_basis <- function(data_to_plot){
   ggplot(data_to_plot,aes(x = p_mean_angle, y = p_mean_velocity))+
@@ -70,20 +20,20 @@ plot_basis <- function(data_to_plot){
     scale_y_log10()+
     scale_x_continuous(limits=c(0,180))+
     theme(legend.direction="horizontal",
-        legend.position = "top",
-        strip.background = element_rect(colour = "white", fill = "white"),
-        panel.spacing = unit(1, "lines"),
-        strip.text.x = element_text(size=25,colour = "black", face = "bold"),
-        axis.text.x = element_text(size=30),
-        axis.title.x = element_text(size=45),
-        axis.text.y = element_text(size=35),
-        axis.title.y = element_text(size=45))
+          legend.position = "top",
+          strip.background = element_rect(colour = "white", fill = "white"),
+          panel.spacing = unit(1, "lines"),
+          strip.text.x = element_text(size=25,colour = "black", face = "bold"),
+          axis.text.x = element_text(size=30),
+          axis.title.x = element_text(size=45),
+          axis.text.y = element_text(size=35),
+          axis.title.y = element_text(size=45))
 }
 
 
 plot_scatterpoints <- function(data_to_plot){
-   plot_basis(data_to_plot)+
-     geom_point(shape=21, fill="grey",alpha=0.25)
+  plot_basis(data_to_plot)+
+    geom_point(shape=21, fill="grey",alpha=0.25)
 }
 
 
@@ -94,24 +44,63 @@ plot_scatterdensity <- function(data_to_plot){
     scale_fill_gradient(low="white",high="black")
 }
 
-```
+
+#######################################################
+
+#define base path  
+base_path <- commandArgs(trailingOnly = TRUE)[1]
+#define save path
+save_path <- file.path(dirname(base_path), "plots", "motion")
+dir.create(save_path,recursive = TRUE)
 
 
-#plot all 10s windows per annotation AND dataset_ID (both as points and density)
-```{r, echo=TRUE}
+#list of centroid tracking .rds files in data folder
+files_to_process <- list.files(base_path, paste0("centroid_tracking_"),full.names = TRUE, ignore.case = TRUE)
+
+#Until how many hours
+show_until <- 12
+
+#lower velocity limit for mode == roaming
+velocity_r <- 0.01
+#upper angle limit for mode == roaming
+angle_r <- 15
+# upper velocity limit for mode == still
+velocity_s <- 0.001
+
+data <- map_dfr(files_to_process,readRDS) %>%
+  mutate(hours = minutes / 60) %>%
+  #round per half an hour
+  # mutate(hours_rounded= floor(hours * 2) / 2) %>%
+  #round per hour
+  mutate(hours_rounded = ceiling(hours)) %>%
+  #filter out first 30 mins
+  filter(hours > 0.5) %>%
+  mutate(annotation = gsub("\\s", "_",annotation))%>% 
+  na.omit() %>%
+  # scale velocity to mm/s
+  mutate(p_mean_velocity = p_mean_velocity / 1000) %>%
+  group_by(annotation, hours_rounded) %>%
+  filter(hours_rounded <= show_until) %>%
+  #count tracks per hour per condition
+  mutate(number_of_tracks_in_this_hour = n_distinct(dataset_ID,tp,TrackID)) %>%
+  ungroup()
+
+
+# unique(imported_data$annotation)
+
 
 save_path_temp <- file.path(save_path,"scatterpoints","per_annotation")
 dir.create(save_path_temp,recursive=TRUE)
 
-
+#plot all 10s windows per annotation AND dataset_ID (both as points and density)
 for (a in unique(data$annotation)){
   data_to_plot <- data %>%
     filter(annotation == a)
   
   plot_scatterpoints(data_to_plot)+
     facet_wrap(vars(annotation,dataset_ID,hours_rounded),nrow=length(unique(data_to_plot$dataset_ID)),scales="free_x")
-    ggsave(file.path(save_path_temp,paste0("scatterpoints_",a,".png")),height=15,width=35)
-
+  ggsave(file.path(save_path_temp,paste0("scatterpoints_",a,".png")),height=15,width=35)
+  
   
 }
 
@@ -122,29 +111,18 @@ dir.create(save_path_temp,recursive=TRUE)
 for (a in unique(data$annotation)){
   data_to_plot <- data %>%
     filter(annotation == a)
-
+  
   plot_scatterdensity(data_to_plot)+
     facet_wrap(vars(annotation,dataset_ID,hours_rounded),nrow=length(unique(data_to_plot$dataset_ID)),scales="free_x")+
-    scale_fill_viridis(option = "viridis")
+    scale_fill_viridis(option = "turbo")
   
   ggsave(file.path(save_path_temp,paste0("scatterdensity_",a,".png")),height=15,width=35)
-
+  
 }
-```
+
 
 #plot annotated scatterpoints
 #as seperate file for every annotation
-```{r, echo=TRUE}
-library(wesanderson)
-
-#lower velocity limit for mode == roaming
-velocity_r <- 0.01
-#upper angle limit for mode == roaming
-angle_r <- 15
-# upper velocity limit for mode == still
-velocity_s <- 0.001
-
-
 save_path_temp <- file.path(save_path,"scatterpoints_annotated","grouped_individually")
 dir.create(save_path_temp,recursive=TRUE)
 
@@ -161,17 +139,12 @@ for (a in unique(data$annotation)){
     scale_fill_manual(values = wes_palette("BottleRocket2"))+
     facet_wrap(vars(annotation,hours_rounded),ncol=length(unique(data$hours_rounded)),scales="free_x")
   ggsave(file.path(save_path_temp,paste0("scatterpoints_annotated_",a,".png")),height=7.5,width=45)
-    
+  
 }  
-
-```
-
-
 
 
 #plot the relative density for all annotations, timepoints and datasets
 #additionally also as seperate file for every annotation
-```{r, echo=TRUE}
 save_path_temp <- file.path(save_path,"scatterdensity","grouped_all")
 dir.create(save_path_temp)
 
@@ -199,28 +172,27 @@ for (a in unique(data$annotation)){
   data_to_plot <- data %>%
     filter(annotation == a)
   
- plot_scatterdensity(data_to_plot)+
+  plot_scatterdensity(data_to_plot)+
     facet_wrap(vars(annotation,hours_rounded),ncol=length(unique(data$hours_rounded)),scales="free_x")
   ggsave(file.path(save_path_temp,paste0("scatterdensity_bw_",a,".png")),height=6,width=45)
- 
- plot_scatterdensity(data_to_plot)+
+  
+  plot_scatterdensity(data_to_plot)+
     facet_wrap(vars(annotation,hours_rounded),ncol=length(unique(data$hours_rounded)),scales="free_x")+
     scale_fill_viridis(option = "viridis")
   ggsave(file.path(save_path_temp,paste0("scatterdensity_viridis_",a,".png")),height=6,width=45)
- 
+  
   plot_scatterdensity(data_to_plot)+
     scale_y_continuous()+
     facet_wrap(vars(annotation,hours_rounded),ncol=length(unique(data$hours_rounded)),scales="free_x")+
     scale_fill_viridis(option = "viridis")
   ggsave(file.path(save_path_temp,paste0("scatterdensity_viridis_",a,"_NOT_LOG.png")),height=6,width=45)
- 
+  
   plot_scatterdensity(data_to_plot)+
     facet_wrap(vars(annotation,hours_rounded),ncol=length(unique(data$hours_rounded)),scales="free_x")+
     scale_fill_viridis(option = "turbo")
   ggsave(file.path(save_path_temp,paste0("scatterdensity_turbo_",a,".png")),height=6,width=45)
-    
+  
 }  
 
-```
 
 
