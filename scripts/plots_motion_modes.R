@@ -97,7 +97,7 @@ angle_r <- 15
 velocity_s <- 0.001
 
 #list of centroid tracking .rds files in data folder
-files_to_process <- list.files(base_path, paste0("centroid_tracking_"),full.names = TRUE, ignore.case = TRUE)
+files_to_process <- list.files(base_path, "tracked",full.names = TRUE, ignore.case = TRUE)
 
 #Until how many hours
 show_until <- 12

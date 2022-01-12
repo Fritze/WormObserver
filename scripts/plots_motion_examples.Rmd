@@ -1,7 +1,7 @@
   
 #Define locations and datasets to include
 ```{r, echo=FALSE}
-
+library(tidyverse)
 #define base path
 base_path <- "~/Desktop/data"
 target_folder<- file.path(base_path, "raw_data")
@@ -15,6 +15,34 @@ conversion_factor <- 6.25
 save_path <- file.path(base_path,"plots","motion_examples")
 dir.create(save_path)
 
+############### functions ###############
+#1 Small helper functions
+
+# used to calculate angles describing the worm path
+angle1 <- function(x1, y1, x2, y2) {
+  values <- list(x1, y1, x2, y2)
+  if(anyNA(values)) {
+    "NA"
+  } else {
+    x <- c(x1, y1)
+    y <- c(x2, y2)
+    dot.prod <- x%*%y
+    norm.x <- norm(x,type="2")
+    norm.y <- norm(y,type="2")
+    theta <- acos(dot.prod / (norm.x * norm.y))
+    as.numeric(theta)
+  }
+}
+
+distance <- function(x1, y1, x2, y2) {
+  values <- list(x1, y1, x2, y2)
+  if(anyNA(values)) {
+    "NA"
+  } else {
+    length <- sqrt((x1-x2)^2+(y1-y2)^2)
+    as.numeric(length)
+  }
+}
 ```
 
 #Load data
@@ -107,43 +135,23 @@ data_for_plotting %>%
 numbers_of_displayed_tracks <- 10
 
 #previously selected tracks
-selected_tracks <- c("2020-06-25_17-58-07_22_track_9",
-                     "2020-06-25_17-58-07_23_track_234",
-                     "2020-06-25_17-58-07_26_track_27",
-                     "2020-06-25_17-58-07_28_track_116",
-                     "2020-06-23_17-58-40_22_track_90",
-                     "2020-06-25_17-58-07_22_track_136",
-                     "2020-06-22_17-58-37_22_track_107",
-                     "2020-06-23_17-58-40_22_track_13",
-                     "2020-06-23_17-58-40_23_track_242",
-                     "2020-06-23_17-58-40_28_track_42",
-                     "2020-06-23_17-58-40_82_track_94",
-                     "2020-06-22_17-58-37_88_track_59",
-                     "2020-06-22_17-58-37_82_track_5",
-                     "2020-06-23_17-58-40_86_track_124",
-                     "2020-06-22_17-58-37_85_track_12",
-                     "2020-06-23_17-58-40_86_track_15",
-                     "2020-06-25_17-58-07_87_track_21",
-                     "2020-06-22_17-58-37_84_track_49",
-                     "2020-06-23_17-58-40_88_track_76",
-                     "2020-06-25_17-58-07_87_track_8"
-                    )
+# selected_tracks <- c(                     )
 
 #sample random tracks
 #how many tracks is defined by "numbers_of_displayed_track" variable
 data_for_plotting_sub <- data_for_plotting %>%
-  filter(ID %in% selected_tracks)
-  # group_by(hours_rounded) %>%
-  # #order by total distance travelled (within hours to be compared)
-  # arrange(desc(Track_displacement), .by_group=TRUE) %>%
-  # distinct(ID,hours_rounded) %>%
-  # group_by(hours_rounded) %>%
-  # #for each hour to be compared take the 10 tracks with the longest traveled distance
-  # # slice(1:numbers_of_displayed_tracks) %>%
+  # filter(ID %in% selected_tracks)
+  group_by(hours_rounded) %>%
+  #order by total distance travelled (within hours to be compared)
+  arrange(desc(traveled_distance), .by_group=TRUE) %>%
+  distinct(ID,hours_rounded) %>%
+  group_by(hours_rounded) %>%
+  #for each hour to be compared take the 10 tracks with the longest traveled distance
+  slice(1:numbers_of_displayed_tracks) %>%
   # sample_n(numbers_of_displayed_tracks) %>%
-  # ungroup() %>%
-  # select(ID) %>%
-  # left_join(data_for_plotting, by="ID")
+  ungroup() %>%
+  select(ID) %>%
+  left_join(data_for_plotting, by="ID")
 
 
 ```
@@ -155,7 +163,7 @@ data_for_plotting_sub <- data_for_plotting %>%
 number_of_pixels <- 1000 / conversion_factor
 
 #where should the line be located in the plot
-location_x_centered <- seq(101, 100+number_of_pixels)
+location_x_centered <- seq(51, 50+number_of_pixels)
 location_y_centered <- rep(-600, number_of_pixels)
 
 #create a dataframe for the scale bar data 
@@ -201,9 +209,16 @@ ggplot()+
   scale_y_continuous(limits= c(-799,799))+
   theme_classic()+
   facet_wrap(vars(hours_rounded),ncol=2)+
-  theme(legend.position = "none")+
-  ggtitle(paste0(selected_annotation,"\n", "hours: ", paste0(selected_hours,collapse=" & "), "\n", minimal_track_length_s/60, " - ", maximal_track_length_s/60, " mins","\n", numbers_of_displayed_tracks, " tracks." ))+
-  ggsave(file.path(save_path,paste0(selected_annotation,"_hours_", paste0(selected_hours,collapse="_"),"_all_tracks_centered",".png")),height = 6,width= 9.5,dpi=300)
+  theme(legend.position = "none",
+        panel.background = element_rect(fill = "transparent"), # bg of the panel
+    plot.background = element_rect(fill = "transparent", color = NA), # bg of the plot
+    panel.grid.major = element_blank(), # get rid of major grid
+    panel.grid.minor = element_blank(), # get rid of minor grid
+    legend.background = element_rect(fill = "transparent"), # get rid of legend bg
+    legend.box.background = element_rect(fill = "transparent"))+
+  ggtitle(paste0(selected_annotation,"\n", "hours: ", paste0(selected_hours,collapse=" & "), "\n", minimal_track_length_s/60, " - ", maximal_track_length_s/60, " mins","\n", numbers_of_displayed_tracks, " tracks." ))
+
+ggsave(file.path(save_path,paste0(selected_annotation,"_hours_", paste0(selected_hours,collapse="_"),"_all_tracks_centered",".png")),height = 6,width= 9.5,dpi=300,bg = "transparent")
 
 
 #tracks individual
@@ -239,7 +254,8 @@ ggplot(data_for_plotting_sub_sub)+
   # theme(aspect.ratio = 800/800)+
   # scale_x_continuous(limits= c(-799,799))+
   # scale_y_continuous(limits= c(-799,799))+
-  ggtitle(paste0(selected_annotation,"\n", "hours: ", paste0(selected_hours,collapse=" & "), "\n", minimal_track_length_s/60, " - ", maximal_track_length_s/60, " mins","\n", numbers_of_displayed_tracks, " tracks." ))+
-  ggsave(file.path(save_path,paste0(selected_annotation,"_hours_", paste0(selected_hours,collapse="_"),"_all_tracks_individual",".png")),height = 30,width= 40,unit="cm",dpi=300)
+  ggtitle(paste0(selected_annotation,"\n", "hours: ", paste0(selected_hours,collapse=" & "), "\n", minimal_track_length_s/60, " - ", maximal_track_length_s/60, " mins","\n", numbers_of_displayed_tracks, " tracks." ))
+
+ggsave(file.path(save_path,paste0(selected_annotation,"_hours_", paste0(selected_hours,collapse="_"),"_all_tracks_individual",".png")),height = 30,width= 40,unit="cm",dpi=300)
 
 ```

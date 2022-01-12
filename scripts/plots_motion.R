@@ -9,6 +9,8 @@ library(tidyverse)
 #for colors
 library(wesanderson)
 library(viridis)
+#for extended options for facet_wrap
+library(ggh4x)
 
 ############### functions ###############
 #1 Plotting functions
@@ -55,7 +57,7 @@ dir.create(save_path,recursive = TRUE)
 
 
 #list of centroid tracking .rds files in data folder
-files_to_process <- list.files(base_path, paste0("centroid_tracking_"),full.names = TRUE, ignore.case = TRUE)
+files_to_process <- list.files(base_path, "tracked",full.names = TRUE, ignore.case = TRUE)
 
 #Until how many hours
 show_until <- 12
@@ -98,12 +100,11 @@ for (a in unique(data$annotation)){
     filter(annotation == a)
   
   plot_scatterpoints(data_to_plot)+
-    facet_wrap(vars(annotation,dataset_ID,hours_rounded),nrow=length(unique(data_to_plot$dataset_ID)),scales="free_x")
+    facet_wrap2(vars(annotation,dataset_ID,hours_rounded),nrow=length(unique(data_to_plot$dataset_ID)),axes="all",remove_labels = "y")
   ggsave(file.path(save_path_temp,paste0("scatterpoints_",a,".png")),height=15,width=35)
   
   
 }
-
 
 save_path_temp <- file.path(save_path,"scatterdensity", "per_annotation")
 dir.create(save_path_temp,recursive=TRUE)
@@ -113,7 +114,7 @@ for (a in unique(data$annotation)){
     filter(annotation == a)
   
   plot_scatterdensity(data_to_plot)+
-    facet_wrap(vars(annotation,dataset_ID,hours_rounded),nrow=length(unique(data_to_plot$dataset_ID)),scales="free_x")+
+    facet_wrap2(vars(annotation,dataset_ID,hours_rounded),nrow=length(unique(data_to_plot$dataset_ID)),axes="all",remove_labels ="y")+
     scale_fill_viridis(option = "turbo")
   
   ggsave(file.path(save_path_temp,paste0("scatterdensity_",a,".png")),height=15,width=35)
@@ -137,7 +138,7 @@ for (a in unique(data$annotation)){
     geom_point(aes(fill=mode),shape=21 ,alpha=0.25)+
     geom_rug(col="black",alpha=.01)+
     scale_fill_manual(values = wes_palette("BottleRocket2"))+
-    facet_wrap(vars(annotation,hours_rounded),ncol=length(unique(data$hours_rounded)),scales="free_x")
+    facet_wrap2(vars(annotation,hours_rounded),ncol=length(unique(data$hours_rounded)),axes="all",remove_labels ="y")
   ggsave(file.path(save_path_temp,paste0("scatterpoints_annotated_",a,".png")),height=7.5,width=45)
   
 }  
@@ -150,16 +151,16 @@ dir.create(save_path_temp)
 
 #all annotations in one image
 plot_scatterdensity(data)+
-  facet_wrap(vars(annotation,hours_rounded),ncol=length(unique(data$hours_rounded)),scales="free_x")
+  facet_wrap2(vars(annotation,hours_rounded),ncol=length(unique(data$hours_rounded)),axes="all",remove_labels ="y")
 ggsave(file.path(save_path_temp,paste0("scatterdensity_all",".png")),bg="black",height=30,width=40)
 
 plot_scatterdensity(data)+
-  facet_wrap(vars(annotation,hours_rounded),ncol=length(unique(data$hours_rounded)),scales="free_x")+
+  facet_wrap2(vars(annotation,hours_rounded),ncol=length(unique(data$hours_rounded)),axes="all",remove_labels ="y")+
   scale_fill_viridis(option = "viridis")
 ggsave(file.path(save_path_temp,paste0("scatterdensity_all_viridis",".png")),bg="black",height=30,width=40)
 
 plot_scatterdensity(data)+
-  facet_wrap(vars(annotation,hours_rounded),ncol=length(unique(data$hours_rounded)),scales="free_x")+
+  facet_wrap2(vars(annotation,hours_rounded),ncol=length(unique(data$hours_rounded)),axes="all",remove_labels ="y")+
   scale_fill_viridis(option = "turbo")
 ggsave(file.path(save_path_temp,paste0("scatterdensity_all_turbo",".png")),bg="black",height=30,width=40)
 
@@ -173,26 +174,23 @@ for (a in unique(data$annotation)){
     filter(annotation == a)
   
   plot_scatterdensity(data_to_plot)+
-    facet_wrap(vars(annotation,hours_rounded),ncol=length(unique(data$hours_rounded)),scales="free_x")
+    facet_wrap2(vars(annotation,hours_rounded),ncol=length(unique(data$hours_rounded)),axes="all",remove_labels ="y")
   ggsave(file.path(save_path_temp,paste0("scatterdensity_bw_",a,".png")),height=6,width=45)
   
   plot_scatterdensity(data_to_plot)+
-    facet_wrap(vars(annotation,hours_rounded),ncol=length(unique(data$hours_rounded)),scales="free_x")+
+    facet_wrap2(vars(annotation,hours_rounded),ncol=length(unique(data$hours_rounded)),axes="all",remove_labels ="y")+
     scale_fill_viridis(option = "viridis")
   ggsave(file.path(save_path_temp,paste0("scatterdensity_viridis_",a,".png")),height=6,width=45)
   
   plot_scatterdensity(data_to_plot)+
     scale_y_continuous()+
-    facet_wrap(vars(annotation,hours_rounded),ncol=length(unique(data$hours_rounded)),scales="free_x")+
+    facet_wrap2(vars(annotation,hours_rounded),ncol=length(unique(data$hours_rounded)),axes="all",remove_labels ="y")+
     scale_fill_viridis(option = "viridis")
   ggsave(file.path(save_path_temp,paste0("scatterdensity_viridis_",a,"_NOT_LOG.png")),height=6,width=45)
   
   plot_scatterdensity(data_to_plot)+
-    facet_wrap(vars(annotation,hours_rounded),ncol=length(unique(data$hours_rounded)),scales="free_x")+
+    facet_wrap2(vars(annotation,hours_rounded),ncol=length(unique(data$hours_rounded)),axes="all",remove_labels ="y")+
     scale_fill_viridis(option = "turbo")
   ggsave(file.path(save_path_temp,paste0("scatterdensity_turbo_",a,".png")),height=6,width=45)
   
-}  
-
-
-
+}
