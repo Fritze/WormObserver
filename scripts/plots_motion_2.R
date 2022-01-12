@@ -1,4 +1,4 @@
-# Use this script for plotting motion modes.
+# Use this script for plotting motion modes and comparisons between timepoints and conditions.
 # Needed: "...centroid_tracking_bins.RDS" as written by the "motion.R" script
 
 # To run the script type: Rscript plots_motion_modes.R "the location of your motion data folder" 
@@ -9,6 +9,11 @@ library(tidyverse)
 #for colors
 library(wesanderson)
 library(viridis)
+#for wilcox test in tidy
+library(broom)
+#for statistic testing
+library(rstatix)
+
 
 ############### functions ###############
 #1 Plotting functions
@@ -73,7 +78,6 @@ plot_omega <- function(input_data, selected_mode, selected_annotations){
       axis.ticks.length=unit(0.25,"cm"),
       axis.line = element_line(colour = 'black', size = 1.5))
 }
-
 
 
 #######################################################
@@ -187,18 +191,47 @@ ggsave(file.path(save_path_temp,paste0("modes_relative_per_mode_seperate_sd.png"
 selected_annotations <- c("Agar","OP50_w_Az","OP50", "HB101")
 selected_mode <- c("roaming")
 pal <- wes_palette("Darjeeling1")[c(1,2,5,4)]
-data_bs %>%
+selected_tps <- c(3,6,9,12)
+
+data_temp <- data_bs %>%
   filter(annotation %in% selected_annotations) %>%
   arrange(match(annotation, selected_annotations)) %>%
   mutate(annotation=factor(annotation, levels=selected_annotations)) %>%
   filter(mode == selected_mode) %>%
-  group_by(hours_rounded,annotation,mode) %>%
-  filter(hours_rounded %in% c(3,6,9,12)) %>%
-  summarise(mean_perc= mean(perc), maxsd=mean(perc)+sd(perc),minsd=mean(perc)-sd(perc)) %>%
-  ggplot(aes(x=hours_rounded, y=mean_perc,color=annotation))+
+  filter(hours_rounded %in% selected_tps)
+
+
+annotations <- unique(data_temp$annotation)
+i <- 1
+pvalues <- NULL
+
+while (i < length(selected_tps)) {
+  for (ann in annotations){
+    # print(c(selected_tps[i],selected_tps[i+1]))
+    p_temp <- data_temp %>%
+      filter(annotation == ann) %>%
+      filter(hours_rounded %in% c(selected_tps[i],selected_tps[i+1])) %>%
+      wilcox_test(perc ~ hours_rounded,exact=FALSE) %>%
+      add_significance() %>%
+      mutate(hours_compared= paste0(selected_tps[i], "vs", selected_tps[i+1])) %>%
+      mutate(annotation = ann)
+    pvalues <- rbind(pvalues, p_temp)
+  }
+  i <- i+1
+}
+
+write.csv2(pvalues,file=file.path(save_path_temp,paste0("dispersal_fraction_wilcox.txt")))
+
+  
+data_to_plot <- data_temp %>% 
+  group_by(annotation, hours_rounded) %>%
+  summarise(mean_perc= mean(perc), maxsd=mean(perc)+sd(perc),minsd=mean(perc)-sd(perc))
+
+
+ggplot(data_to_plot, aes(x=hours_rounded, y=mean_perc,color=annotation))+
   geom_pointrange(aes(ymin=minsd, ymax=maxsd),position = position_dodge(2.2),size=1.5)+
   scale_x_continuous(breaks=c(3,6,9,12))+
-  scale_y_continuous(limits=c(0,NA))+
+  scale_y_continuous(limits=c(0,1.1),breaks=c(0,0.25,0.5,0.75,1))+
   theme_bw()+
   labs(x="time (hours)", "relative fraction")+
   theme(strip.background = element_rect(colour = "white", fill = "white"),
@@ -212,7 +245,7 @@ data_bs %>%
   scale_fill_manual(values = pal)+
   scale_color_manual(values = pal)
 
-ggsave(file.path(save_path_temp,paste0("modes_relative_per_mode_seperate_sd_rangeplots.png")),height=6,width=8,dpi=600)
+ggsave(file.path(save_path_temp,paste0("dispersal_fraction_sd_rangeplots.png")),height=6,width=8,dpi=600)
 
 
 
@@ -233,10 +266,16 @@ data_bs %>%
   plot_omega(., selected_mode,selected_annotations)
 ggsave(file.path(save_path_temp,paste0("omega_median",paste(selected_annotations, collapse="_"),"_",paste(selected_hours, collapse="_"),".png")),height=5,width=5,dpi=600)
 
-# selected_hours <- c(1:12)
-# 
-# data_bs %>%
-#   filter(hours_rounded %in% selected_hours) %>%
-#   mutate(time=as.character(hours_rounded)) %>%
-#   plot_omega(., selected_mode,selected_annotations)
+#velocity plot
+selected_annotations <- c("Agar","OP50_w_Az","OP50", "HB101")
+selected_mode <- c("roaming")
+selected_hours <- c(1,12)
+pal <- wes_palette("Darjeeling1")[c(1,2,5,5)]
 
+data_bst %>%
+  filter(hours_rounded %in% selected_hours) %>%
+  mutate(hours_rounded = as.character(hours_rounded)) %>%
+  filter(annotation %in% selected_annotations) %>%
+  ggplot(aes(x=hours_rounded,y=mean_velocity,group=hours_rounded,color=annotation))+
+    geom_violin()+
+    scale_y_log10()

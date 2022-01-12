@@ -1,10 +1,14 @@
 #set parameters here
 ```{r, include=FALSE}
 
-#Set the location folder of the raw data (of all experiments you want to plot)
-base_path <- "/media/fpreuss/raid5/timelapses/analysis/paper"
+library(tidyverse)
+library(viridis)
+library(wesanderson)
 
-target_path <- file.path(base_path,"data", "size_measurements","converted")
+#Set the location folder of the raw data (of all experiments you want to plot)
+base_path <- "/Users/fpreuss/Desktop/data"
+
+target_path <- file.path(base_path, "size")
 save_path <- file.path(base_path,"plots","sizes")
 dir.create(save_path)
 
@@ -25,12 +29,13 @@ imported_data <- NULL
 for (file in files_to_process){
   imported_data_temp <- readRDS(file) %>%
     #make annotation unique for dataset
-    mutate(annotation = gsub(".+converted\\_(.+)\\.RDS", "\\1", file))
+    mutate(annotation = basename(file)) %>%
+    mutate(annotation = gsub("(^.+)\\_size.+", "\\1", annotation))
   
   imported_data <- rbind(imported_data, imported_data_temp)
 }
-
-unique(imported_data$annotation)
+imported_data_temp <- NULL
+unique(imported_data$annotation) 
 
 ```
 
@@ -53,7 +58,7 @@ data_summary <- function(x) {
 plot_distribution_ridges <- function(data_to_plot, X, Y){ 
   ggplot(data_to_plot,aes_string(x = X ,y =Y)) +
     geom_density_ridges_gradient(aes(fill=stat(x)),scale = 1) +
-    scale_fill_viridis(option="viridis",limits=c(200,600)) +
+    scale_fill_viridis(option="plasma",limits=c(200,500)) +
     scale_x_continuous(limits=c(0,750))+
     theme_classic()+
     labs(x="length (µm)",y="time (hours)")+
@@ -77,8 +82,8 @@ dir.create(save_path_temp,recursive = TRUE)
 plot_width = 4
 plot_height = 3
 
-selected_timepoints <- c(2,4,6,8,10,12,14,16,18,20)
-selected_annotations <- c("Agar_long_1","OP50_long_2")
+selected_timepoints <- c(seq(1,20))
+selected_annotations <- c("Agar_long_2","OP50_long_2","OP50_w_Az_long_1")
 
 for(a in selected_annotations){
   # new data frame with hours rounded by hour
@@ -92,10 +97,14 @@ for(a in selected_annotations){
     arrange(hours_rounded) %>%
     mutate(hours_rounded=factor(hours_rounded, levels=unique(hours_rounded))) %>%
     plot_distribution_ridges(., "midline", "hours_rounded")+
-      ggtitle(a)+
-      ggsave(file.path(save_path_temp,paste0("midline_distri_",a,".png")),height=plot_height,width=plot_width)
+      ggtitle(a)
+  
+  ggsave(file.path(save_path_temp,paste0("midline_distri_",a,".png")),height=plot_height,width=plot_width)
   
 }
+
+
+
 
 ```
 
@@ -110,10 +119,10 @@ parameters <- c("midline")
 plots_sizes <- function(selected_annotations, selected_timepoints,parameter,plot_width, plot_height){
   
   save_path_temp_parameter <- file.path(base_path,"plots","sizes","comparisons",parameter)
-  dir.create(save_path_temp_parameter)
+  dir.create(save_path_temp_parameter,recursive=TRUE)
   
   save_path_temp_plottype <- file.path(save_path_temp_parameter,"boxplots")
-  dir.create(save_path_temp_plottype)
+  dir.create(save_path_temp_plottype,recursive = TRUE)
   
   #boxplots
   data_to_plot <- imported_data %>%
@@ -149,7 +158,8 @@ plots_sizes <- function(selected_annotations, selected_timepoints,parameter,plot
     scale_fill_manual(values = pal)+
     scale_color_manual(values = pal)+
     # facet_wrap(vars(annotation))+
-    ggtitle(paste0(parameter, "_boxplots_",paste(selected_annotations, collapse="_")))+
+    ggtitle(paste0(parameter, "_boxplots_",paste(selected_annotations, collapse="_")))
+  
     ggsave(file.path(save_path_temp_plottype,paste0(parameter, "_boxplots_",paste(selected_annotations, collapse="_"),"_",min(selected_timepoints),"-",max(selected_timepoints), ".png")),height=plot_height,width=plot_width)
   
 
@@ -167,7 +177,7 @@ plots_sizes <- function(selected_annotations, selected_timepoints,parameter,plot
       geom_line(size=1.2)+
       geom_point(aes(color=annotation),shape=21, size=3,color="black")+
       theme_classic()+
-      expand_limits(y=250)+
+      expand_limits(y=0)+
       labs(x="time (hours)",y="Size (µm)")+
       theme(strip.background = element_rect(colour = "white", fill = "white"),
         strip.text.x = element_text(size=15,colour = "black", face = "bold"),
@@ -179,7 +189,8 @@ plots_sizes <- function(selected_annotations, selected_timepoints,parameter,plot
         axis.ticks = element_line(colour = "black", size = 1))+
       scale_fill_manual(values = pal)+
       scale_color_manual(values = pal)+
-      ggtitle(paste0(parameter, "_meanse_",paste(selected_annotations, collapse="_")))+
+      ggtitle(paste0(parameter, "_meanse_",paste(selected_annotations, collapse="_")))
+  
       ggsave(file.path(save_path_temp_plottype,paste0(parameter, "_meanse_",paste(selected_annotations, collapse="_"),"_",min(selected_timepoints),"-",max(selected_timepoints), ".png")),height=plot_height,width=plot_width)
   
   #mean with standard error
@@ -196,7 +207,7 @@ plots_sizes <- function(selected_annotations, selected_timepoints,parameter,plot
       geom_line(size=1.2)+
       geom_point(aes(color=annotation),shape=21, size=3,color="black")+
       theme_classic()+
-      expand_limits(y=250)+
+      expand_limits(y=0)+
       labs(x="time (hours)",y="Size (µm)")+
       theme(strip.background = element_rect(colour = "white", fill = "white"),
         strip.text.x = element_text(size=20,colour = "black", face = "bold"),
@@ -208,7 +219,8 @@ plots_sizes <- function(selected_annotations, selected_timepoints,parameter,plot
         axis.ticks = element_line(colour = "black", size = 1))+
       scale_fill_manual(values = pal)+
       scale_color_manual(values = pal)+
-      ggtitle(paste0(parameter, "_meansd_",paste(selected_annotations, collapse="_")))+
+      ggtitle(paste0(parameter, "_meansd_",paste(selected_annotations, collapse="_")))
+  
       ggsave(file.path(save_path_temp_plottype,paste0(parameter, "_meansd_",paste(selected_annotations, collapse="_"),"_",min(selected_timepoints),"-",max(selected_timepoints), ".png")),height=plot_height,width=plot_width)
   
 }
@@ -216,42 +228,9 @@ plots_sizes <- function(selected_annotations, selected_timepoints,parameter,plot
 ```
 
 
-# OP50 vs Agar
-```{r, include=FALSE}
-library(wesanderson)
-
-save_path_temp <- file.path(base_path,"plots","sizes","comparisons")
-dir.create(save_path_temp)
-
-#write annotations in alphabetical order
-selected_annotations <- c("Agar_long_1","OP50_long_2")
-selected_timepoints <- unique(imported_data$hours_rounded)
-for (parameter in parameters){
-  pal <- wes_palette("Darjeeling1")[c(1,5)]
-  plots_sizes(selected_annotations,selected_timepoints, parameter,10,7)
-}
-
-
-```
-
-
-# OP50 vs Agar vs KQ1366
-```{r, include=FALSE}
-
-selected_annotations <- c("Agar_long_1", "KQ1366_long_1","OP50_long_2")
-selected_timepoints <- unique(imported_data$hours_rounded)
-for (parameter in parameters){
-  pal <- wes_palette("Darjeeling1")[c(1,3,5)]
-  plots_sizes(selected_annotations, selected_timepoints,parameter,10,7)
-
-}
-
-
-
-```
 # OP50 vs Agar vs OP with Az (NGM)
 ```{r, include=FALSE}
-selected_annotations <- c("Agar_long_1","OP50_long_1", "OP50_with_Az_NGM_long_1")
+selected_annotations <- c("Agar_long_1","OP50_long_2", "OP50_w_Az_long_1")
 selected_timepoints <- unique(imported_data$hours_rounded)
 for (parameter in parameters){
   pal <- wes_palette("Darjeeling1")[c(1,5,2)]
@@ -268,7 +247,7 @@ for (parameter in parameters){
 
 # OP50 vs Agar vs OP with Az (NGM)
 ```{r, include=FALSE}
-selected_annotations <- c("Agar_long_1","OP50_with_Az_NGM_long_1","OP50_long_1")
+selected_annotations <- c("Agar_long_1","OP50_with_Az_NGM_long_2","OP50_long_1")
 selected_timepoints <- unique(imported_data$hours_rounded)
 for (parameter in parameters){
   pal <- wes_palette("Darjeeling1")[c(1,2,5)]
