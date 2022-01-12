@@ -1,0 +1,78 @@
+# Here we re-group all skeletonized files into one annotation/dataset.
+# Additionally, we only keep skeletons that have been tracked and identified for a defined number of frames.
+# Use this script after running the "skeletonization.R" script 
+# Needed: Individual .RDS files for each timepoint as written out by "skeletonization.R"
+# These files should be named "datasetID_timepoint_XX_skeletonized.R"
+# You have to specify the minimal frame number (i.e. the minimal number of frames for how long skeletons have to be tracked without interruption)
+# All tracks that have been tracked without interruption for shorter amounts of time will be discarded
+# To run the script type: Rscript filter_skeletons.R "the location of your raw data folder" "minimal frame number"
+# e.g. Rscript filter_skeletons.R /media/fpreuss/raid5/timelapses/analysis/paper/raw 10  
+
+library("tidyverse")
+
+###### functions ######
+#1 Small helper functions
+
+# the function which will change all values of a given column to NA, except those rows that are consecutive for y times
+replace_f <- function(x,y){
+  subs <- rle(x)
+  subs$values[subs$lengths < y] <- NA
+  inverse.rle(subs)
+}
+
+
+#get file path from command line
+dataraw_file_path <- commandArgs(trailingOnly = TRUE)[1]
+#get minimum frame number from command line
+min_frames <- as.numeric(commandArgs(trailingOnly = TRUE)[2])
+
+#create file path for skeletonized data
+dataskeletonized_file_path <- file.path(dirname(dataraw_file_path),"skeletonized","unfiltered")
+#create file path for saving
+save_path <- file.path(dirname(dataraw_file_path),"skeletonized","filtered")
+#create the save path directories
+dir.create(save_path,recursive = TRUE)
+#catch timelapses_metadata.txt location
+toprocess_file_path <- file.path(file.path(dataraw_file_path, "toprocess_filter_skeletons.txt"))
+
+
+#extract list of datasets to process from "timelapses_metadata.txt" file
+datasets_to_process <- as.matrix(read.table(toprocess_file_path))
+
+#list of .rds files in data folder
+files_to_process <- list.files(dataskeletonized_file_path, "skeletonized.rds", full.names = TRUE, ignore.case = TRUE)
+
+
+#get annotations that have already been processed
+datasets_processed <- gsub("(.+)_skeletonized_filtered.+","\\1",list.files(save_path,pattern="filtered"))
+
+# #get timepoints of this dataset that still have to be processed
+datasets_to_process <- datasets_to_process[!datasets_to_process %in% datasets_processed]
+
+
+
+for (dataset in datasets_to_process){
+  
+  cat(paste0("\n\nprocessing: ",dataset))
+  
+  imported_data <- grep(paste0(".+\\/",dataset,"_timepoint.+"),files_to_process,value=TRUE) %>%
+    map_df(.,function(x) readRDS(x)) %>%
+    #only keep skeletons where a head was detected or estimated
+    group_by(dataset_ID,tp,TrackID,frame) %>%
+    filter(any(is_head=="YES")) %>%
+    #keep only tracks that have skeletons with head for a minimum amount of time (defined by min_frames)
+    group_by(dataset_ID,TrackID,tp) %>%
+    mutate(TrackCheck_cleaned = replace_f(TrackCheck, 26*min_frames)) %>%
+    drop_na("TrackCheck_cleaned") %>%
+    ungroup()
+  
+  cat("\nskeleton filtering done. now saving.")
+  created_file_path <- file.path(save_path,paste0(dataset,"_skeletonized_filtered.rds"))
+  saveRDS(imported_data, file = created_file_path)
+  cat(paste0("\ndataset: ",dataset," was filtered \nand saved under: ", created_file_path))
+  rm(imported_data)
+  gc()
+  
+}
+
+
