@@ -80,7 +80,7 @@ plot_omega <- function(input_data, selected_mode, selected_annotations){
 }
 
 
-#######################################################
+################# load data #########################
 
 #define base path  
 base_path <- commandArgs(trailingOnly = TRUE)[1]
@@ -168,11 +168,15 @@ data_bst <- data_binarized %>%
 # unique(data$annotation)
 
 
-#plot modes
+
+
+############### plot modes ###############
+
 save_path_temp <- file.path(save_path,"modes")
 dir.create(save_path_temp)
 
 
+##### line plots #####
 
 selected_annotations <- c("Agar","OP50_w_Az","OP50", "HB101")
 selected_mode <- c("roaming")
@@ -189,6 +193,8 @@ data_bs %>%
   scale_y_continuous(limits=c(0,NA))
 ggsave(file.path(save_path_temp,paste0("modes_relative_per_mode_seperate_sd.png")),height=7,width=4,dpi=600)
 
+
+##### range plots #####
 
 selected_annotations <- c("Agar","OP50_w_Az","OP50", "HB101")
 selected_mode <- c("roaming")
@@ -250,29 +256,32 @@ ggplot(data_to_plot, aes(x=hours_rounded, y=mean_perc,color=annotation))+
 
 ggsave(file.path(save_path_temp,paste0("dispersal_fraction_sd_rangeplots.png")),height=6,width=8,dpi=600)
 
+####################################################
 
 
+################# plots omega turns #######################
 #compare omega turn occurences across conditions
 
 save_path_temp <- file.path(save_path,"omega_turns")
 dir.create(save_path_temp)
 
-selected_annotations <- c("Agar","OP50_w_Az","OP50")
+selected_annotations <- c("Agar","OP50","HB101")
 selected_hours <- c(1,9)
 selected_mode <- c("roaming")
-pal <- wes_palette("Darjeeling1")[c(1,2,5)]
+pal <- wes_palette("Darjeeling1")[c(1,5,4)]
 
 data_bs %>%
   filter(hours_rounded %in% selected_hours) %>%
   mutate(time=ifelse(hours_rounded <= 3,"early",NA)) %>%
-  mutate(time=ifelse(hours_rounded >= 6, "late",time)) %>%
-  plot_omega(., selected_mode,selected_annotations)
+  mutate(time=ifelse(hours_rounded > 6, "late",time)) %>%
+  plot_omega(., selected_mode,selected_annotations)+
+  geom_signif(comparisons = list(c("early", "late")))
 ggsave(file.path(save_path_temp,paste0("omega_median",paste(selected_annotations, collapse="_"),"_",paste(selected_hours, collapse="_"),".png")),height=5,width=5,dpi=600)
 
+############################################
 
 
-
-#mean velocity per track plot
+################# plots mean velocity #######################
 save_path_temp <- file.path(save_path,"mean_velocity")
 dir.create(save_path_temp)
 
@@ -315,3 +324,4 @@ ggplot(data_temp,aes(y=factor(hours_rounded, levels = selected_hours),x=mean_vel
   scale_color_manual(values = pal)
 ggsave(file.path(save_path_temp,paste0("tracks_mean_velocity",paste(selected_annotations, collapse="_"),"_",paste(selected_hours, collapse="_"),".png")),height=4,width=7,dpi=600)
 
+############################################
