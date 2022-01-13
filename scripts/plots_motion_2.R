@@ -110,10 +110,11 @@ data <- map_dfr(files_to_process,readRDS) %>%
   mutate(hours = minutes / 60) %>%
   #round per half an hour
   # mutate(hours_rounded= floor(hours * 2) / 2) %>%
-  #round per hour
-  mutate(hours_rounded = ceiling(hours)) %>%
+  #round to next hour up
+  # mutate(hours_rounded = ceiling(hours)) %>%
+  mutate(hours_rounded = round(hours)) %>%
   #filter out first 30 mins
-  filter(hours > 0.5) %>%
+  filter(hours > 0) %>%
   mutate(annotation = gsub("\\s", "_",annotation))%>% 
   na.omit() %>%
   # scale velocity to mm/s
@@ -161,7 +162,8 @@ data_bst <- data_binarized %>%
   #summarise over individual tracks
   #this will be the mean of the bins contained within that track
   #mean_omega is the mean number of tracks with at one omega turn, normalized per s
-  summarise(mean_velocity = mean(p_mean_velocity), mean_angle = mean(p_mean_angle))
+  summarise(mean_velocity = mean(p_mean_velocity), mean_angle = mean(p_mean_angle)) %>%
+  ungroup()
 
 # unique(data$annotation)
 
@@ -191,7 +193,7 @@ ggsave(file.path(save_path_temp,paste0("modes_relative_per_mode_seperate_sd.png"
 selected_annotations <- c("Agar","OP50_w_Az","OP50", "HB101")
 selected_mode <- c("roaming")
 pal <- wes_palette("Darjeeling1")[c(1,2,5,4)]
-selected_tps <- c(3,6,9,12)
+selected_tps <- c(1,3,6,9,12)
 
 data_temp <- data_bs %>%
   filter(annotation %in% selected_annotations) %>%
@@ -224,13 +226,14 @@ write.csv2(pvalues,file=file.path(save_path_temp,paste0("dispersal_fraction_wilc
 
   
 data_to_plot <- data_temp %>% 
+  mutate(hours_rounded = as.character(hours_rounded)) %>%
+  mutate(hours_rounded = factor(hours_rounded, levels = c("1","3","6","9","12"))) %>%
   group_by(annotation, hours_rounded) %>%
   summarise(mean_perc= mean(perc), maxsd=mean(perc)+sd(perc),minsd=mean(perc)-sd(perc))
 
 
 ggplot(data_to_plot, aes(x=hours_rounded, y=mean_perc,color=annotation))+
-  geom_pointrange(aes(ymin=minsd, ymax=maxsd),position = position_dodge(2.2),size=1.5)+
-  scale_x_continuous(breaks=c(3,6,9,12))+
+  geom_pointrange(aes(ymin=minsd, ymax=maxsd),position = position_dodge(1),size=1.5)+
   scale_y_continuous(limits=c(0,1.1),breaks=c(0,0.25,0.5,0.75,1))+
   theme_bw()+
   labs(x="time (hours)", "relative fraction")+
@@ -266,16 +269,49 @@ data_bs %>%
   plot_omega(., selected_mode,selected_annotations)
 ggsave(file.path(save_path_temp,paste0("omega_median",paste(selected_annotations, collapse="_"),"_",paste(selected_hours, collapse="_"),".png")),height=5,width=5,dpi=600)
 
-#velocity plot
-selected_annotations <- c("Agar","OP50_w_Az","OP50", "HB101")
-selected_mode <- c("roaming")
-selected_hours <- c(1,12)
-pal <- wes_palette("Darjeeling1")[c(1,2,5,5)]
 
-data_bst %>%
-  filter(hours_rounded %in% selected_hours) %>%
+
+
+#mean velocity per track plot
+save_path_temp <- file.path(save_path,"mean_velocity")
+dir.create(save_path_temp)
+
+
+selected_annotations <- c("Agar", "HB101")
+selected_hours <- c("12","3")
+pal <- wes_palette("Darjeeling1")[c(1,4)]
+
+data_temp <- data_bst %>%
   mutate(hours_rounded = as.character(hours_rounded)) %>%
-  filter(annotation %in% selected_annotations) %>%
-  ggplot(aes(x=hours_rounded,y=mean_velocity,group=hours_rounded,color=annotation))+
-    geom_violin()+
-    scale_y_log10()
+  filter(hours_rounded %in% selected_hours) %>%
+  mutate(hours_rounded = factor(hours_rounded, levels = selected_hours)) %>%
+  filter(annotation %in% selected_annotations)
+  
+#calculate significances for both timepoints seperately
+first_hour_pvalue <- filter(data_temp,hours_rounded == selected_hours[1]) %>%
+  wilcox_test(mean_velocity ~ annotation,detailed = TRUE) %>%
+  add_significance()
+
+second_hour_pvalue <- filter(data_temp,hours_rounded == selected_hours[2]) %>%
+  wilcox_test(mean_velocity ~ annotation,exact=FALSE,detailed = TRUE) %>%
+  add_significance()
+
+write.csv2(rbind(first_hour_pvalue,second_hour_pvalue),file=file.path(save_path_temp,paste0("tracks_mean_velocity.txt",paste(selected_annotations, collapse="_"),"_",paste(selected_hours, collapse="_"),".txt")))
+
+ggplot(data_temp,aes(y=factor(hours_rounded, levels = selected_hours),x=mean_velocity,fill=annotation))+
+    geom_violin(color=NA,alpha=0.5)+
+    geom_boxplot(width=0.1,size=0.5,position=position_dodge(0.9),outlier.shape = NA)+
+    scale_x_log10(limits=c(NA,0.3))+
+    theme_bw()+
+    theme(strip.background = element_rect(colour = "white", fill = "white"),
+        strip.text.x = element_text(size=20,colour = "black", face = "bold"),
+        axis.text.x = element_text(size=15, face="bold"),
+        axis.title.x = element_text(size=20, face="bold"),
+        axis.text.y = element_text(size=15, face="bold"),
+        axis.title.y = element_text(size=20, face="bold"),
+        axis.line = element_line(colour = 'black', size = 1.2),
+        axis.ticks = element_line(colour = "black", size = 1.2))+
+  scale_fill_manual(values = pal)+
+  scale_color_manual(values = pal)
+ggsave(file.path(save_path_temp,paste0("tracks_mean_velocity",paste(selected_annotations, collapse="_"),"_",paste(selected_hours, collapse="_"),".png")),height=4,width=7,dpi=600)
+
