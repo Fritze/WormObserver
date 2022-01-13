@@ -37,7 +37,7 @@ toprocess_file_path <- file.path(file.path(dataraw_file_path, "toprocess_filter_
 
 
 #extract list of datasets to process from "timelapses_metadata.txt" file
-datasets_to_process <- as.matrix(read.table(toprocess_file_path))
+datasets <- as.matrix(read.table(toprocess_file_path))
 
 #list of .rds files in data folder
 files_to_process <- list.files(dataskeletonized_file_path, "skeletonized.rds", full.names = TRUE, ignore.case = TRUE)
@@ -47,32 +47,34 @@ files_to_process <- list.files(dataskeletonized_file_path, "skeletonized.rds", f
 datasets_processed <- gsub("(.+)_skeletonized_filtered.+","\\1",list.files(save_path,pattern="filtered"))
 
 # #get timepoints of this dataset that still have to be processed
-datasets_to_process <- datasets_to_process[!datasets_to_process %in% datasets_processed]
+datasets_to_process <- datasets[!datasets %in% datasets_processed]
 
 
-
-for (dataset in datasets_to_process){
-  
-  cat(paste0("\n\nprocessing: ",dataset))
-  
-  imported_data <- grep(paste0(".+\\/",dataset,"_timepoint.+"),files_to_process,value=TRUE) %>%
-    map_df(.,function(x) readRDS(x)) %>%
-    #only keep skeletons where a head was detected or estimated
-    group_by(dataset_ID,tp,TrackID,frame) %>%
-    filter(any(is_head=="YES")) %>%
-    #keep only tracks that have skeletons with head for a minimum amount of time (defined by min_frames)
-    group_by(dataset_ID,TrackID,tp) %>%
-    mutate(TrackCheck_cleaned = replace_f(TrackCheck, 26*min_frames)) %>%
-    drop_na("TrackCheck_cleaned") %>%
-    ungroup()
-  
-  cat("\nskeleton filtering done. now saving.")
-  created_file_path <- file.path(save_path,paste0(dataset,"_skeletonized_filtered.rds"))
-  saveRDS(imported_data, file = created_file_path)
-  cat(paste0("\ndataset: ",dataset," was filtered \nand saved under: ", created_file_path))
-  rm(imported_data)
-  gc()
-  
+if (length(datasets_to_process) > 0){
+  for (dataset in datasets_to_process){
+    
+    cat(paste0("\n\nprocessing: ",dataset))
+    
+    imported_data <- grep(paste0(".+\\/",dataset,"_timepoint.+"),files_to_process,value=TRUE) %>%
+      map_df(.,function(x) readRDS(x)) %>%
+      #only keep skeletons where a head was detected or estimated
+      group_by(dataset_ID,tp,TrackID,frame) %>%
+      filter(any(is_head=="YES")) %>%
+      #keep only tracks that have skeletons with head for a minimum amount of time (defined by min_frames)
+      group_by(dataset_ID,TrackID,tp) %>%
+      mutate(TrackCheck_cleaned = replace_f(TrackCheck, 26*min_frames)) %>%
+      drop_na("TrackCheck_cleaned") %>%
+      ungroup()
+    
+    cat("\nskeleton filtering done. now saving.")
+    created_file_path <- file.path(save_path,paste0(dataset,"_skeletonized_filtered.rds"))
+    saveRDS(imported_data, file = created_file_path)
+    cat(paste0("\ndataset: ",dataset," was filtered \nand saved under: ", created_file_path))
+    rm(imported_data)
+    gc()
+    
+  }
+}else{
+  cat("\n\n", paste(datasets,collapse=" and "), " were already processed.\n\n")
 }
-
 
