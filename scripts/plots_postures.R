@@ -7,9 +7,17 @@
 # To run the script type: Rscript plots_postures.R "the location of your clustered skeletonized data folder" 
 # e.g. Rscript plots_postures.R /Users/fpreuss/Desktop/data/skeletonized/clustered/
 
+options(warn=-1)
+
 library(tidyverse)
 #for rollmean function
 library(zoo)
+#for dcast function
+library(reshape2)
+#for plotting of heatmap next to postures
+library(patchwork)
+#for colors
+library(viridis)
 
 #define base path  
 base_path <- commandArgs(trailingOnly = TRUE)[1]
@@ -19,9 +27,6 @@ dir.create(save_path,recursive = TRUE)
 
 #list of datasets that have been clustered and will be plotted now
 datasets_to_process <- gsub("(.+)\\_clustering.+","\\1",basename(list.files(base_path, "_clustering.rds", full.names = TRUE, ignore.case = TRUE)))
-
-
-
 
 
 for (i in datasets_to_process){
@@ -37,7 +42,7 @@ for (i in datasets_to_process){
   cluster_centers_reduced <- cluster_centers_reduced_filepath %>%
     readRDS(.)
   
-  cat(paste0("plotting ",unique(skeleton_data_clustered$annotation,"\n")))
+  cat(paste0("\n\nplotting ",unique(skeleton_data_clustered$annotation," \n\n\n ")))
   
   
   #add clusters to initial skeleton dataset that was used for kmeans clustering
@@ -188,8 +193,8 @@ for (i in datasets_to_process){
   #  3- frequency, normalized (z-score) with rolling mean
   
   #create specific folder location that will be used to save the heatmaps
-  save_path <- file.path(base_path,"plots","posture","heatmaps")
-  dir.create(save_path)
+  save_path_temp <- file.path(save_path,"heatmaps")
+  dir.create(save_path_temp,recursive = TRUE)
   
   #defines the skeleton example plot that will appear below the heatmap
   plot_posture_examples <- function(data_to_plot,X,Y){
@@ -200,7 +205,6 @@ for (i in datasets_to_process){
       coord_fixed(ratio = 1)+
       scale_color_gradient2(low = "deepskyblue", mid = "lavender",
                             high = "deeppink",midpoint=0,limits=c(-1,1),na.value="grey") +
-      # scale_color_viridis(option = "plasma",limits=c(-1,1))+
       theme(plot.title = element_text(face = "bold"))
   }
   
@@ -265,7 +269,8 @@ for (i in datasets_to_process){
         coord_equal()+
         facet_wrap(vars(annotation),ncol=2)+
         geom_tile(aes(fill=normalization))+
-        scale_fill_distiller(type = "div",limits=c(-1,1) * max(abs(select(heatmap_data_to_plot,normalization))))
+        # scale_fill_distiller(type = "div",limits=c(-1,1) * max(abs(select(heatmap_data_to_plot,normalization))))
+        scale_fill_viridis(option = "viridis",limits=c(-1,1) * max(abs(select(heatmap_data_to_plot,normalization))))
       
       #generate heatmap data per dataset
       heatmap_data_to_plot_per_dataset <- angle_data_postures_per_dataset %>%
@@ -280,7 +285,8 @@ for (i in datasets_to_process){
         labs(x="posture IDs",y = "hours",fill="Z-score") +
         scale_x_discrete(guide = guide_axis(n.dodge = 2)) +
         coord_equal()+
-        scale_fill_distiller(type = "div",limits=c(-1,1) * max(abs(select(heatmap_data_to_plot_per_dataset,normalization_per_dataset))))+
+        # scale_fill_distiller(type = "div",limits=c(-1,1) * max(abs(select(heatmap_data_to_plot_per_dataset,normalization_per_dataset))))+
+        scale_fill_viridis(option = "viridis",limits=c(-1,1) * max(abs(select(heatmap_data_to_plot_per_dataset,normalization_per_dataset))))+
         facet_wrap(vars(dataset_ID),ncol=1)+
         # scale_y_continuous(breaks=seq(1,max(heatmap_data_to_plot_per_dataset$hours_rounded),2))+
         theme_classic()+ 
@@ -295,7 +301,7 @@ for (i in datasets_to_process){
               legend.position = "right",
               legend.direction='vertical')
       
-      ggsave(file.path(save_path,paste0("heatmap_",paste0(a,collapse="+"),"_",n,"_per_dataset",".png")),width=49,height=30)
+      ggsave(file.path(save_path_temp,paste0("heatmap_",paste0(a,collapse="+"),"_",n,"_per_dataset",".png")),width=49,height=30)
       
       #levels must be changed for ggplot to take new order into account
       cluster_centers_reduced_ordered <- cluster_centers_reduced %>%
@@ -312,12 +318,12 @@ for (i in datasets_to_process){
       
       heatmap /
         skeletons + 
-        plot_layout(widths = c(1,3),heights = c(1,3))+
-        ggsave(file.path(save_path,paste0("heatmap_",paste0(a,collapse="+"),"_",n,".png")),width=49,height=30)
+        plot_layout(widths = c(1,3),heights = c(1,3))
+      ggsave(file.path(save_path_temp,paste0("heatmap_",paste0(a,collapse="+"),"_",n,".png")),width=49,height=30)
       
       
       #for each annotation save data frame with relative occurence of posters and newID2 (ordering like in heatmap)
-      saveRDS(heatmap_data_to_plot_per_dataset, file.path(target_folder,paste0(annotation,"_",n,"_angle_data_postures_per_dataset.RDS")))
+      saveRDS(heatmap_data_to_plot_per_dataset, file.path(save_path_temp,paste0(annotation,"_",n,"_angle_data_postures_per_dataset.RDS")))
     }
     
   }
