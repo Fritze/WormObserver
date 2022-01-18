@@ -1,23 +1,33 @@
+# Use this script after running the "cluster_skeletons.R" script that clusters skeletons for a given condition.
+# Needed: "...cluster_centers_reduced.RDS" &
+          "..._clustering.RDS" &
+          "...skeletons_filtered_clustered.RDS"
+#as computed by the "cluster_skeletons.R" script
 
-#Select files to load
-#We need the clustering file containing the mean positions of each cluster as well as the skeletons filtered file with clusters attached
-```{r, include=FALSE}
-base_path <- "/Users/fpreuss/Desktop/data/"
-target_folder <- "/Users/fpreuss/Desktop/data/postures_clustered"
+# To run the script type: Rscript plots_postures.R "the location of your clustered skeletonized data folder" 
+# e.g. Rscript plots_postures.R /Users/fpreuss/Desktop/data/skeletonized/clustered/
 
-annotations_to_process<-list.files(target_folder,full.names = TRUE)
+library(tidyverse)
+
+#define base path  
+base_path <- commandArgs(trailingOnly = TRUE)[1]
+#define save path
+save_path <- file.path(dirname(dirname(dirname(base_path))), "plots", "postures")
+dir.create(save_path,recursive = TRUE)
+
+#list of datasets that have been clustered and will be plotted now
+datasets_to_process <- gsub("(.+)\\_clustering.+","\\1",basename(list.files(base_path, "_clustering.rds", full.names = TRUE, ignore.case = TRUE)))
 
 
-cluster_centers_reduced_filepath <- list.files(path = target_folder,pattern="cluster_centers_reduced.RDS",ignore.case = TRUE, full.names = TRUE)
+i <- datasets_to_process[1]
 
 
-
-
-for (i in annotations_to_process){
+for (i in datasets_to_process){
   
   
-  skeletons_filtered_clustered_filepath <-list.files(i,pattern=".+skeletons_filtered_clustered.RDS",ignore.case = TRUE,full.names=TRUE)
-  cluster_centers_reduced_filepath <- list.files(i,pattern="cluster_centers_reduced.RDS",ignore.case = TRUE,full.names=TRUE)
+  skeletons_filtered_clustered_filepath <-file.path(base_path,paste0(i,"_skeletons_filtered_clustered.RDS"))
+  cluster_centers_reduced_filepath <- file.path(base_path,paste0(i,"_cluster_centers_reduced.RDS"))
+  
   #load data
   skeleton_data_clustered <- skeletons_filtered_clustered_filepath %>%
     readRDS(.)
