@@ -31,10 +31,7 @@ for (i in annotations_to_process){
     readRDS(.)
   
   cat(paste0("plotting ",unique(skeleton_data_clustered$annotation,"\n")))
-  
-  #cluster <- readRDS(clustering_filepath)
-  #cluster_centers_reduced <- readRDS(cluster_centers_reduced_filepath)
-  
+
   
   #add clusters to initial skeleton dataset that was used for kmeans clustering
   #also calculate relative occurences of postures (i.e. clusters) both total and per annotation
