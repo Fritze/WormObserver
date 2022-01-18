@@ -232,6 +232,32 @@ for (file in files_to_process){
   #choose right number of centers!
   centers <- 200
   
+  
+  #here we perform the "elbow plot" for visualizing the explained varience by different numbers of k clusters
+  # function to compute total within-cluster sum of square
+  wss <- function(k) {
+    k <- kmeans(ccr_for_clustering, k)
+    perc <- k$betweenss / k$totss
+    return(perc)
+  }
+  
+  # Compute and plot wss for k = 1 to k = 200
+  k_values <- seq(0,400,50)
+  
+  # extract wss for  clusters
+  wss_values <- data.frame(expvar = map_dbl(k_values, wss)) %>%
+    mutate(k=k_values)
+  
+  #do the plot
+  ggplot(data=wss_values,aes(x=k, y=expvar))+
+    geom_point()+
+    geom_line()+
+    geom_vline(x=centers)
+    scale_x_continuous(breaks = seq(min(k_values), max(k_values)))+
+    theme_classic()
+  
+  ggsave(file.path(save_path,paste0(paste0(paste0(files_to_process_annotations,collapse = "_"),"_elbow_plot",".png"))),height=49,width=10)  
+    
   cluster <- kmeans(angle_data_cluster,centers=centers,nstart = 5,iter.max = 1000,algorithm = "Lloyd")
   
   
@@ -283,7 +309,7 @@ for (file in files_to_process){
     geom_point(data=filter(cluster_centers_reduced,index == 2), aes(X,Y),color="orange",size=3,shape=17) +
     facet_wrap(vars(newID,newID_sub),ncol=4) +
     theme(strip.text.x = element_text(size = 20,face="bold"))
-  ggsave(file.path(save_path,paste0("200526_",paste0(paste0(files_to_process_annotations,collapse = "_"),"_posture_angle_centers_mirrorExamples",".png"))),height=49,width=10)
+  ggsave(file.path(save_path,paste0(paste0(paste0(files_to_process_annotations,collapse = "_"),"_posture_angle_centers_mirrorExamples",".png"))),height=49,width=10)
   
   #a dataframe with the clusterID (old as put out by kmeans) and the skeleton ID (from rownames of angle_data_cluster dataframe)
   skeletonIDs_with_postures <- data.frame(clusterID = as.character(cluster$cluster), ID = rownames(angle_data_cluster),stringsAsFactors = FALSE)
