@@ -46,7 +46,7 @@ files_to_process <- list.files(dataskeletonized_file_path, "skeletonized.rds", f
 #get annotations that have already been processed
 datasets_processed <- gsub("(.+)_skeletonized_filtered.+","\\1",list.files(save_path,pattern="filtered"))
 
-# #get timepoints of this dataset that still have to be processed
+# #get datasets that still have to be processed
 datasets_to_process <- datasets[!datasets %in% datasets_processed]
 
 
