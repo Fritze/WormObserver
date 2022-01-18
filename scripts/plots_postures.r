@@ -84,9 +84,9 @@ for (i in datasets_to_process){
     #15 mins as average offset
     mutate(minutes = 15 + ((tp-1)*8+(tp-1)*0)) %>%
     #round to half hour steps
-    mutate(hours_rounded = ceiling(minutes/60*2)/2) %>%
-    #round to full hour steps
-    # mutate(hours_rounded = ceiling(minutes/60)) %>%
+    mutate(hours_rounded = round(minutes/60)) %>%
+    #filter out first 30 mins
+    filter(hours > 0) %>%
     mutate(dataset_TrackID =  paste0(dataset_ID,"_",tp,"_",TrackID)) %>%
     ###
     # group_by(annotation,dataset_TrackID,hours_rounded) %>%
