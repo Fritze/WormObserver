@@ -261,7 +261,6 @@ if (length(files_to_process_cleaned) > 0){
       #get annotation from file name
       mutate(annotation = gsub("(.+)\\_long.+","\\1", annotation))
     
-    save_path <- file.path(target_path,"converted")
     dir.create(save_path)
     
     saveRDS(imported_data_temp, file.path(save_path, paste0(filename, "_size_converted.RDS")))
