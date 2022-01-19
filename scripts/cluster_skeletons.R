@@ -7,7 +7,7 @@
 # This file should be named "toprocess_cluster_skeletons.txt" and contain the conditions you want to cluster,
 
 # To run the script type: Rscript cluster_skeletons.R "the location of your raw data folder"
-# e.g. Rscript cluster_skeletons.R /media/fpreuss/raid5/timelapses/analysis/paper/raw
+# e.g. Rscript cluster_skeletons.R /media/fpreuss/raid5/timelapses/analysis/paper/data/raw
 
 library("tidyverse")
 library("reshape2")
@@ -211,11 +211,31 @@ files_to_process_cleaned <- grep(paste0(".+\\/",paste(datasets_to_process,collap
 
 for (file in files_to_process_cleaned){
   
-  cat(paste0("loading ",file,"\n"))
+  cat(paste0("\n\nloading ",file,"\n\n"))
   skeleton_data_filtered <- file %>%
     map_df(., function(x) readRDS(x)) %>%
     mutate(ID = paste0(dataset_ID, "_",tp,"_",TrackID,"_",frame))
   
+  #this is a workaround for attaching the correct offset times (i.e. minutes worms have spent on the plate prior to imaging) to the data
+  #we open the grouped raw RDS for this. this is slow.
+  #ideally, this should be done in the skeletonization script
+  cat(paste0("\n\ncalculating offsets for ",file,"\n\n"))
+  
+  #function for fetching offsets from grouped raw RDS file
+  read_offset <- function(x,y){
+    file_path <- file.path(data_path_raw, paste0(x,"_raw_data.rds"))
+    temp <- readRDS(file_path) %>%
+      filter(dataset_ID %in% y) %>%
+      group_by(dataset_ID,time_elapsed,timepoint_length, timestep_length) %>%
+      summarise()
+    return(temp)
+  }
+  
+  offsets <- read_offset(unique(skeleton_data_filtered$annotation),unique(skeleton_data_filtered$dataset_ID))
+  
+  #new skeleton data filtered table now with offsets
+  skeleton_data_filtered <- skeleton_data_filtered %>%
+    left_join(offsets,by="dataset_ID")
   
   #transpose - rows: posture IDs, -columns: angles
   angle_data_cluster <- skeleton_data_filtered %>%
@@ -225,13 +245,9 @@ for (file in files_to_process_cleaned){
     #take out first and last angle
     select(-c(1,ncol(.)))
   
-  
-  cat(paste0("clustering ",file,"\n"))
-  
-  #calculate clusters
-  #choose right number of centers!
-  centers <- 200
-  
+
+
+  cat(paste0("\n\ncalculating elbow plot for ",file,"\n\n"))
   
   #here we perform the "elbow plot" for visualizing the explained varience by different numbers of k clusters
   # function to compute total within-cluster sum of square
@@ -257,7 +273,14 @@ for (file in files_to_process_cleaned){
     theme_classic()
   
   ggsave(file.path(save_path,paste0(paste0(paste0(files_to_process_annotations,collapse = "_"),"_elbow_plot",".png"))),height=49,width=10)  
-    
+  
+  cat(paste0("\n\nclustering ",file,"\n\n"))
+  
+  #calculate clusters
+  #choose right number of centers!
+  centers <- 200
+  
+  
   cluster <- kmeans(angle_data_cluster,centers=centers,nstart = 5,iter.max = 1000,algorithm = "Lloyd")
   
   
@@ -326,7 +349,8 @@ for (file in files_to_process_cleaned){
     inner_join(skeletonIDs_with_postures,by="clusterID") %>%
     #add skeleton features for every skeleton ID
     left_join(skeleton_data_filtered,by="ID") %>%
-    ungroup()
+    ungroup() %>%
+    mutate(minutes = time_elapsed + ((tp-1)*timepoint_length+(tp-1)*timestep_length)) %>%
   
   
   
