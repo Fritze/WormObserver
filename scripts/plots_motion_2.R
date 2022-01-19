@@ -95,7 +95,7 @@ conversion_factor <- 6.25
 downsampled_to = 2
 #lower velocity limit for mode == roaming (mm/s)
 velocity_r <- 0.01
-#upper angle limit for mode == roaming (mm/s)
+#upper angle limit for mode == roaming (°/s)
 angle_r <- 15 
 # upper velocity limit for mode == still (mm/s)
 velocity_s <- 0.001
