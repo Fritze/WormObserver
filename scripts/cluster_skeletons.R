@@ -207,9 +207,9 @@ datasets_processed <- gsub("(.+)_skeletons_filtered_clustered\\.RDS","\\1",list.
 datasets_to_process <- datasets[!datasets %in% datasets_processed]
 
 #get files that have to be loaded
-files_to_process <- grep(paste0(".+\\/",datasets_to_process,"\\_skeletonized.+"),files_to_process,value=TRUE)
+files_to_process_cleaned <- grep(paste0(".+\\/",paste(datasets_to_process,collapse="|"),"\\_skeletonized.+"),files_to_process,value=TRUE)
 
-for (file in files_to_process){
+for (file in files_to_process_cleaned){
   
   cat(paste0("loading ",file,"\n"))
   skeleton_data_filtered <- file %>%
@@ -236,13 +236,13 @@ for (file in files_to_process){
   #here we perform the "elbow plot" for visualizing the explained varience by different numbers of k clusters
   # function to compute total within-cluster sum of square
   wss <- function(k) {
-    k <- kmeans(ccr_for_clustering, k)
+    k <- kmeans(angle_data_cluster, centers=k,nstart = 5,iter.max = 1000,algorithm = "Lloyd")
     perc <- k$betweenss / k$totss
     return(perc)
   }
   
   # Compute and plot wss for k = 1 to k = 200
-  k_values <- seq(0,400,50)
+  k_values <- seq(50,400,50)
   
   # extract wss for  clusters
   wss_values <- data.frame(expvar = map_dbl(k_values, wss)) %>%
