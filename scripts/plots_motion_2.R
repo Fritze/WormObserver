@@ -127,8 +127,6 @@ data <- map_dfr(files_to_process,readRDS) %>%
 
 
 
-
-
 data_binarized <- data %>%
   mutate(mode = ifelse(p_mean_velocity > velocity_r & p_mean_angle < angle_r,"roaming","dwelling")) %>%
   mutate(mode=ifelse(p_mean_velocity < velocity_s, "still", mode)) %>%
@@ -146,7 +144,7 @@ data_bs <- data_binarized %>%
   #summarise over tp
   #this will be the mean of the bins contained within that tp and mode
   #counts is the number of bins of a certain mode
-  #mean_omega is the number of bins with at least one detected omega turn divided by the total number of bins
+  #perc_omega is the number of bins with at least one detected omega turn divided by the total number of bins
   summarise(counts=n(),mean_velocity = mean(p_mean_velocity), mean_angle = mean(p_mean_angle),perc_omega = sum(omega)/n()) %>%
   group_by(annotation,hours_rounded,tp,dataset_ID) %>%
   #total counts
@@ -161,7 +159,6 @@ data_bst <- data_binarized %>%
   group_by(annotation,hours_rounded,tp,TrackID,dataset_ID,mode,binning,omega) %>%
   #summarise over individual tracks
   #this will be the mean of the bins contained within that track
-  #mean_omega is the mean number of tracks with at one omega turn, normalized per s
   summarise(mean_velocity = mean(p_mean_velocity), mean_angle = mean(p_mean_angle)) %>%
   ungroup()
 
@@ -270,13 +267,47 @@ selected_hours <- c(1,9)
 selected_mode <- c("roaming")
 pal <- wes_palette("Darjeeling1")[c(1,5,4)]
 
-data_bs %>%
+data_temp <- data_bs %>%
+  filter(annotation %in% selected_annotations) %>%
   filter(hours_rounded %in% selected_hours) %>%
   mutate(time=ifelse(hours_rounded <= 3,"early",NA)) %>%
-  mutate(time=ifelse(hours_rounded > 6, "late",time)) %>%
-  plot_omega(., selected_mode,selected_annotations)+
-  geom_signif(comparisons = list(c("early", "late")))
-ggsave(file.path(save_path_temp,paste0("omega_median",paste(selected_annotations, collapse="_"),"_",paste(selected_hours, collapse="_"),".png")),height=5,width=5,dpi=600)
+  mutate(time=ifelse(hours_rounded > 6, "late",time))
+
+times <- unique(data_temp$time)
+pvalue <- NULL
+
+for (i in times){
+  pvalue_temp <- data_temp %>%
+    filter(time==i) %>%
+    wilcox_test(perc_omega ~ annotation) %>%
+    mutate(time = i)
+  pvalue <- rbind(pvalue, pvalue_temp)
+}
+
+
+ggplot(data_temp,aes(x=time,y=perc_omega,fill=annotation))+
+  geom_boxplot(width=0.5,lwd=1.2)+
+  # geom_violin()+
+  # geom_point(position = position_jitterdodge(jitter.width=0.25),color="black",shape=21,size=2.5,alpha=0.5)+
+  # geom_pointrange(data = data_bsfs,aes(ymin = perc_omega-sd, ymax = perc_omega+sd),color="black",position = position_dodge(0.75))+
+  scale_fill_manual(values=pal)+
+  xlab("hours") + ylab(paste0("fraction omega turns"))+
+  theme_classic()+
+  theme(
+    legend.direction="horizontal",
+    legend.position = "top",
+    strip.background = element_rect(colour = "white", fill = "white"),
+    panel.spacing = unit(1, "lines"),
+    strip.text.x = element_text(size=15,colour = "black", face = "bold"),
+    axis.text.x = element_text(size=30),
+    axis.title.x = element_text(size=20),
+    axis.text.y = element_text(size=30),
+    axis.title.y = element_text(size=20),
+    axis.ticks=element_line(size=1.5),
+    axis.ticks.length=unit(0.25,"cm"),
+    axis.line = element_line(colour = 'black', size = 1.5))
+
+´ggsave(file.path(save_path_temp,paste0("omega_median",paste(selected_annotations, collapse="_"),"_",paste(selected_hours, collapse="_"),".png")),height=5,width=5,dpi=600)
 
 ############################################
 
