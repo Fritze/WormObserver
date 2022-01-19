@@ -10,6 +10,7 @@
 # e.g. Rscript cluster_skeletons.R /media/fpreuss/raid5/timelapses/analysis/paper/data/raw
 
 library("tidyverse")
+options(dplyr.summarise.inform=FALSE)
 library("reshape2")
 
 ###### functions ######
@@ -219,11 +220,11 @@ for (file in files_to_process_cleaned){
   #this is a workaround for attaching the correct offset times (i.e. minutes worms have spent on the plate prior to imaging) to the data
   #we open the grouped raw RDS for this. this is slow.
   #ideally, this should be done in the skeletonization script
-  cat(paste0("\n\ncalculating offsets for ",file,"\n\n"))
+  cat(paste0("\n\nfetching offsets for ",file,"\n\n"))
   
   #function for fetching offsets from grouped raw RDS file
   read_offset <- function(x,y){
-    file_path <- file.path(data_path_raw, paste0(x,"_raw_data.rds"))
+    file_path <- file.path(dataraw_file_path, paste0(x,"_raw_data.rds"))
     temp <- readRDS(file_path) %>%
       filter(dataset_ID %in% y) %>%
       group_by(dataset_ID,time_elapsed,timepoint_length, timestep_length) %>%
