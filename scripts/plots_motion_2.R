@@ -1,8 +1,8 @@
 # Use this script for plotting motion modes and comparisons between timepoints and conditions.
 # Needed: "...centroid_tracking_bins.RDS" as written by the "motion.R" script
-
-# To run the script type: Rscript plots_motion_modes.R "the location of your motion data folder" 
-# e.g. Rscript plots_motion_modes.R /Users/fpreuss/Desktop/data/motion/
+# please also speficy the conversion factor.
+# To run the script type: Rscript plots_motion_modes.R "the location of your motion data folder" "conversion factor"
+# e.g. Rscript plots_motion_modes.R /Users/fpreuss/Desktop/data/motion/ 6.25 
 
 #for everything good
 library(tidyverse)
@@ -87,10 +87,9 @@ base_path <- commandArgs(trailingOnly = TRUE)[1]
 #define save path
 save_path <- file.path(dirname(base_path), "plots", "motion")
 dir.create(save_path,recursive = TRUE)
+conversion_factor <- as.numeric(commandArgs(trailingOnly = TRUE)[2])
 
 
-#pixel to µm
-conversion_factor <- 6.25
 #fps we downsampled to (in KNIME)
 downsampled_to = 2
 #lower velocity limit for mode == roaming (mm/s)
