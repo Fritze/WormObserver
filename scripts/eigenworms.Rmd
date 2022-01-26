@@ -20,7 +20,7 @@ dir.create(save_path)
 #load data here
 ```{r, include=FALSE}
 
-timeranges <- list(c(1:3),c(10:12))
+timeranges <- list(c(1:4),c(10:12))
 #how many tracks do we want to sample at the end?
 number_sampled_tracks <- 400
 number_sampled_postures <- 30000
