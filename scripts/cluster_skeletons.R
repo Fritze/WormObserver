@@ -13,7 +13,6 @@ library("tidyverse")
 options(dplyr.summarise.inform=FALSE)
 library("reshape2")
 
-###### functions ######
 
 #this function compares postures and identifies mirrored postures
 #performed after group_by(clusterID) so that it is performed individually for each posture
