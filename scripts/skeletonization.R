@@ -655,7 +655,7 @@ for (file in files_to_process){
         ungroup() %>%
         mutate(annotation = annotation) %>%
         mutate(conversion_factor = conversion_factor)
-      #toc()
+
       
       
       cat("\nskeletonization and head estimation done. now saving.")
