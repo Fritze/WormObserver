@@ -210,157 +210,161 @@ datasets_to_process <- datasets[!datasets %in% datasets_processed]
 #get files that have to be loaded
 files_to_process_cleaned <- grep(paste0(".+\\/",paste(datasets_to_process,collapse="|"),"\\_skeletonized.+"),files_to_process,value=TRUE)
 
-for (file in files_to_process_cleaned){
+if (length(files_to_process_cleaned > 0)){
+  for (file in files_to_process_cleaned){
+    
+    cat(paste0("\n\nloading ",file,"\n\n"))
+    skeleton_data_filtered <- file %>%
+      map_df(., function(x) readRDS(x)) %>%
+      mutate(ID = paste0(dataset_ID, "_",tp,"_",TrackID,"_",frame))
+    
+    #this is a workaround for attaching the correct offset times (i.e. minutes worms have spent on the plate prior to imaging) to the data
+    #we open the grouped raw RDS for this. this is slow.
+    #ideally, this should be done in the skeletonization script
+    cat(paste0("\n\nfetching offsets for ",file,"\n\n"))
+    
+    #function for fetching offsets from grouped raw RDS file
+    read_offset <- function(x,y){
+      file_path <- file.path(dataraw_file_path, paste0(x,"_raw_data.rds"))
+      temp <- readRDS(file_path) %>%
+        filter(dataset_ID %in% y) %>%
+        group_by(dataset_ID,time_elapsed,timepoint_length, timestep_length) %>%
+        summarise()
+      return(temp)
+    }
+    
+    offsets <- read_offset(unique(skeleton_data_filtered$annotation),unique(skeleton_data_filtered$dataset_ID))
+    
+    #new skeleton data filtered table now with offsets
+    skeleton_data_filtered <- skeleton_data_filtered %>%
+      left_join(offsets,by="dataset_ID")
+    
+    #transpose - rows: posture IDs, -columns: angles
+    angle_data_cluster <- skeleton_data_filtered %>%
+      dcast(ID ~ index,value.var = "angle") %>%
+      #make IDs the rowname so that this column is not part of the clustering data
+      tibble::column_to_rownames(var = "ID") %>%
+      #take out first and last angle
+      select(-c(1,ncol(.)))
+    
   
-  cat(paste0("\n\nloading ",file,"\n\n"))
-  skeleton_data_filtered <- file %>%
-    map_df(., function(x) readRDS(x)) %>%
-    mutate(ID = paste0(dataset_ID, "_",tp,"_",TrackID,"_",frame))
   
-  #this is a workaround for attaching the correct offset times (i.e. minutes worms have spent on the plate prior to imaging) to the data
-  #we open the grouped raw RDS for this. this is slow.
-  #ideally, this should be done in the skeletonization script
-  cat(paste0("\n\nfetching offsets for ",file,"\n\n"))
-  
-  #function for fetching offsets from grouped raw RDS file
-  read_offset <- function(x,y){
-    file_path <- file.path(dataraw_file_path, paste0(x,"_raw_data.rds"))
-    temp <- readRDS(file_path) %>%
-      filter(dataset_ID %in% y) %>%
-      group_by(dataset_ID,time_elapsed,timepoint_length, timestep_length) %>%
-      summarise()
-    return(temp)
+    #cat(paste0("\n\ncalculating elbow plot for ",file,"\n\n"))
+    
+    #here we perform the "elbow plot" for visualizing the explained varience by different numbers of k clusters
+    # function to compute total within-cluster sum of square
+    #wss <- function(k) {
+    #  k <- kmeans(angle_data_cluster, centers=k,nstart = 5,iter.max = 1000,algorithm = "Lloyd")
+    #  perc <- k$betweenss / k$totss
+    #  return(perc)
+    #}
+    
+    # Compute and plot wss for k = 1 to k = 200
+    #k_values <- seq(50,400,50)
+    
+    # extract wss for  clusters
+    #wss_values <- data.frame(expvar = map_dbl(k_values, wss)) %>%
+    #  mutate(k=k_values)
+    
+    #do the plot
+    #ggplot(data=wss_values,aes(x=k, y=expvar))+
+    #  geom_point()+
+    #  geom_line()+
+    #  geom_vline(x=centers)
+    #  scale_x_continuous(breaks = seq(min(k_values), max(k_values)))+
+    #  theme_classic()
+    
+    #ggsave(file.path(save_path,paste0(paste0(paste0(files_to_process_annotations,collapse = "_"),"_elbow_plot",".png"))),height=49,width=10)  
+    
+    cat(paste0("\n\nclustering ",file,"\n\n"))
+    
+    #calculate clusters
+    #choose right number of centers!
+    centers <- 200
+    
+    
+    cluster <- kmeans(angle_data_cluster,centers=centers,nstart = 5,iter.max = 1000,algorithm = "Lloyd")
+    
+    
+    cluster_centers <- melt(cluster$centers) %>%
+      rename("clusterID" = Var1, "index" = Var2, "angle" = value) %>%
+      arrange(clusterID) %>%
+      #define initial values needed for estimating position from angles
+      mutate(new_angle=0, X=1, Y=1) %>%
+      group_by(clusterID) %>%
+      #estimate the positions for each clusterID independently
+      group_modify(~ estimate_positions_from_angles(.x)) %>%
+      #turn the coordinates so that the worm's orientations are similar
+      group_modify(~ turn_worm(.x)) %>%
+      select(-new_angle) %>%
+      ungroup()
+    
+    
+    cluster_centers_reduced <- cluster_centers %>%  
+      #create mirrored posture
+      mutate(angle_mirror = -angle) %>%
+      #for every posture (i.e. clusterID)
+      group_by(clusterID) %>%
+      mutate(posture = clusterID) %>%
+      #compare this posture to all others and identify the mirrored version
+      group_modify(~ diff_to_angle(.x,cluster_centers)) %>%
+      ungroup() %>%
+      select(-posture) %>%
+      #identify pairs (same difference)
+      group_by(difference) %>%
+      #the smaller clusterID of the pair will be the newID
+      mutate(newID = min(clusterID)) %>%
+      group_by(newID,index) %>%
+      #newIDs allows to seperate both postures that have been regrouped with common
+      mutate(newID_sub = 1:n()) %>%
+      mutate(clusterID = as.character(clusterID)) %>%
+      arrange(newID) %>%
+      ungroup() %>%
+      #now replace newID (which corresponds to the smaller old ClusterID) with a new number
+      #so that all postures are numbered straight with no gaps
+      mutate(newID = as.integer(as.factor(newID))) %>%
+      select(-c(angle_mirror,difference))
+    
+    annotations <- c(unique(skeleton_data_filtered$annotation))
+    files_to_process_annotations <- paste(annotations,collapse="_")
+    
+    
+    #this gives out an overview image of all postures (with mirrored corresponding ones)
+    plot_posture_examples(cluster_centers_reduced, "X","Y") +
+      geom_point(data=filter(cluster_centers_reduced,index == 2), aes(X,Y),color="orange",size=3,shape=17) +
+      facet_wrap(vars(newID,newID_sub),ncol=4) +
+      theme(strip.text.x = element_text(size = 20,face="bold"))
+    ggsave(file.path(save_path,paste0(paste0(paste0(files_to_process_annotations,collapse = "_"),"_posture_angle_centers_mirrorExamples",".png"))),height=49,width=10)
+    
+    #a dataframe with the clusterID (old as put out by kmeans) and the skeleton ID (from rownames of angle_data_cluster dataframe)
+    skeletonIDs_with_postures <- data.frame(clusterID = as.character(cluster$cluster), ID = rownames(angle_data_cluster),stringsAsFactors = FALSE)
+    
+    
+    
+    skeleton_data_clustered <- cluster_centers_reduced %>%
+      group_by(clusterID,newID) %>%
+      summarise() %>%
+      arrange(newID) %>%
+      #this is only a list of old clusterIDs (as of kmeans) and corresponding new IDs
+      select(clusterID,newID) %>%
+      #now join this list with the list of all skeleton IDs and their corresponding (old) clusterIDs
+      inner_join(skeletonIDs_with_postures,by="clusterID") %>%
+      #add skeleton features for every skeleton ID
+      left_join(skeleton_data_filtered,by="ID") %>%
+      ungroup() %>%
+      mutate(minutes = time_elapsed + ((tp-1)*timepoint_length+(tp-1)*timestep_length))
+    
+    
+    
+    cat(paste0("saving ",file,"\n"))
+    cluster_centers_reduced_filepath <- file.path(save_path,paste0(paste(files_to_process_annotations,collapse = "_"),"_cluster_centers_reduced.RDS"))
+    saveRDS(cluster_centers_reduced, file=cluster_centers_reduced_filepath)
+    skeletons_filtered_clustered_filepath <- file.path(save_path,paste0(paste(files_to_process_annotations,collapse = "_"),"_skeletons_filtered_clustered.RDS"))
+    saveRDS(skeleton_data_clustered, file=skeletons_filtered_clustered_filepath)
+    clustering_filepath <- file.path(save_path,paste0(paste(files_to_process_annotations,collapse = "_"),"_clustering.RDS"))
+    saveRDS(cluster, file=clustering_filepath)
+    
   }
-  
-  offsets <- read_offset(unique(skeleton_data_filtered$annotation),unique(skeleton_data_filtered$dataset_ID))
-  
-  #new skeleton data filtered table now with offsets
-  skeleton_data_filtered <- skeleton_data_filtered %>%
-    left_join(offsets,by="dataset_ID")
-  
-  #transpose - rows: posture IDs, -columns: angles
-  angle_data_cluster <- skeleton_data_filtered %>%
-    dcast(ID ~ index,value.var = "angle") %>%
-    #make IDs the rowname so that this column is not part of the clustering data
-    tibble::column_to_rownames(var = "ID") %>%
-    #take out first and last angle
-    select(-c(1,ncol(.)))
-  
-
-
-  cat(paste0("\n\ncalculating elbow plot for ",file,"\n\n"))
-  
-  #here we perform the "elbow plot" for visualizing the explained varience by different numbers of k clusters
-  # function to compute total within-cluster sum of square
-  wss <- function(k) {
-    k <- kmeans(angle_data_cluster, centers=k,nstart = 5,iter.max = 1000,algorithm = "Lloyd")
-    perc <- k$betweenss / k$totss
-    return(perc)
-  }
-  
-  # Compute and plot wss for k = 1 to k = 200
-  k_values <- seq(50,400,50)
-  
-  # extract wss for  clusters
-  wss_values <- data.frame(expvar = map_dbl(k_values, wss)) %>%
-    mutate(k=k_values)
-  
-  #do the plot
-  ggplot(data=wss_values,aes(x=k, y=expvar))+
-    geom_point()+
-    geom_line()+
-    geom_vline(x=centers)
-    scale_x_continuous(breaks = seq(min(k_values), max(k_values)))+
-    theme_classic()
-  
-  ggsave(file.path(save_path,paste0(paste0(paste0(files_to_process_annotations,collapse = "_"),"_elbow_plot",".png"))),height=49,width=10)  
-  
-  cat(paste0("\n\nclustering ",file,"\n\n"))
-  
-  #calculate clusters
-  #choose right number of centers!
-  centers <- 200
-  
-  
-  cluster <- kmeans(angle_data_cluster,centers=centers,nstart = 5,iter.max = 1000,algorithm = "Lloyd")
-  
-  
-  cluster_centers <- melt(cluster$centers) %>%
-    rename("clusterID" = Var1, "index" = Var2, "angle" = value) %>%
-    arrange(clusterID) %>%
-    #define initial values needed for estimating position from angles
-    mutate(new_angle=0, X=1, Y=1) %>%
-    group_by(clusterID) %>%
-    #estimate the positions for each clusterID independently
-    group_modify(~ estimate_positions_from_angles(.x)) %>%
-    #turn the coordinates so that the worm's orientations are similar
-    group_modify(~ turn_worm(.x)) %>%
-    select(-new_angle) %>%
-    ungroup()
-  
-  
-  cluster_centers_reduced <- cluster_centers %>%  
-    #create mirrored posture
-    mutate(angle_mirror = -angle) %>%
-    #for every posture (i.e. clusterID)
-    group_by(clusterID) %>%
-    mutate(posture = clusterID) %>%
-    #compare this posture to all others and identify the mirrored version
-    group_modify(~ diff_to_angle(.x,cluster_centers)) %>%
-    ungroup() %>%
-    select(-posture) %>%
-    #identify pairs (same difference)
-    group_by(difference) %>%
-    #the smaller clusterID of the pair will be the newID
-    mutate(newID = min(clusterID)) %>%
-    group_by(newID,index) %>%
-    #newIDs allows to seperate both postures that have been regrouped with common
-    mutate(newID_sub = 1:n()) %>%
-    mutate(clusterID = as.character(clusterID)) %>%
-    arrange(newID) %>%
-    ungroup() %>%
-    #now replace newID (which corresponds to the smaller old ClusterID) with a new number
-    #so that all postures are numbered straight with no gaps
-    mutate(newID = as.integer(as.factor(newID))) %>%
-    select(-c(angle_mirror,difference))
-  
-  annotations <- c(unique(skeleton_data_filtered$annotation))
-  files_to_process_annotations <- paste(annotations,collapse="_")
-  
-  
-  #this gives out an overview image of all postures (with mirrored corresponding ones)
-  plot_posture_examples(cluster_centers_reduced, "X","Y") +
-    geom_point(data=filter(cluster_centers_reduced,index == 2), aes(X,Y),color="orange",size=3,shape=17) +
-    facet_wrap(vars(newID,newID_sub),ncol=4) +
-    theme(strip.text.x = element_text(size = 20,face="bold"))
-  ggsave(file.path(save_path,paste0(paste0(paste0(files_to_process_annotations,collapse = "_"),"_posture_angle_centers_mirrorExamples",".png"))),height=49,width=10)
-  
-  #a dataframe with the clusterID (old as put out by kmeans) and the skeleton ID (from rownames of angle_data_cluster dataframe)
-  skeletonIDs_with_postures <- data.frame(clusterID = as.character(cluster$cluster), ID = rownames(angle_data_cluster),stringsAsFactors = FALSE)
-  
-  
-  
-  skeleton_data_clustered <- cluster_centers_reduced %>%
-    group_by(clusterID,newID) %>%
-    summarise() %>%
-    arrange(newID) %>%
-    #this is only a list of old clusterIDs (as of kmeans) and corresponding new IDs
-    select(clusterID,newID) %>%
-    #now join this list with the list of all skeleton IDs and their corresponding (old) clusterIDs
-    inner_join(skeletonIDs_with_postures,by="clusterID") %>%
-    #add skeleton features for every skeleton ID
-    left_join(skeleton_data_filtered,by="ID") %>%
-    ungroup() %>%
-    mutate(minutes = time_elapsed + ((tp-1)*timepoint_length+(tp-1)*timestep_length)) %>%
-  
-  
-  
-  cat(paste0("saving ",file,"\n"))
-  cluster_centers_reduced_filepath <- file.path(save_path,paste0(paste(files_to_process_annotations,collapse = "_"),"_cluster_centers_reduced.RDS"))
-  saveRDS(cluster_centers_reduced, file=cluster_centers_reduced_filepath)
-  skeletons_filtered_clustered_filepath <- file.path(save_path,paste0(paste(files_to_process_annotations,collapse = "_"),"_skeletons_filtered_clustered.RDS"))
-  saveRDS(skeleton_data_clustered, file=skeletons_filtered_clustered_filepath)
-  clustering_filepath <- file.path(save_path,paste0(paste(files_to_process_annotations,collapse = "_"),"_clustering.RDS"))
-  saveRDS(cluster, file=clustering_filepath)
-  
+}else{
+  cat("\n\nAll datasets were already processed.\n\n")
 }
