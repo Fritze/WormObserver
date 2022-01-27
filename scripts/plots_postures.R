@@ -5,11 +5,12 @@
 #as computed by the "cluster_skeletons.R" script
 
 # To run the script type: Rscript plots_postures.R "the location of your clustered skeletonized data folder" 
-# e.g. Rscript plots_postures.R /Users/fpreuss/Desktop/data/skeletonized/clustered/
+# e.g. Rscript plots_postures.R /media/fpreuss/raid5/timelapses/analysis/paper/data/skeletonized/clustered
 
 options(warn=-1)
 
 library(tidyverse)
+options(dplyr.summarise.inform=FALSE)
 #for rollmean function
 library(zoo)
 #for dcast function
@@ -26,7 +27,7 @@ save_path <- file.path(dirname(dirname(dirname(base_path))), "plots", "postures"
 dir.create(save_path,recursive = TRUE)
 
 #list of datasets that have been clustered and will be plotted now
-datasets_to_process <- gsub("(.+)\\_clustering.+","\\1",basename(list.files(base_path, "_clustering.rds", full.names = TRUE, ignore.case = TRUE)))
+datasets_to_process <- gsub("(.+)\\_clustering\\.RDS","\\1",basename(list.files(base_path, "_clustering.rds", full.names = TRUE, ignore.case = TRUE)))
 
 
 for (i in datasets_to_process){
@@ -88,8 +89,6 @@ for (i in datasets_to_process){
   max_hours_rounded <- 12
   
   angle_data_postures_first <-  skeleton_data_clustered %>%
-    #15 mins as average offset
-    mutate(minutes = 15 + ((tp-1)*8+(tp-1)*0)) %>%
     #round to half hour steps
     mutate(hours_rounded = round(minutes/60)) %>%
     #filter out first 30 mins
@@ -323,7 +322,7 @@ for (i in datasets_to_process){
       
       
       #for each annotation save data frame with relative occurence of posters and newID2 (ordering like in heatmap)
-      saveRDS(heatmap_data_to_plot_per_dataset, file.path(save_path_temp,paste0(annotation,"_",n,"_angle_data_postures_per_dataset.RDS")))
+      saveRDS(heatmap_data_to_plot_per_dataset, file.path(base_path,paste0(annotation,"_",n,"_angle_data_postures_per_dataset.RDS")))
     }
     
   }
