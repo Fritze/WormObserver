@@ -178,8 +178,8 @@ if(already_processed == "p"){
 
   #parameters for selecting only dispersing worms
   velocity_limit <- 0.01
-  angle_limit <- 15
-  length_track_limit <- 20
+  angle_limit <- 50
+  length_track_limit <- 10 # minimum frames
 
 
   #get files that have to be loaded
@@ -192,27 +192,22 @@ if(already_processed == "p"){
     map_df(., function(x) readRDS(x))
 
   #this is a workaround for attaching the correct offset times (i.e. minutes worms have spent on the plate prior to imaging) to the data
-  #we open the grouped raw RDS for this. this is slow.
+  #we open a previously exported txt file, specific for each annotation
   #ideally, this should be done in the skeletonization script
   cat(paste0("\n\nfetching offsets for ",file_to_process,"\n\n"))
 
   #function for fetching offsets from grouped raw RDS file
   read_offset <- function(x,y){
-    print(x)
-    print(y)
-    file_path <- file.path(dataraw_file_path, paste0(x,"_raw_data.rds"))
+    file_path <- file.path(dataraw_file_path, paste0(x,"_timeoffsets.txt"))
     cat(paste0("\n\nFetching offsets from ", file_path))
-    temp <- readRDS(file_path) %>%
-      filter(dataset_ID %in% y) %>%
-      group_by(dataset_ID,time_elapsed,timepoint_length, timestep_length) %>%
-      summarise()
+    temp <- read_csv(file_path,show_col_types = FALSE)
     return(temp)
   }
 
-  offsets <- read_offset(selected_annotation,unique(skeleton_data_filtered$dataset_ID))
+  offsets <- read_offset(selected_annotation)
 
   #new skeleton data filtered table now with offsets
-  skeleton_data_filtered <- skeleton_data_filtered %>%
+  skeleton_data_filtered_wf <- skeleton_data_filtered %>%
     left_join(offsets,by="dataset_ID") %>%
     #accounting for offsets
     mutate(minutes = time_elapsed + ((tp-1)*timepoint_length+(tp-1)*timestep_length)) %>%
@@ -239,7 +234,7 @@ if(already_processed == "p"){
 
   #filtering data
   #filter out data to have only moving worms and tracks over a certain length
-  skeleton_data_filtered2 <- skeleton_data_filtered %>%
+  skeleton_data_filtered2 <- skeleton_data_filtered_wf %>%
     group_by(annotation,dataset_ID,tp,TrackID) %>%
     #filter only dispersing worms
     filter(velocity > velocity_limit) %>%
@@ -258,10 +253,10 @@ if(already_processed == "p"){
           timerange_late_min=min(timeranges[[2]]),
            timerange_late_min=max(timeranges[[2]]))
 
-  saveRDS(skeleton_data_filtered2,file.path(base_path, paste0(selected_annotation,"_skelelton_filtered_dispersal.rds")))
+  saveRDS(skeleton_data_filtered2,file.path(base_path, paste0(selected_annotation,"_skeletonized_filtered_dispersal.rds")))
 
 }else if(already_processed == "ap"){
-  path_already_processed <- file.path(base_path, paste0(selected_annotation,"_skelelton_filtered_dispersal.rds"))
+  path_already_processed <- file.path(base_path, paste0(selected_annotation,"_skeletonized_filtered_dispersal.rds"))
   cat("\n\n loading already processed data ", path_already_processed)
   skeleton_data_filtered2 <- readRDS(path_already_processed)
 } else {
@@ -300,7 +295,7 @@ cat(paste0("\n\nsampling ", number_sampled_skeletons, " skeletons from ",number_
 number_tracks_per_hour <- skeleton_data_filtered2 %>%
   group_by(dataset_trackID,hours_rounded) %>%
   nest() %>%
-  group_by(hours_rounded) %>%
+  group_by(hours_rounded) %>%#
   summarise(number_tracks_per_hour=n())
 
 
@@ -338,6 +333,7 @@ annotation <- unique(skeleton_data_filtered2$annotation)
 #one row = one skeleton of a track at a given frame
 #after pca, get back ID, tp, TrackID etc
 #add information for each track and subset n tracks per timepoint (early vs late)
+
 PC_values <- pca$x %>%
   #convert_to_dataframe
   as.data.frame() %>%
@@ -628,7 +624,7 @@ skeletons_subsampled %>%
   scale_x_continuous(limits = c(0,1.6),breaks=c(0,0.5,1,1.5))+
   theme_bw()+
   scale_fill_manual(values=c("#E69F00", "#56B4E9"))
-ggsave(file.path(save_path_temp, paste0(annotation,"_", number_sampled_tracks,"_tracks_",number_sampled_skeletons,"skeleton_angles_absolute_values_density.png")),width=plot_size,height=plot_size)
+ggsave(file.path(save_path_temp, paste0(annotation,"_", number_sampled_tracks,"_tracks_",number_sampled_skeletons,"_skeleton_angles_absolute_values_density.png")),width=plot_size,height=plot_size)
 
 
 
