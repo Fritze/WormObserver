@@ -198,7 +198,10 @@ if(already_processed == "p"){
 
   #function for fetching offsets from grouped raw RDS file
   read_offset <- function(x,y){
+    print(x)
+    print(y)
     file_path <- file.path(dataraw_file_path, paste0(x,"_raw_data.rds"))
+    cat(paste0("\n\nFetching offsets from ", file_path))
     temp <- readRDS(file_path) %>%
       filter(dataset_ID %in% y) %>%
       group_by(dataset_ID,time_elapsed,timepoint_length, timestep_length) %>%
