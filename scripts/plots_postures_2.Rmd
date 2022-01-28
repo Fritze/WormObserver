@@ -55,6 +55,16 @@ conversion_newID_and_newID2 <- angle_data_postures_per_dataset %>%
   group_by(annotation,newID, newID2) %>%
   summarise()
 
+ID_conversions <- cluster_centers_reduced_grouped %>%
+  #append newID2, so that postures in the overview have the same ID as in heatmap
+  left_join(conversion_newID_and_newID2, by=c("newID","annotation")) %>%
+  select(annotation, newID, newID2, posture_grouped) %>%
+  group_by(annotation, newID, newID2, posture_grouped) %>%
+  summarise() %>%
+  arrange(annotation,posture_grouped,newID2)
+
+write.csv(ID_conversions, file.path(save_path, "ID_conversion_after_2nd_clustering.txt"))
+
 ```
 
 # plot overview seperately for each posture group (seperately for each annotation)
