@@ -83,15 +83,16 @@ for (a in unique(angle_data_postures_per_dataset$annotation)){
 
 #calculate relative occurence of posture groups
 ```{r, include=FALSE}
-postures_grouped_statistics <- angle_data_postures_per_dataset %>%
+postures_stats <- angle_data_postures_per_dataset %>%
   group_by(annotation,dataset_ID, hours_rounded,posture_grouped,postures_per_tp_per_dataset) %>%
   #Count members of one posture group (adding all number of cluster members per hours_rounded per dataset within this group)
   summarise(number_of_posture_members_per_tp_per_dataset = sum(number_of_cluster_members_per_tp_per_dataset)) %>%
-  #do this seperately for each dataset, timepoint (== tp == hours_rounded) and posture group
+  #do this seperately for each dataset, hours_rounded) and posture group
   group_by(dataset_ID, hours_rounded,posture_grouped) %>%
-  #Normalize this with the numbers of postures per tp per dataset
+  #Normalize this with the numbers of postures per hour per dataset
+  #this gives the relative occurence of a certain posture at one "hours_rounded" timepoint
   mutate(perc_per_posture_grouped_per_dataset = number_of_posture_members_per_tp_per_dataset/postures_per_tp_per_dataset) %>%
-  #also seperately for each annotation, timepoint (== tp == hours_rounded) and posture group
+  #again calculating the relative abundance of a posture_group but across annotations (==same condition), not experimental repeats
   group_by(annotation, hours_rounded,posture_grouped) %>%
   mutate(number_of_posture_members_per_tp_per_annotation = sum(number_of_posture_members_per_tp_per_dataset)) %>%
   mutate(postures_per_tp_per_annotation=sum(postures_per_tp_per_dataset)) %>%
@@ -103,27 +104,35 @@ postures_grouped_statistics <- angle_data_postures_per_dataset %>%
          number_of_posture_members_per_tp_per_annotation,
          postures_per_tp_per_annotation,
          perc_per_posture_grouped_per_annotation) %>%
-  arrange(hours_rounded) %>%
+  arrange(hours_rounded)
+  
+  
+postures_zscore <- postures_stats  %>%
   #the rest is done across time (z-score calculation) per dataset
   group_by(dataset_ID, posture_grouped) %>%
   mutate(sd_perc_per_posture_grouped_per_dataset = sd(perc_per_posture_grouped_per_dataset)) %>%
   mutate(mean_perc_per_posture_grouped_per_dataset = mean(perc_per_posture_grouped_per_dataset)) %>%
-  mutate(perc_norm_per_posture_grouped_per_dataset =  (perc_per_posture_grouped_per_dataset-mean_perc_per_posture_grouped_per_dataset)/sd_perc_per_posture_grouped_per_dataset) %>%
+  mutate(z_posture_grouped_per_dataset =  (perc_per_posture_grouped_per_dataset-mean_perc_per_posture_grouped_per_dataset)/sd_perc_per_posture_grouped_per_dataset) %>%
+  #standard deviation when looking at datasets of the same condition at different timepoints
+  group_by(annotation, posture_grouped,hours_rounded) %>%
+  mutate(sd_per_posture_grouped_per_annotation_per_tp = sd(perc_per_posture_grouped_per_dataset)) %>%
   #the rest is done across time (z-score calculation) per annotation
   group_by(annotation, posture_grouped) %>%
   mutate(sd_perc_per_posture_grouped_per_annotation = sd(perc_per_posture_grouped_per_annotation)) %>%
   mutate(mean_perc_per_posture_grouped_per_annotation = mean(perc_per_posture_grouped_per_annotation)) %>%
-  mutate(perc_norm_per_posture_grouped_per_annotation =  (perc_per_posture_grouped_per_annotation-mean_perc_per_posture_grouped_per_annotation)/sd_perc_per_posture_grouped_per_annotation) %>%
+  mutate(z_posture_grouped_per_annotation =  (perc_per_posture_grouped_per_annotation-mean_perc_per_posture_grouped_per_annotation)/sd_perc_per_posture_grouped_per_annotation) %>%
   group_by(annotation, dataset_ID, hours_rounded, posture_grouped,
            perc_per_posture_grouped_per_dataset,
            perc_per_posture_grouped_per_annotation,
            sd_perc_per_posture_grouped_per_dataset,
            mean_perc_per_posture_grouped_per_dataset,
-           perc_norm_per_posture_grouped_per_dataset,
+           z_posture_grouped_per_dataset,
            sd_perc_per_posture_grouped_per_annotation,
            mean_perc_per_posture_grouped_per_annotation,
-           perc_norm_per_posture_grouped_per_annotation) %>%
-  summarise()
+           z_posture_grouped_per_annotation,
+           sd_per_posture_grouped_per_annotation_per_tp) %>%
+  summarise() %>%
+  arrange(hours_rounded)
 
 
 # unique(postures_grouped_statistics$annotation)
@@ -135,27 +144,26 @@ postures_grouped_statistics <- angle_data_postures_per_dataset %>%
 
 selected_annotations <- c("Agar","OP50")
 pal <- wes_palette("Darjeeling1")[c(1,5,2)]
-data_for_plotting <- postures_grouped_statistics %>%
+data_for_plotting <- postures_zscore %>%
   filter(annotation %in% selected_annotations) %>%
   mutate(annotation=factor(annotation, levels=selected_annotations))
 
-# ggplot(data_for_plotting, aes(y=perc_norm_per_posture_grouped_per_dataset,x=hours_rounded,color=annotation))+
-#   geom_point(alpha=0.5)+
-#   geom_line(data=data_for_plotting, aes(y=perc_norm_per_posture_grouped_per_annotation, x=hours_rounded),color="black")+
-#   scale_y_continuous(limits = c(-3,3))+
-#   scale_x_continuous(breaks = seq(1,12))+
-#   # geom_smooth()+
-#   theme_bw()+
-#   theme(
-#     strip.background = element_rect(fill="white"))+
-#   facet_wrap(vars(posture_grouped,annotation),nrow=how_many_clusters,scales="free")+
-#   scale_fill_manual(values = pal)+
-#   scale_color_manual(values = pal)
-# 
-#   ggsave(file.path(save_path,"posture_groups_relative_occurences_norm.png"),height=4,width=8)
+ggplot(data_for_plotting, aes(y=z_posture_grouped_per_dataset,x=hours_rounded,color=annotation))+
+  geom_point(alpha=0.5,shape=21)+
+  geom_line(data=data_for_plotting, aes(y=z_posture_grouped_per_annotation, x=hours_rounded))+
+  scale_y_continuous(limits = c(-3,3))+
+  scale_x_continuous(breaks = seq(1,12))+
+  # geom_smooth()+
+  theme_bw()+
+  theme(
+    strip.background = element_rect(fill="white"))+
+  facet_wrap(vars(posture_grouped,annotation),nrow=how_many_clusters,scales="free")+
+  scale_fill_manual(values = pal)+
+  scale_color_manual(values = pal)
+  ggsave(file.path(save_path,"posture_groups_relative_occurences_norm.png"),height=6,width=4)
 
 ggplot(data_for_plotting, aes(y=perc_per_posture_grouped_per_dataset,x=hours_rounded,color=annotation))+
-  geom_point(alpha=0.5)+
+  geom_ribbon(aes(ymin = perc_per_posture_grouped_per_annotation-sd_per_posture_grouped_per_annotation_per_tp, ymax = perc_per_posture_grouped_per_annotation + sd_per_posture_grouped_per_annotation_per_tp), fill = "lightgrey",color=NA)+
   geom_line(data=data_for_plotting, aes(y=perc_per_posture_grouped_per_annotation, x=hours_rounded),color="black")+
   scale_x_continuous(breaks = seq(1,12))+
   scale_y_continuous(limits = c(0,0.7))+
@@ -208,8 +216,8 @@ ggplot(data_for_plotting, aes(y=first_d,x=hours_rounded,color=annotation,fill=an
 pal <- wes_palette("Moonrise1")[c(2,3)]
 
 cluster_centers_reduced_grouped %>%
-  filter(posture_grouped %in% c("group_1","group_2")) %>%
-  ggplot(., aes(x=angle,fill=posture_grouped))+
+  mutate(posture_meta = ifelse(posture_grouped %in% c("group_1", "group_3"),"curved","dauer")) %>%
+  ggplot(., aes(x=angle,fill=posture_meta))+
     geom_density(alpha=0.5,lwd=1)+
     scale_x_continuous(limits=c(-1,1))+
     theme_classic()+
@@ -229,10 +237,10 @@ s <- cluster_centers_reduced_grouped %>%
   #append newID2, so that postures in the overview have the same ID as in heatmap
   left_join(conversion_newID_and_newID2, by=c("newID","annotation")) %>%
   filter(annotation == "OP50") %>%
-  filter(posture_grouped %in% c("group_1","group_2")) %>%
+  mutate(posture_meta = ifelse(posture_grouped %in% c("group_1", "group_3"),"curved","dauer")) %>%
   group_by(index,annotation, posture_grouped) %>%
   #shift all postures of "group_2 to the left
-  mutate(X=ifelse(posture_grouped == "group_1",-X-0.25,X)) %>%
+  mutate(X=ifelse(posture_meta == "dauer",-X-0.25,X)) %>%
   #manually select 2 posture to be highlighted
   mutate(highlight=ifelse(newID2 %in% c(102,23),"YES","NO"))
 
@@ -242,10 +250,12 @@ ggplot(s)+
   geom_path(data=filter(s,highlight=="YES"),aes(X,Y,group=newID,color=angle))+
   geom_point(data=filter(s,highlight=="YES"),aes(X,Y,group=newID,fill=angle,color=angle))+
   geom_point(data=filter(s,highlight=="YES" & index==2), aes(X,Y),color="orange",size=3,shape=17) +
-  scale_color_gradient2(low = "deepskyblue", mid = "lavender",
-                        high = "deeppink",midpoint=0,limits=c(-1,1),na.value="grey") +
-  scale_fill_gradient2(low = "deepskyblue", mid = "lavender",
-                       high = "deeppink",midpoint=0,limits=c(-1,1),na.value="grey") +
+  # scale_color_gradient2(low = "deepskyblue", mid = "lavender",
+  #                       high = "deeppink",midpoint=0,limits=c(-1,1),na.value="grey") +
+  # scale_fill_gradient2(low = "deepskyblue", mid = "lavender",
+  #                      high = "deeppink",midpoint=0,limits=c(-1,1),na.value="grey") +
+  scale_fill_viridis(option="plasma",limits=c(-1,1),na.value="grey")+
+  scale_color_viridis(option="plasma",limits=c(-1,1),na.value="grey")+
   # theme_classic()+
   theme_void()+
   facet_wrap(vars(annotation))+
