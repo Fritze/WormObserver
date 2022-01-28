@@ -142,7 +142,7 @@ postures_zscore <- postures_stats  %>%
 ```{r, include=FALSE}
 
 
-selected_annotations <- c("Agar","OP50")
+selected_annotations <- c("Agar","OP50","OP50_w_Az")
 pal <- wes_palette("Darjeeling1")[c(1,5,2)]
 data_for_plotting <- postures_zscore %>%
   filter(annotation %in% selected_annotations) %>%
@@ -160,7 +160,8 @@ ggplot(data_for_plotting, aes(y=z_posture_grouped_per_dataset,x=hours_rounded,co
   facet_wrap(vars(posture_grouped,annotation),nrow=how_many_clusters,scales="free")+
   scale_fill_manual(values = pal)+
   scale_color_manual(values = pal)
-  ggsave(file.path(save_path,"posture_groups_relative_occurences_norm.png"),height=6,width=4)
+
+  ggsave(file.path(save_path,"posture_groups_relative_occurences_norm.png"),height=6,width=5)
 
 ggplot(data_for_plotting, aes(y=perc_per_posture_grouped_per_dataset,x=hours_rounded,color=annotation))+
   geom_ribbon(aes(ymin = perc_per_posture_grouped_per_annotation-sd_per_posture_grouped_per_annotation_per_tp, ymax = perc_per_posture_grouped_per_annotation + sd_per_posture_grouped_per_annotation_per_tp), fill = "lightgrey",color=NA)+
@@ -174,20 +175,20 @@ ggplot(data_for_plotting, aes(y=perc_per_posture_grouped_per_dataset,x=hours_rou
   scale_fill_manual(values = pal)+
   scale_color_manual(values = pal)
 
-  ggsave(file.path(save_path,"posture_groups_relative_occurences.png"),height=4,width=4)
+  ggsave(file.path(save_path,"posture_groups_relative_occurences.png"),height=6,width=5)
 
 ```  
   
 # #plotting first derivatives of relative occurence of (sub-)posture groups
 ```{r, include=FALSE}
 #only for z-score normalized data
-selected_annotations <-c("Agar","OP50")
+selected_annotations <-c("Agar","OP50","OP50_w_Az")
 pal <- wes_palette("Darjeeling1")[c(1,5,2)]
-data_for_plotting <- postures_grouped_statistics %>%
+data_for_plotting <- postures_zscore %>%
   filter(annotation %in% selected_annotations) %>%
   mutate(annotation=factor(annotation, levels=selected_annotations)) %>%
   group_by(dataset_ID,posture_grouped) %>%
-  mutate(first_d = perc_norm_per_posture_grouped_per_annotation - lag(perc_norm_per_posture_grouped_per_annotation)) %>%
+  mutate(first_d = z_posture_grouped_per_annotation - lag(z_posture_grouped_per_annotation)) %>%
   select(dataset_ID, annotation,hours_rounded,posture_grouped,first_d) %>%
   ungroup() %>%
   filter(posture_grouped == 1)
