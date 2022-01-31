@@ -11,12 +11,15 @@ library(tidyverse)
 # for file manipulation
 library(here)
 
+
+location_files_to_load <- "/Users/fpreuss/Documents/PhD/Data/headseq/csvs/"
+
 ```
 
 # import data and save it as one .RDS file
 ```{r echo=TRUE, message=FALSE, warning=FALSE}
 
-data <- list.files(here("csvs"), ".csv",full=TRUE) %>%
+data <- list.files(location_files_to_load, ".csv",full=TRUE) %>%
   set_names() %>%
   map_df(read_table2, .id = "name") %>%
   #get only file name
