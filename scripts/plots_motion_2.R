@@ -6,6 +6,7 @@
 
 #for everything good
 library(tidyverse)
+options(dplyr.summarise.inform=FALSE)
 #for colors
 library(wesanderson)
 library(viridis)
@@ -306,18 +307,20 @@ data_temp <- data_bst %>%
 #calculate significances for both timepoints seperately
 first_hour_pvalue <- filter(data_temp,hours_rounded == selected_hours[1]) %>%
   wilcox_test(mean_velocity ~ annotation,detailed = TRUE) %>%
-  add_significance()
+  add_significance() %>%
+  mutate(hours_rounded = selected_hours[1])
 
 second_hour_pvalue <- filter(data_temp,hours_rounded == selected_hours[2]) %>%
   wilcox_test(mean_velocity ~ annotation,exact=FALSE,detailed = TRUE) %>%
-  add_significance()
+  add_significance() %>%
+  mutate(hours_rounded = selected_hours[2])
 
 write.csv2(rbind(first_hour_pvalue,second_hour_pvalue),file=file.path(save_path_temp,paste0("tracks_mean_velocity.txt",paste(selected_annotations, collapse="_"),"_",paste(selected_hours, collapse="_"),".txt")))
 
 ggplot(data_temp,aes(y=factor(hours_rounded, levels = selected_hours),x=mean_velocity,fill=annotation))+
     geom_violin(color=NA,alpha=0.5)+
     geom_boxplot(width=0.1,size=0.5,position=position_dodge(0.9),outlier.shape = NA)+
-    scale_x_log10(limits=c(NA,0.3))+
+    # scale_x_log10(limits=c(NA,0.3))+
     theme_bw()+
     theme(strip.background = element_rect(colour = "white", fill = "white"),
         strip.text.x = element_text(size=20,colour = "black", face = "bold"),
