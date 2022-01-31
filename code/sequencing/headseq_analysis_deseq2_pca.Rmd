@@ -46,7 +46,8 @@ to_ENSEMBL_name <- function(input){
 # import data
 ```{r echo=TRUE, message=FALSE, warning=FALSE}
 
-data <- readRDS(list.files(here("csvs"),"RDS",full.names = TRUE))
+location_files_to_load <- "/Users/fpreuss/Documents/PhD/Data/headseq/csvs/"
+data <- readRDS(list.files(location_files_to_load,"RDS",full.names = TRUE))
 
 ```
 
