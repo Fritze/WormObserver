@@ -1,0 +1,488 @@
+---
+title: "headseq_analysis_deseq2_1"
+author: "Friedrich Preußer"
+date: "7/26/2021"
+output: html_document
+---
+
+```{r, results='hide',message='false', warning='false'}
+# for all good stuff
+library(tidyverse)
+# for file manipulation
+library(here)
+#for labels in plots
+library(ggrepel)
+#for color
+library(wesanderson)
+#for other colors
+library(RColorBrewer)
+#for differential gene expression
+library(DESeq2)
+#for venn diagram
+library(ggvenn)
+#for converting gene IDs and goterm analysis
+library(gprofiler2)
+#for handy plotting of heatmaps
+library(pheatmap)
+#for LFC estimation
+library(apeglm)
+library(ashr)
+
+```
+
+#functions
+```{r echo=TRUE}
+
+plot_counts_ggplot <- function(geneset,selected_tps){
+  counts <- normalizedCounts[rownames(normalizedCounts) %in% geneset, ] %>%
+    as.data.frame() %>%
+    tibble::rownames_to_column("gene") %>%
+    gather(key="name",value=counts_norm,-"gene") %>%
+    mutate(exp=gsub("(.+)\\_.+\\_.+","\\1",name)) %>%
+    mutate(condition=gsub(".+\\_(.+)\\_.+","\\1",name)) %>%
+    mutate(tp=gsub("FP.+\\_.+\\_(.+)h*","\\1",name)) %>%
+    filter(tp %in% selected_tps) %>%
+    mutate(gene_wb=gene) %>%
+    mutate(gene=to_ENSEMBL_name(gene_wb))
+  
+  ggplot(counts, aes(y=gene,x=counts_norm, fill=condition))+
+    # geom_boxplot(aes(fill=condition),outlier.size = .75)+
+    geom_point(position=position_dodge(width = .5),size=2,color="black",shape=21)+
+    theme_bw()+
+    scale_fill_manual(values = pal)+
+    ggtitle(selected_tps)
+}
+
+
+pal <- wes_palette("Darjeeling1")[c(5,1)]
+
+#this function can results in NAs
+to_ENSEMBL_name <- function(input){
+  gconvert(input,
+      organism = "celegans",
+      target = "ENSG",
+      numeric_ns = "",
+      #show only one result
+      mthreshold = 1,
+      filter_na = FALSE
+    )$name
+}
+
+``` 
+
+# import data
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+data <- readRDS(list.files(here("csvs"),"RDS",full.names = TRUE))
+
+expressed_genes_head <- read_csv("expressed_genes_head_all_exps.txt") %>% pull()
+```
+
+
+# creating the Deseq2 object
+## here we only look at head samples (0h, 3h, 6h, 9h)
+#### deseq2 normalizes for 2 things: library size but also library composition.
+#### gene counts are LOGe transformed (geometric average) across samples on a per gene basis.
+#### genes with value 0 are filtered out.
+#### subtract the average log value from the log count across genes
+#### now per sample: median of all gene ratios log(counts/average counts across samples)
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+for_deseq <- data %>%
+  #exclude timepoint 0
+  filter(tp %in% c("0h","3h","6h","9h")) %>%
+  #exclude genes with low readcounts
+  # filter(count > 10) %>%
+  #here we select wb_gene since this gives unique gene names
+  select(gene,exp,condition,tp,count) %>%
+  pivot_wider(names_from = c(exp,condition,tp), values_from = count) %>%
+  tibble::column_to_rownames(var = "gene")
+  
+
+# #discard genes that are not present in all experiments
+# for_deseq_clean <- for_deseq %>%
+#   na.omit()
+
+# set genes that are not present in all experiments to 0
+for_deseq_clean <- for_deseq %>%
+  replace(is.na(.), 0)
+
+
+
+#create design file
+cols <- gsub("FP.+\\_(.+\\_.+)$","\\1" ,colnames(for_deseq_clean))
+coldata <- cols %>%
+  as.data.frame() %>%
+  mutate(condition_tp=gsub(".+\\_(.+^)","\\1",.)) %>%
+  select(!.)
+
+rownames(coldata) <- colnames(for_deseq_clean)
+
+
+
+dds <- DESeqDataSetFromMatrix(countData = for_deseq_clean,
+                              colData = coldata,
+                              design = ~  condition_tp)
+dds <- DESeq(dds)
+```
+
+
+# differential gene expression with DeSeq2
+## here we compare different conditions WITHIN the same timepoint 
+### we also filter to have a conservative estimate: only log2fold change of > 1 (two-fold change) and padj < 0.05
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+#---------
+tp1 <- "6h"
+#---------
+
+A_tp1 <- paste0("A_",tp1) 
+B_tp1 <- paste0("B_",tp1) 
+
+
+
+#we create a seperate deseq2 object with only the samples we want to compare
+#create design file
+cols <- gsub("FP.+\\_(.+\\_.+)$","\\1" ,colnames(for_deseq_clean))
+
+#extract condition and timepoint as new variable "condition_tp"
+coldata <- cols %>%
+  as.data.frame() %>%
+  mutate(condition_tp=gsub(".+\\_(.+^)","\\1",.)) %>%
+  select(!.)
+
+#
+rownames(coldata) <- colnames(for_deseq_clean)
+
+
+
+#compute the contrast for between different conditions within the same timepoint 
+#within the contrast argument the 3rd value is the reference (i.e. control) to compare to.
+de_results <- lfcShrink(dds, contrast = c("condition_tp", A_tp1, B_tp1), type="ashr")
+# de_results <- results(dds, contrast = c("condition_tp", A_tp1, B_tp1))
+
+# de_results
+# summary(de_results)
+
+de_results_df <- de_results %>%
+  as.data.frame() %>%
+  rownames_to_column("gene") %>%
+  mutate(gene_wb = gene) %>%
+  mutate(gene = to_ENSEMBL_name(gene)) %>%
+  mutate(gene=ifelse(is.na(gene), gene_wb,gene))
+
+
+de_results_filtered <- de_results_df %>%
+  arrange(padj) %>%
+  filter(padj < 0.05) %>%
+  filter(log2FoldChange > 1 | log2FoldChange < -1)
+
+
+
+# write_csv(de_results_filtered, paste0("diff_",A_tp1,"_vs_",B_tp1,".txt"))
+
+```
+
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+
+plot_volcano <- function(what_to_highlight, v){
+  
+    df <- de_results_df
+    dff <- de_results_filtered
+    
+  if(what_to_highlight == "gene"){
+    ex_genes_highlighted <- dff %>%
+      filter(grepl(v, gene)) %>%
+      # filter(-log10(padj) > 5) %>%
+      pull(gene_wb)
+    
+    ex_genes_labeled <- ex_genes_highlighted
+    
+  }else if(what_to_highlight == "padj"){
+    ex_genes_highlighted <- dff %>%
+      filter(padj < v) %>%
+      pull(gene_wb)
+      
+    ex_genes_labeled <- dff %>%
+      filter(padj < v) %>%
+      filter(padj < 10^-3) %>%
+      pull(gene_wb)
+  }
+
+  df_highlighted <- df %>%
+    mutate(highlight=ifelse(gene_wb %in% ex_genes_highlighted, gene, NA)) %>%
+    mutate(to_be_labeled=ifelse(gene_wb %in% ex_genes_labeled, gene, NA)) %>%
+    mutate(labeled=to_ENSEMBL_name(to_be_labeled)) %>%
+    mutate(labeled=ifelse(is.na(labeled), to_be_labeled,labeled)) %>%
+    select(!to_be_labeled)
+  
+  
+  
+  ggplot(df_highlighted,aes(log2FoldChange,-log10(padj),label = labeled))+
+    geom_point(alpha=0.25,fill="lightblue",shape=21)+
+    geom_point(data=df_highlighted %>% filter(gene_wb %in% ex_genes_highlighted),aes(log2FoldChange,-log10(padj)),fill="orange",shape=21)+
+    geom_text_repel(
+      size=3,
+      nudge_x = .15,
+      box.padding = 0.05,
+      nudge_y = 1,
+      segment.curvature = -0.1,
+      segment.ncp = 3,
+      segment.angle = 20
+    )+
+    geom_hline(yintercept=-log10(0.05),alpha=0.5,linetype="dashed")+
+    geom_vline(xintercept=1,alpha=0.5,linetype="dashed")+
+    geom_vline(xintercept=-1,alpha=0.5,linetype="dashed")+
+    theme_bw()
+  
+  ggsave(file.path(here(),paste0("volcano_",A_tp1,"_vs_",B_tp1,"_",what_to_highlight,"_",v,".png")),width = 10,height = 10)
+
+}
+
+
+plot_volcano("padj",0.05)
+plot_volcano("gene","daf-28|ins|nlp|flp")
+
+
+
+# plotCounts(dds, gene="T19A6.2", intgroup="condition_tp")
+# write.table(de_results_filtered$gene_wb,"test.txt",row.names = FALSE,quote = FALSE)
+
+```
+
+
+
+
+
+# take differentially expressed genes as calculated above (those that are exclusively differentially expressed in one condition)
+```{r,results='hide',message='false',warning='false'}
+
+
+#get the list of differentially expressed genes of interest
+genesOfInterest <- de_results_filtered$gene_wb
+
+
+#calculate enriched GO terms
+#against all annotated genes
+# goResults <- gost(query = genesOfInterest,
+#                 organism = 'celegans',
+#                 evcodes = TRUE)
+
+    
+#with custom background
+goResults <- gost(query = genesOfInterest,
+                  organism = 'celegans',
+                  evcodes = TRUE,
+                  domain_scope="custom",
+                  user_threshold = 0.01,
+                  custom_bg = expressed_genes_head)
+
+
+
+#transform to data frame
+go_results <- goResults$result
+#sort by pvalue
+go_results <- go_results[order(go_results$p_value),]
+
+
+#plot barplot with enriched GOterms
+go_to_plot <- go_results %>%
+  #filter out transfac missannotation
+  filter(!term_name == "Transfac") %>%
+  top_n(-5,p_value)
+
+ggplot(go_to_plot,aes(-log10(p_value),factor(term_name, levels = rev(term_name))))+
+  geom_bar(stat = "identity",color="black",fill="darkgrey")+
+  theme_bw()
+
+ggsave(file.path(here(),paste0("enriched_goterms_",A_tp1,"_vs_",B_tp1,".png")),height = 6,width=12)
+
+```
+
+
+
+```{r,results='hide',message='false',warning='false'}
+
+
+#if background model is all genes measured in our head seqs
+#3h vs 3h
+#only term
+# goterm_to_look_for <- "GO:0005576" #extracellular region
+
+#6h vs 6h
+#first term
+# goterm_to_look_for <- "GO:0007218" #neuropeptide signaling pathway
+#second
+# goterm_to_look_for <- "KEGG:01212" #fatty acid metabolism
+#third
+# goterm_to_look_for <- "GO:0005576" #extracellular region
+#fourth
+# goterm_to_look_for <- "KEGG:04146" #peroxisome
+#fith
+# goterm_to_look_for <- "KEGG:00071"	#fatty acid degradation
+
+#if background model is all annotated c.elegans genes 
+#3h vs 3h
+#first term 
+# goterm_to_look_for <- "GO:0005576" #extracellular region 
+#first KEGG term
+# goterm_to_look_for <- "KEGG:01100" #metabolic pathways
+#no bp termss
+
+#6h vs 6h
+#first term
+# goterm_to_look_for <- "GO:0005576" #extracellular region
+#first bp term
+# goterm_to_look_for <- "GO:0007218" #"neuropeptide signaling pathway"
+#first KEGG
+# goterm_to_look_for <- "KEGG:01100" #metabolic pathways
+#first tf
+# goterm_to_look_for <- "TF:M07154" #elt-3 targets
+#another KEGG
+# goterm_to_look_for <- "KEGG:04146" #peroxisome
+
+#9h vs 9h
+#first term
+# goterm_to_look_for <- "KEGG:01100" #metabolic pathways 
+#first bp term
+# goterm_to_look_for <- "GO:0006082" #organic acid metabolic process
+#thirs bp term
+# goterm_to_look_for <- "GO:0007218" #"neuropeptide signaling pathway"
+
+#extract goterm name for plot
+term_name <- go_results[go_results$term_id == goterm_to_look_for,"term_name"]
+
+
+#filter out the genes that are part of a particular GO term
+geneset_1 <- go_results %>%
+  filter(term_id %in% goterm_to_look_for) %>%
+  pull() %>%
+  strsplit(., ",") %>%
+  unlist()
+
+#table get normalized counts from DESeq2 results
+normalizedCounts <- DESeq2::counts(dds, normalized = TRUE)
+# get the expression data for the gene set of interest
+M <- normalizedCounts[rownames(normalizedCounts) %in% geneset_1, ]
+
+
+#only conditions that we are interested in (for which we did the enrichment analysis)
+M <- M %>%
+  as.data.frame() %>%
+  select(.,matches(A_tp1) | matches(B_tp1)) %>%
+  tibble::rownames_to_column("gene") %>%
+  mutate(gene=to_ENSEMBL_name(gene)) %>%
+  tibble::column_to_rownames(var = "gene") %>%
+  as.matrix()
+
+# log transform the counts for visualization scaling by row helps visualizing
+# relative change of expression of a gene in multiple conditions
+
+pheatmap(log2(M+1),
+         color=brewer.pal(11,"PiYG"),
+         annotation_col = coldata, 
+         show_rownames = TRUE,
+         # show_colnames = FALSE,
+         fontsize_row = 8,
+         scale = 'row', 
+         cutree_cols = 2, 
+         cutree_rows = 2,
+         cellheight=6,
+         main=paste0(term_name, " (", goterm_to_look_for,")"),
+         filename=file.path(here(),paste0("heatmap_",A_tp1,"_vs_",B_tp1,"_",goterm_to_look_for[1],".png")))
+
+plot_counts_ggplot(geneset_1,c(tp1))
+ggsave(file.path(here(), paste0("counts_",A_tp1,"_vs_",B_tp1,"_",goterm_to_look_for[1],".png")))
+```
+
+# plot heatmap for a manually defined geneset
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+pattern <- ".*npr*"
+geneset_2 <- de_results_filtered[grep(pattern,de_results_filtered$gene),"gene_wb"]
+
+
+#table get normalized counts from DESeq2 results
+normalizedCounts <- DESeq2::counts(dds, normalized = TRUE)
+# get the expression data for the gene set of interest
+M <- normalizedCounts[rownames(normalizedCounts) %in% geneset_2, ]
+
+
+#only conditions that we are interested in (for which we did the enrichment analysis)
+M <- M %>%
+  as.data.frame() %>%
+  select(.,matches(A_tp1) | matches(B_tp1)) %>%
+  tibble::rownames_to_column("gene") %>%
+  mutate(gene=to_ENSEMBL_name(gene)) %>%
+  tibble::column_to_rownames(var = "gene") %>%
+  as.matrix()
+
+# log transform the counts for visualization scaling by row helps visualizing
+# relative change of expression of a gene in multiple conditions
+
+pheatmap(log2(M+1),
+         color=brewer.pal(11,"PiYG"),
+         annotation_col = coldata, 
+         show_rownames = TRUE,
+         # show_colnames = FALSE,
+         fontsize_row = 8,
+         scale = 'row', 
+         cutree_cols = 2, 
+         cutree_rows = 2,
+         cellheight=6,
+         main=pattern,
+         filename=file.path(here(),paste0("heatmap_",A_tp1,"_vs_",B_tp1,"_",pattern,".png")))
+
+
+plot_counts_ggplot(geneset_2,c(tp1))
+ggsave(file.path(here(), paste0("counts_",A_tp1,"_vs_",B_tp1,"_",pattern,".png")))
+
+
+```
+
+
+#plot single genes across conditions and timepoints
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+pattern <- ".*daf-22.*"
+#table get normalized counts from DESeq2 results
+nc_df <- DESeq2::counts(dds, normalized = TRUE) %>%
+  as.data.frame() %>%
+  tibble::rownames_to_column("gene") %>%
+  mutate(gene_wb = gene) %>%
+  mutate(gene = to_ENSEMBL_name(gene)) %>%
+  mutate(gene=ifelse(is.na(gene), gene_wb,gene))
+
+selected_gene <- nc_df[grep(pattern,nc_df$gene),"gene_wb"]
+ 
+normalizedCounts <- DESeq2::counts(dds, normalized = TRUE)
+
+counts <- normalizedCounts[rownames(normalizedCounts) %in% selected_gene, ] %>%
+  as.data.frame() %>%
+  rename(.="counts_norm") %>%
+  tibble::rownames_to_column("name") %>%
+  mutate(exp=gsub("(.+)\\_.+\\_.+","\\1",name)) %>%
+  mutate(condition=gsub(".+\\_(.+)\\_.+","\\1",name)) %>%
+  mutate(tp=gsub("FP.+\\_.+\\_(.+)h*","\\1",name)) %>%
+  mutate(condition_tp=gsub("FP.+\\_(.+\\_)h*","\\1",name)) %>%
+  group_by(condition_tp,condition,tp) %>%
+  mutate(mean_counts_norm = mean(counts_norm)) %>%
+  mutate(sd_mean_counts_norm = sd(counts_norm))
+
+  
+
+ggplot(data=counts,aes(x=tp,y=counts_norm))+
+  geom_pointrange(data=counts, aes(x=tp,y=mean_counts_norm,ymin=mean_counts_norm-sd_mean_counts_norm, ymax=mean_counts_norm+sd_mean_counts_norm,group=condition_tp),alpha=0.5, width=.1,size=1,position=position_dodge(0.2),shape=3)+
+  geom_point(aes(fill=condition),position=position_dodge(0.2),size=3,color="black",shape=21)+
+  scale_y_continuous(limits=c(0,NA))+
+  theme_bw()+
+  scale_fill_manual(values = pal)+
+  ggtitle(to_ENSEMBL_name(selected_gene))
+
+  
+ggsave(file.path(here(), paste0("genecounts_",to_ENSEMBL_name(selected_gene),".png")))
+
+```

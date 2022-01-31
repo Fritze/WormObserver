@@ -1,0 +1,113 @@
+---
+title: "headseq_analysis_deseq2_dotplot"
+author: "Friedrich Preußer"
+date: "7/26/2021"
+output: html_document
+---
+
+```{r, results='hide',message='false', warning='false'}
+# for all good stuff
+library(tidyverse)
+# for file manipulation
+library(here)
+#for color
+library(wesanderson)
+#for other colors
+library(RColorBrewer)
+#for venn diagram
+library(ggvenn)
+#for converting gene IDs and goterm analysis
+library(gprofiler2)
+
+
+```
+
+
+
+# import data
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+data <- list.files(here("code"),pattern=".*diff_A.*",full.names = TRUE) %>%
+  map_df(function(x) read.table(x,sep=",",header=TRUE) %>% mutate(file=basename(x))) %>%
+  mutate(compared_tps = gsub("diff_A_(.h)_vs_B_(.h).*","\\1",file))
+
+expressed_genes_head <- read_csv("expressed_genes_head_all_exps.txt") %>%
+  pull()
+
+```
+
+
+# take differentially expressed genes as calculated above (those that are exclusively differentially expressed in one condition)
+```{r,results='hide',message='false',warning='false'}
+
+
+
+go_analysis <- function(tp,data){
+  
+  data_filtered <- data %>%
+    filter(compared_tps %in% tp)
+  
+    #get the list of differentially expressed genes of interest
+    genesOfInterest <- data_filtered$gene_wb
+  
+  
+    #calculate enriched GO terms
+    #against all annotated genes
+    # goResults <- gost(query = genesOfInterest,
+    #                 organism = 'celegans',
+    #                 evcodes = TRUE)
+
+    
+    #with custom background
+    goResults <- gost(query = genesOfInterest,
+                    organism = 'celegans',
+                    evcodes = TRUE,
+                    domain_scope="custom",
+                    user_threshold = 0.01,
+                    custom_bg = expressed_genes_head)
+    
+    
+    # transform to data frame
+    go_results <- goResults$result
+    #sort by pvalue
+    go_results <- go_results[order(go_results$p_value),] %>%
+      #add tp to know which differnetially expressed genes were used here
+      mutate(tp = tp)
+    return(go_results)
+    
+}
+
+
+tps <- unique(data$compared_tps)
+
+go_results_all <- tps %>%
+  map_df(function(x) go_analysis(x,data))
+
+#only top 5 terms for each tp
+go_results_all_filtered <- go_results_all %>%
+  #filter out transfac missannotation
+  filter(!term_name == "Transfac") %>%
+  group_by(tp) %>%
+  top_n(-5,p_value)
+
+#gene ratio ( genes related to GO term / total number of sig genes)) == precision
+# precision is defined as:
+#the proportion of genes in the input list that are annotated to the function
+# --> the number of genes in the input query that are annotated to the corresponding term /
+#     number of genes that were included in the query
+
+ggplot(data = go_results_all_filtered, aes(x = tp, y = term_name, 
+                        color = `p_value`, size = precision)) + 
+  geom_point() +
+  scale_color_gradient(low = "deeppink", high = "lightgreen") +
+  theme_bw() + 
+  ylab("") + 
+  xlab("") + 
+  ggtitle("GO enrichment analysis")+
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.65,hjust=0.75))
+
+ggsave(file.path(here(), paste0("A_vs_B_go_enrichment_doplot_over_all_tps",".png")))
+
+```
+
+

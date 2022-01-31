@@ -1,0 +1,440 @@
+---
+title: "headseq_analysis_deseq2_1"
+author: "Friedrich Preußer"
+date: "7/26/2021"
+output: html_document
+---
+
+```{r, results='hide',message='false', warning='false'}
+# for all good stuff
+library(tidyverse)
+# for file manipulation
+library(here)
+#for labels in plots
+library(ggrepel)
+#for color
+library(wesanderson)
+#for other colors
+library(RColorBrewer)
+#for differential gene expression
+library(DESeq2)
+#for venn diagram
+library(ggvenn)
+#for converting gene IDs and goterm analysis
+library(gprofiler2)
+#for handy plotting of heatmaps
+library(pheatmap)
+#for LFC estimation
+library(apeglm)
+library(ashr)
+
+```
+
+#functions
+```{r echo=TRUE}
+
+pal <- wes_palette("Darjeeling1")[c(5,1)]
+
+#this function can results in NAs
+to_ENSEMBL_name <- function(input){
+  gconvert(input,
+      organism = "celegans",
+      target = "ENSG",
+      numeric_ns = "",
+      #show only one result
+      mthreshold = 1,
+      filter_na = FALSE
+    )$name
+}
+
+``` 
+
+# import data
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+data <- readRDS(list.files(here("csvs"),"RDS",full.names = TRUE)) %>%
+  mutate(exp_condition=gsub("(.+\\_.+)\\_.+","\\1",name))
+
+
+expressed_genes_head <- read_csv("expressed_genes_head_all_exps.txt") %>% pull()
+```
+
+
+# creating the Deseq2 object
+## here we only look at head samples (0h, 3h, 6h, 9h)
+#### deseq2 normalizes for 2 things: library size but also library composition.
+#### gene counts are LOGe transformed (geometric average) across samples on a per gene basis.
+#### genes with value 0 are filtered out.
+#### subtract the average log value from the log count across genes
+#### now per sample: median of all gene ratios log(counts/average counts across samples)
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+for_deseq <- data %>%
+  #exclude timepoint 0
+  filter(tp %in% c("0h","3h","6h","9h")) %>%
+  #exclude genes with low readcounts
+  # filter(count > 10) %>%
+  #here we select wb_gene since this gives unique gene names
+  select(gene,exp,condition,tp,count) %>%
+  pivot_wider(names_from = c(exp,condition,tp), values_from = count) %>%
+  tibble::column_to_rownames(var = "gene")
+  
+
+# #discard genes that are not present in all experiments
+# for_deseq_clean <- for_deseq %>%
+#   na.omit()
+
+# set genes that are not present in all experiments to 0
+for_deseq_clean <- for_deseq %>%
+  replace(is.na(.), 0)
+
+
+
+#create design file
+cols <- gsub("FP.+\\_(.+\\_.+)$","\\1" ,colnames(for_deseq_clean))
+coldata <- cols %>%
+  as.data.frame() %>%
+  mutate(condition_tp=gsub(".+\\_(.+^)","\\1",.)) %>%
+  select(!.)
+
+rownames(coldata) <- colnames(for_deseq_clean)
+
+
+
+dds <- DESeqDataSetFromMatrix(countData = for_deseq_clean,
+                              colData = coldata,
+                              design = ~  condition_tp)
+dds <- DESeq(dds)
+```
+
+
+# differential gene expression with DeSeq2
+## here we compare different conditions and timepoints
+### we also filter to have a conservative estimate: only log2fold change of > 1 (two-fold change) and padj < 0.05
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+#---------
+tp1 <- "0h"
+tp2 <- "3h"
+#---------
+
+A_tp1 <- paste0("A_",tp1) 
+A_tp2 <- paste0("A_",tp2) 
+B_tp1 <- paste0("B_",tp1) 
+B_tp2 <- paste0("B_",tp2) 
+
+
+#we create a seperate deseq2 object with only the samples we want to compare
+#create design file
+cols <- gsub("FP.+\\_(.+\\_.+)$","\\1" ,colnames(for_deseq_clean))
+
+#extract condition and timepoint as new variable "condition_tp"
+coldata <- cols %>%
+  as.data.frame() %>%
+  mutate(condition_tp=gsub(".+\\_(.+^)","\\1",.)) %>%
+  select(!.)
+
+#
+rownames(coldata) <- colnames(for_deseq_clean)
+
+
+
+#compute the contrast for between different conditions within the same timepoint 
+#within the contrast argument the 3rd value is the reference (i.e. control) to compare to.
+de_results_B <- lfcShrink(dds, contrast = c("condition_tp", B_tp2, B_tp1), type="ashr")
+de_results_A <- lfcShrink(dds, contrast = c("condition_tp", A_tp2,  A_tp1),type="ashr")
+
+
+de_results_A_df <- de_results_A %>%
+  as.data.frame() %>%
+  rownames_to_column("gene")
+
+de_results_B_df <- de_results_B %>%
+  as.data.frame() %>%
+  rownames_to_column("gene")
+
+de_results_A_filtered <- de_results_A_df %>%
+  arrange(padj) %>%
+  filter(padj < 0.05) %>%
+  filter(log2FoldChange > 1 | log2FoldChange < -1) %>%
+  mutate(compared_condition = "A") %>%
+  mutate(gene_wb = gene) %>%
+  mutate(gene = to_ENSEMBL_name(gene))
+
+de_results_B_filtered <- de_results_B_df %>%
+  arrange(padj) %>%
+  filter(padj < 0.05) %>%
+  filter(log2FoldChange > 1 | log2FoldChange < -1) %>%
+  mutate(compared_condition = "B") %>%
+  mutate(gene_wb = gene) %>%
+  mutate(gene = to_ENSEMBL_name(gene))
+
+
+
+# list of genes that are specific for condition A
+de_results_filtered_merged_for_A <- de_results_B_filtered %>%
+  #rows in de_results_A that have no match will have NA values
+  right_join(de_results_A_filtered,by="gene",suffix=c("_B","_A")) %>%
+  # by selecting those with NA values we select genes "exclusive" for A condition
+  filter(is.na(padj_B)) %>%
+  # keep only relevant columns
+  select(!c(matches("_B"))) %>%
+  #clean column names
+  rename_with(~ gsub('(.+)\\_A', '\\1', .x))
+
+  
+# list of genes that are specific for condition B
+de_results_filtered_merged_for_B <- de_results_A_filtered %>%
+  #rows in de_results_B that have no match will have NA values
+  right_join(de_results_B_filtered,by="gene",suffix=c("_A","_B")) %>%
+  #by selecting those with NA values (here in the padj_A) we select genes "exclusive" for B condition
+  filter(is.na(padj_A)) %>%
+  #keep only relevant columns
+  select(!c(matches("_A"))) %>%
+  #clean column names
+  rename_with(~ gsub('(.+)\\_B', '\\1', .x))
+
+# list of genes that are differentially expressed in both conditions
+de_results_filtered_merged_in_both <- de_results_A_filtered %>%
+  #rows in de_results_B that have no match will have NA values
+  inner_join(de_results_B_filtered,by="gene",suffix=c("_A","_B")) %>%
+  dplyr::rename(gene_wb=gene_wb_A) %>%
+  select(!gene_wb_B)
+
+write_csv(de_results_filtered_merged_for_A, paste0("diff_specific_for_A_",tp1,"_vs_",tp2,".txt"))
+write_csv(de_results_filtered_merged_for_B, paste0("diff_specific_for_B_",tp1,"_vs_",tp2,".txt"))
+write_csv(de_results_filtered_merged_in_both, paste0("diff_in_both_",tp1,"_vs_",tp2,".txt"))
+
+```
+
+
+# overlap differentially expressed genes (across conditions) between timepoints
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+  
+  x <- list(
+    A=de_results_A_filtered$gene_wb,
+    B=de_results_B_filtered$gene_wb
+  )
+  
+  ggvenn(
+    x, 
+    fill_color = pal,
+    show_outside = "none",
+    fill_alpha = 1,
+    auto_scale=TRUE,
+    show_percentage = FALSE,
+    text_size = 0
+    
+    )
+  ggsave(file.path(here(),paste0(tp1,"_vs_",tp2,"_vennDiagram.png")))
+  
+  
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+#specific for A, B, or both?
+#if "both" is selected than volcano plot will show all genes (with associated log2fc and padj) from "A"
+
+
+plot_volcano <- function(specific_for, what_to_highlight, v){
+  
+  if(specific_for == "A"){
+    df <- de_results_A_df
+    dff <- de_results_filtered_merged_for_A
+    
+  }else if(specific_for == "B"){
+    df <- de_results_B_df
+    dff <- de_results_filtered_merged_for_B
+
+  }else if(specific_for == "both"){
+    dff <- de_results_filtered_merged_in_both %>%
+      select(c(matches("_A"),"gene","gene_wb")) %>%
+      #clean column names
+      rename_with(~ gsub('(.+)\\_A', '\\1', .x))
+    df <- dff
+
+  }
+
+
+  if(what_to_highlight == "gene"){
+    ex_genes_highlighted <- dff %>%
+      mutate(gene=to_ENSEMBL_name(gene_wb)) %>%
+      filter(grepl(v, gene)) %>%
+      # filter(-log10(padj) > 5) %>%
+      pull(gene_wb)
+    
+    ex_genes_labeled <- ex_genes_highlighted
+    
+  }else if(what_to_highlight == "padj"){
+    ex_genes_highlighted <- dff %>%
+      filter(padj < v) %>%
+      pull(gene_wb)
+      
+    ex_genes_labeled <- dff %>%
+      filter(padj < v) %>%
+      filter(padj < 10^-2.5) %>%
+      pull(gene_wb)
+  }
+
+  df_highlighted <- df %>%
+    mutate(highlight=ifelse(gene_wb %in% ex_genes_highlighted, gene_wb, NA)) %>%
+    mutate(to_be_labeled=ifelse(gene_wb %in% ex_genes_labeled, gene, NA)) %>%
+    mutate(labeled=to_ENSEMBL_name(to_be_labeled)) %>%
+    mutate(labeled=ifelse(is.na(labeled), to_be_labeled,labeled)) %>%
+    select(!to_be_labeled)
+  
+  
+  ggplot(df_highlighted,aes(log2FoldChange,-log10(padj),label = labeled))+
+    geom_point(alpha=0.25,fill="lightblue",shape=21)+
+    geom_point(data=df_highlighted %>% filter(highlight %in% ex_genes_highlighted),aes(log2FoldChange,-log10(padj)),fill="orange",shape=21)+
+    geom_text_repel(
+      size=3,
+      nudge_x = .15,
+      box.padding = 0.05,
+      nudge_y = 1,
+      segment.curvature = -0.1,
+      segment.ncp = 3,
+      segment.angle = 20
+    )+
+    geom_hline(yintercept=-log10(0.05),alpha=0.5,linetype="dashed")+
+    geom_vline(xintercept=1,alpha=0.5,linetype="dashed")+
+    geom_vline(xintercept=-1,alpha=0.5,linetype="dashed")+
+    theme_bw()
+  
+  ggsave(file.path(here(),paste0("volcano_",tp2,"_vs_",tp1,"_de_specific_for_",specific_for,"_",what_to_highlight,"_",v,".png")),width = 10,height = 10)
+
+}
+
+
+plot_volcano("both","padj",0.05)
+plot_volcano("both","gene","daf-28|ins|nlp|flp")
+
+# plotCounts(dds, gene="T19A6.2", intgroup="condition_tp")
+
+```
+
+
+
+
+
+# take differentially expressed genes as calculated above (those that are exclusively differentially expressed in one condition)
+```{r,results='hide',message='false',warning='false'}
+
+#specific for A, B, or both?
+specific_for <- "both"
+
+#get the list of differentially expressed genes of interest
+if(specific_for == "A"){
+  genesOfInterest <- de_results_filtered_merged_for_A$gene_wb
+  tp_one <- paste0("A_",tp1) 
+  tp_two <- paste0("A_",tp2)
+  tp_three <- "NA"
+  tp_four <- "NA"
+}else if(specific_for == "B"){
+  genesOfInterest <- de_results_filtered_merged_for_B$gene_wb
+  tp_one <- paste0("B_",tp1) 
+  tp_two <- paste0("B_",tp2)
+  tp_three <- "NA"
+  tp_four <- "NA"
+}else if(specific_for == "both"){
+  genesOfInterest <- de_results_filtered_merged_in_both$gene_wb
+  tp_one <- paste0("A_",tp1)
+  tp_two <- paste0("B_",tp1)
+  tp_three <- paste0("A_",tp2)
+  tp_four <- paste0("B_",tp2)
+}
+
+
+#calculate enriched GO terms
+#against all annotated genes
+# goResults <- gost(query = genesOfInterest,
+#                 organism = 'celegans',
+#                 evcodes = TRUE)
+
+    
+#with custom background
+goResults <- gost(query = genesOfInterest,
+                  organism = 'celegans',
+                  evcodes = TRUE,
+                  domain_scope="custom",
+                  user_threshold = 0.01,
+                  custom_bg = expressed_genes_head)
+
+
+#transform to data frame
+go_results <- goResults$result
+#sort by pvalue
+go_results <- go_results[order(go_results$p_value),]
+
+#plot barplot with enriched GOterms
+# only BP == biological process
+go_to_plot <- go_results %>%
+  top_n(-5,p_value)
+
+ggplot(go_to_plot,aes(-log10(p_value),factor(term_name, levels = rev(term_name))))+
+  geom_bar(stat = "identity",color="black",fill="darkgrey")+
+  theme_bw()
+
+ggsave(file.path(here(),paste0("enriched_goterms_",tp_one,"_vs_",tp_two,"_and_",tp_three,"_vs_",tp_four,".png")),height = 6,width=12)
+
+```
+
+
+```{r,results='hide',message='false',warning='false'}
+
+#3h vs 0h
+#differentially expressed genes in BOTH conditions
+#first term (BP)
+# goterm_to_look_for <- "GO:0055114" #obsolete oxidation-reduction process
+#second term
+# goterm_to_look_for <- "GO:0016491" #oxidoreductase activity
+#third term (CC)
+# goterm_to_look_for <- "GO:0005777" #peroxisome
+
+
+
+#extract goterm name for plot
+term_name <- go_results[go_results$term_id == goterm_to_look_for,"term_name"]
+
+
+#filter out the genes that are part of a particular GO term
+geneset_1 <- go_results %>%
+  filter(term_id %in% goterm_to_look_for) %>%
+  pull() %>%
+  strsplit(., ",") %>%
+  unlist()
+
+#table get normalized counts from DESeq2 results
+normalizedCounts <- DESeq2::counts(dds, normalized = TRUE)
+# get the expression data for the gene set of interest
+M <- normalizedCounts[rownames(normalizedCounts) %in% geneset_1, ]
+
+
+#only conditions that we are interested in (for which we did the enrichment analysis)
+M <- M %>%
+  as.data.frame() %>%
+  select(.,matches(tp_one) | matches(tp_two) | matches(tp_three) | matches(tp_four)) %>%
+  tibble::rownames_to_column("gene") %>%
+  mutate(gene=to_ENSEMBL_name(gene)) %>%
+  tibble::column_to_rownames(var = "gene") %>%
+  as.matrix()
+
+# log transform the counts for visualization scaling by row helps visualizing
+# relative change of expression of a gene in multiple conditions
+
+pheatmap(log2(M+1),
+         color=brewer.pal(11,"PiYG"),
+         annotation_col = coldata, 
+         show_rownames = TRUE,
+         # show_colnames = FALSE,
+         fontsize_row = 8,
+         scale = 'row', 
+         cutree_cols = 2, 
+         cutree_rows = 2,
+         cellheight=6,
+         main=paste0(term_name, " (", goterm_to_look_for,")"),
+         filename=file.path(here(),paste0("heatmap_specific_for_",tp2,"_vs_",tp1,"_",specific_for,"_",goterm_to_look_for[1],".png")))
+
+```

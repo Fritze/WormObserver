@@ -1,0 +1,194 @@
+---
+title: "headseq_analysis_deseq2_1"
+author: "Friedrich Preußer"
+date: "7/26/2021"
+output: html_document
+---
+
+```{r, results='hide',message='false', warning='false'}
+# for all good stuff
+library(tidyverse)
+# for file manipulation
+library(here)
+#for labels in plots
+library(ggrepel)
+#for color
+library(wesanderson)
+#for differential gene expression
+library(DESeq2)
+#for venn diagram
+library(ggvenn)
+#for converting gene IDs and goterm analysis
+library(gprofiler2)
+#for handy plotting of heatmaps
+library(pheatmap)
+
+```
+
+#functions
+```{r echo=TRUE}
+
+pal <- wes_palette("Darjeeling1")[c(5,1)]
+
+to_ENSEMBL_name <- function(input){
+  gconvert(input,
+      organism = "celegans",
+      target = "ENSG",
+      numeric_ns = "",
+      #show only one result
+      mthreshold = 1,
+      filter_na = FALSE
+    )$name
+}
+
+``` 
+
+# import data
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+data <- readRDS(list.files(here("csvs"),"RDS",full.names = TRUE))
+
+```
+
+
+# creating the Deseq2 object
+## here we only look at head samples (0h,3h, 6h, 9h)
+#### deseq2 normalizes for 2 things: library size but also library composition.
+#### gene counts are LOGe transformed (geometric average) across samples on a per gene basis.
+#### genes with value 0 are filtered out.
+#### subtract the average log value from the log count across genes
+#### now per sample: median of all gene ratios log(counts/average counts across samples)
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+for_deseq <- data %>%
+  #exclude timepoint 0
+  filter(tp %in% c("0h","3h","6h","9h")) %>%
+  #exclude genes with low readcounts
+  # filter(count > 10) %>%
+  #here we select wb_gene since this gives unique gene names
+  select(gene,exp,condition,tp,count) %>%
+  pivot_wider(names_from = c(exp,condition,tp), values_from = count) %>%
+  tibble::column_to_rownames(var = "gene")
+
+#set genes that are not present in all experiments to 0
+for_deseq_clean <- for_deseq %>%
+  replace(is.na(.), 0)
+
+#create design file
+cols <- gsub("FP.+\\_(.+\\_.+)$","\\1" ,colnames(for_deseq_clean))
+coldata <- cols %>%
+  as.data.frame() %>%
+  mutate(condition_tp=gsub(".+\\_(.+^)","\\1",.)) %>%
+  select(!.)
+
+rownames(coldata) <- colnames(for_deseq_clean)
+
+
+
+dds <- DESeqDataSetFromMatrix(countData = for_deseq_clean,
+                              colData = coldata,
+                              design = ~  condition_tp)
+dds <- DESeq(dds)
+
+```
+
+#PCA on normalized counts
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+number_of_variable_genes <- 500
+
+#PCA (on normalized and log transformed counts, top 500 variable genes)
+rld <- rlog(dds)
+pca <- DESeq2::plotPCA(rld, ntop = number_of_variable_genes, intgroup = 'condition_tp',returnData=TRUE)
+
+DESeq2::plotPCA(rld, ntop = number_of_variable_genes, intgroup = 'condition_tp')
+
+
+pca %>%
+  mutate(tp=gsub(".*\\_(.*)h","\\1",group)) %>%
+  mutate(condition=gsub("(.*)\\_.*","\\1",group)) %>%
+  mutate(exp=gsub("(.*)\\_.*\\_.*","\\1",name)) %>%
+  mutate(exp_condition=gsub("(.+)\\_.*","\\1",name)) %>%
+  mutate(condition=ifelse(condition == "A", "with_food","no_food")) %>%
+  ggplot(., aes(PC1,PC2))+
+    geom_path(aes(group=exp_condition),alpha=0.25)+
+    geom_point(aes(shape=tp, fill=condition),size=3)+
+    # ylim(limits=c(-30,40))+
+    # xlim(limits=c(-50,60))+
+    scale_fill_manual(values=pal[2:1])+
+    scale_shape_manual(values=c(21,22,24,23)) + 
+    ggtitle(paste0(number_of_variable_genes, " most variable genes as input."))+
+    # geom_label_repel(fill = "white", xlim = c(-Inf, Inf), ylim = c(-Inf, Inf))+
+    theme_bw()
+
+# ggsave(file.path(here(),paste0("headseq_PCA_",number_of_variable_genes,"_most_variable_genes",".png")))
+
+
+# 
+# #this is code taken out of the DESeq2::plotPCA function
+# rv <- rowVars(assay(rld))
+# # select the ntop genes by variance
+# select <- order(rv, decreasing=TRUE)[seq_len(min(number_of_variable_genes, length(rv)))]
+# pca <- prcomp(t(assay(rld)[select,]))
+# 
+# pca$x %>%
+#   as.data.frame() %>%
+#   tibble::rownames_to_column("name") %>%
+#   mutate(tp=gsub(".*\\_(.*)h","\\1",name)) %>%
+#   mutate(condition=gsub(".*\\_(.*)\\_.*","\\1",name)) %>%
+#   mutate(exp=gsub("(.*)\\_.*\\_.*","\\1",name)) %>%
+#   mutate(exp_condition=gsub("(.+)\\_.*","\\1",name)) %>%
+#   mutate(condition=ifelse(condition == "A", "with_food","no_food")) %>%
+#   ggplot(., aes(PC1,PC2))+
+#     geom_path(aes(group=exp_condition),alpha=0.25)+
+#     geom_point(aes(shape=tp, fill=condition),size=3)+
+#     # ylim(limits=c(-30,40))+
+#     # xlim(limits=c(-50,60))+
+#     scale_fill_manual(values=pal[2:1])+
+#     scale_shape_manual(values=c(21,22,24,23)) +
+#     ggtitle(paste0(number_of_variable_genes, " most variable genes as input."))+
+#     # geom_label_repel(fill = "white", xlim = c(-Inf, Inf), ylim = c(-Inf, Inf))+
+#     theme_bw()
+# 
+# 
+# loadings <- data.frame(pca$rotation)
+# 
+# top_loadings_PC1 <- loadings %>%
+#   select(PC1) %>%
+#   tibble::rownames_to_column("gene_wb") %>%
+#   rename(PC1="value") %>%
+#   mutate(value_abs=abs(value)) %>%
+#   arrange(desc(value_abs)) %>%
+#   mutate(gene=to_ENSEMBL_name(gene_wb))
+# 
+# top_loadings_PC2 <- loadings %>%
+#   select(PC2) %>%
+#   tibble::rownames_to_column("gene_wb") %>%
+#   rename(PC2="value") %>%
+#   mutate(value_abs=abs(value)) %>%
+#   arrange(desc(value_abs)) %>%
+#   mutate(gene=to_ENSEMBL_name(gene_wb))
+
+```
+
+
+#further quality control
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+
+#MA plot
+DESeq2::plotMA(object = dds, ylim = c(-5, 5))
+
+
+#plot to compare raw and normalized count variance
+library(EDASeq)
+
+plotRLE(as.matrix(for_deseq_clean), outline=FALSE, ylim=c(-4, 4),
+        col=as.numeric(coldata$condition_tp),
+        main = 'Raw Counts')
+
+plotRLE(DESeq2::counts(dds, normalized = TRUE),
+        outline=FALSE, ylim=c(-4, 4),
+        col = as.numeric(coldata$condition_tp),
+        main = 'Normalized Counts')
+```

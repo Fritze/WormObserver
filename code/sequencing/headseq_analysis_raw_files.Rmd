@@ -1,0 +1,95 @@
+---
+title: "headseq_analysis_raw_files"
+author: "Friedrich Preußer"
+date: "7/26/2021"
+output: html_document
+---
+
+```{r}
+# for all good stuff
+library(tidyverse)
+# for file manipulation
+library(here)
+
+```
+
+# import data and save it as one .RDS file
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+data <- list.files(here("csvs"), ".csv",full=TRUE) %>%
+  set_names() %>%
+  map_df(read_table2, .id = "name") %>%
+  #get only file name
+  mutate(name=basename(name)) %>%
+  #parse file name to have only experiment name .csv
+  mutate(name=gsub(".*(FP14.+)\\.csv","\\1", name)) %>%
+  mutate(gene=gsub("CELE\\_(.+)","\\1",gene)) %>%
+  mutate(exp=gsub("(.+)\\_.+\\_.+","\\1",name)) %>%
+  mutate(condition=gsub(".+\\_(.+)\\_.+","\\1",name)) %>%
+  mutate(tp=gsub("FP.+\\_.+\\_(.+)h*","\\1",name)) %>%
+  dplyr::rename(count = readcount) %>%
+  group_by(name) %>%
+  mutate(sum_counts=sum(count)) %>%
+  ungroup()
+
+# saveRDS(data,file.path(here("csvs"),"headseq_data_raw.RDS"))
+
+```
+
+# number of total (mapped) reads per timepoint
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+data %>%
+  ggplot(., aes(x=tp,y=sum_counts,fill=tp))+
+    geom_boxplot()+
+    geom_point()+
+    facet_wrap(vars(condition))+
+    theme_bw()+
+    theme(axis.text.x = element_text(angle = 45, hjust=1))
+
+```
+
+# number unique genes per timepoint
+## reminder: C.elegans has ~20k genes
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+#all unique genes
+data %>%
+  group_by(exp,tp,condition) %>%
+  summarise(unique_genes=n_distinct(gene)) %>%
+  ggplot(., aes(x=tp,y=unique_genes,fill=tp))+
+    geom_boxplot()+
+    geom_point()+
+    facet_wrap(vars(condition))+
+    theme_bw()+
+    theme(axis.text.x = element_text(angle = 45, hjust=1))+
+    ggtitle("number of genes")
+
+#all unique genes over 10 reads
+data %>%
+  filter(count > 10) %>%
+  group_by(exp,tp,condition) %>%
+  summarise(unique_genes=n_distinct(gene)) %>%
+  ggplot(., aes(x=tp,y=unique_genes,fill=tp))+
+    geom_boxplot()+
+    geom_point()+
+    facet_wrap(vars(condition))+
+    theme_bw()+
+    theme(axis.text.x = element_text(angle = 45, hjust=1))+
+    ggtitle("number of genes over 10 reads")
+
+
+head_experiments <- grep("FP.+\\_.\\_.h",unique(data$name),value = TRUE)
+
+expressed_genes_head <- data %>%
+  filter(name %in% head_experiments) %>%
+  filter(count > 10) %>%
+  rename("gene_wb"=gene) %>%
+  select(gene_wb) %>%
+  unique()
+
+write_csv(expressed_genes_head, "expressed_genes_head_all_exps.txt")
+
+
+
+```
