@@ -73,9 +73,10 @@ to_ENSEMBL_name <- function(input){
 # import data
 ```{r echo=TRUE, message=FALSE, warning=FALSE}
 
-data <- readRDS(list.files(here("csvs"),"RDS",full.names = TRUE))
+location_files_to_load <- "/Users/fpreuss/Documents/PhD/Data/headseq/csvs/"
+data <- readRDS(list.files(location_files_to_load ,"RDS",full.names = TRUE))
 
-expressed_genes_head <- read_csv("expressed_genes_head_all_exps.txt") %>% pull()
+expressed_genes_head <- read_csv("/Users/fpreuss/Documents/PhD/Data/headseq/expressed_genes_head_all_exps.txt") %>% pull()
 ```
 
 
@@ -134,7 +135,7 @@ dds <- DESeq(dds)
 ```{r echo=TRUE, message=FALSE, warning=FALSE}
 
 #---------
-tp1 <- "6h"
+tp1 <- "9h"
 #---------
 
 A_tp1 <- paste0("A_",tp1) 
@@ -180,7 +181,7 @@ de_results_filtered <- de_results_df %>%
 
 
 
-# write_csv(de_results_filtered, paste0("diff_",A_tp1,"_vs_",B_tp1,".txt"))
+write_csv(de_results_filtered, paste0("diff_",A_tp1,"_vs_",B_tp1,".txt"))
 
 ```
 
@@ -248,9 +249,6 @@ plot_volcano("padj",0.05)
 plot_volcano("gene","daf-28|ins|nlp|flp")
 
 
-
-# plotCounts(dds, gene="T19A6.2", intgroup="condition_tp")
-# write.table(de_results_filtered$gene_wb,"test.txt",row.names = FALSE,quote = FALSE)
 
 ```
 
