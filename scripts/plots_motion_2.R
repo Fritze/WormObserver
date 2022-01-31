@@ -69,6 +69,7 @@ plots_omega <- function(selected_annotations, selected_hours,wrapped){
     geom_pointrange(aes(ymin = mean_omega_frac-se, ymax = mean_omega_frac+se),size=1)+
     scale_color_manual(values=pal)+
     xlab("hours") + ylab(paste0("fraction omega turns"))+
+    scale_y_continuous(limits=c(0,NA))+
     theme_classic()+
     theme(
       legend.direction="horizontal",
