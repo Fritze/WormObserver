@@ -166,6 +166,8 @@ data_bst <- data_binarized %>%
   group_by(annotation,hours_rounded,tp,TrackID,dataset_ID,Duration_of_track) %>%
   #summarise over individual tracks
   #this will be the mean of the bins contained within that track
+  #to calculate omega fraction we divide the number of bins that contain at least 1 omega turn by the total number of bins
+  #this gives omega turns / 10secs (as binning is 20 frames at 2 fps)
   summarise(mean_velocity = mean(p_mean_velocity), mean_angle = mean(p_mean_angle),omega_frac = sum(omega)/n()) %>%
   ungroup()
 
