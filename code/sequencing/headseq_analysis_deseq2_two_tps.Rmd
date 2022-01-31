@@ -52,11 +52,12 @@ to_ENSEMBL_name <- function(input){
 # import data
 ```{r echo=TRUE, message=FALSE, warning=FALSE}
 
-data <- readRDS(list.files(here("csvs"),"RDS",full.names = TRUE)) %>%
+location_files_to_load <- "/Users/fpreuss/Documents/PhD/Data/headseq/csvs/"
+data <- readRDS(location_files_to_load,"RDS",full.names = TRUE) %>%
   mutate(exp_condition=gsub("(.+\\_.+)\\_.+","\\1",name))
 
 
-expressed_genes_head <- read_csv("expressed_genes_head_all_exps.txt") %>% pull()
+expressed_genes_head <- read_csv("/Users/fpreuss/Documents/PhD/Data/headseq/expressed_genes_head_all_exps.txt") %>% pull()
 ```
 
 
