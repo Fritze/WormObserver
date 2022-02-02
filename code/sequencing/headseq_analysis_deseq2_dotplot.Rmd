@@ -10,10 +10,8 @@ output: html_document
 library(tidyverse)
 # for file manipulation
 library(here)
-#for color
-library(wesanderson)
-#for other colors
-library(RColorBrewer)
+#for colors
+library(viridis)
 #for venn diagram
 library(ggvenn)
 #for converting gene IDs and goterm analysis
@@ -28,7 +26,9 @@ library(gprofiler2)
 ```{r echo=TRUE, message=FALSE, warning=FALSE}
 
 
-data <- list.files(getwd(),pattern=".*diff_A.*",full.names = TRUE) %>%
+location_files_to_load <- "/Users/fpreuss/Documents/PhD/Data/headseq/csvs/"
+
+data <- list.files(location_files_to_load,pattern=".*diff_A.*",full.names = TRUE) %>%
   map_df(function(x) read.table(x,sep=",",header=TRUE) %>% mutate(file=basename(x))) %>%
   mutate(compared_tps = gsub("diff_A_(.h)_vs_B_(.h).*","\\1",file)) %>%
   filter(compared_tps %in% c("3h","6h","9h"))
@@ -91,22 +91,36 @@ go_results_all <- tps %>%
 write.csv(go_results_all,file=file.path(here(),"enriched_go_terms.txt"),row.names = FALSE)
 
 #only top 3 terms for each tp
-go_results_all_filtered <- go_results_all %>%
-  #filter out transfac missannotation
-  filter(!term_name == "Transfac") %>%
-  group_by(tp) %>%
+#3h
+go_results_all_filtered_three <- go_results_all %>%
+  filter(tp == "3h") %>%
   top_n(-3,p_value)
+
+#6h
+go_results_all_filtered_six <- go_results_all %>%
+  filter(tp == "6h") %>%
+  top_n(-3,p_value)
+
+#9h, here we select 4 since one appears twice
+go_results_all_filtered_nine <- go_results_all %>%
+  filter(tp == "9h") %>%
+  top_n(-4,p_value) %>%
+  distinct(term_name, .keep_all= TRUE)
+
+go_results_all_filtered <- rbind(go_results_all_filtered_three,
+                             go_results_all_filtered_six,
+                             go_results_all_filtered_nine)
 
 #gene ratio ( genes related to GO term / total number of sig genes)) == precision
 # precision is defined as:
 #the proportion of genes in the input list that are annotated to the function
 # --> the number of genes in the input query that are annotated to the corresponding term /
 #     number of genes that were included in the query
-
 ggplot(data = go_results_all_filtered, aes(x = tp, y = term_name, 
                         color = `p_value`, size = precision)) + 
   geom_point() +
-  scale_color_gradient(low = "deeppink", high = "lightgreen") +
+  scale_radius(range=c(5, 15))+
+  scale_color_viridis(option = "mako") +
   theme_bw() + 
   ylab("") + 
   xlab("") + 
@@ -114,6 +128,7 @@ ggplot(data = go_results_all_filtered, aes(x = tp, y = term_name,
   theme(axis.text.x = element_text(angle = 45, vjust = 0.65,hjust=0.75))
 
 ggsave(file.path(here(), paste0("A_vs_B_go_enrichment_doplot_over_all_tps",".png")))
+
 
 ```
 
