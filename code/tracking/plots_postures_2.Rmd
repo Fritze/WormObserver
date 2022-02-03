@@ -246,6 +246,7 @@ ggplot(data_for_plotting, aes(y=first_d,x=hours_rounded,color=annotation,fill=an
 
 pal <- wes_palette("Moonrise1")[c(2,3)]
 
+#p1 vs p2 and p3
 cluster_centers_reduced_grouped %>%
   mutate(posture_meta = ifelse(posture_grouped %in% c("group_1", "group_3"),"curved","dauer")) %>%
   ggplot(., aes(x=angle,fill=posture_meta))+
@@ -256,7 +257,9 @@ cluster_centers_reduced_grouped %>%
     scale_color_manual(values = pal)
 
 
-ggsave(file.path(save_path, "postures_grouped_angle_density.png"),height=3,width=6)
+ggsave(file.path(save_path, "postures_grouped_angle_density_p1vsp2p3.png"),height=3,width=6)
+
+
 
 ```
 
@@ -275,7 +278,7 @@ s <- cluster_centers_reduced_grouped %>%
   #manually select 2 posture to be highlighted
   mutate(highlight=ifelse(newID2 %in% c(102,23),"YES","NO"))
 
-#do the plot
+#p1 vs p2+p3
 ggplot(s)+
   geom_path(data=s,aes(X,Y,group=newID),color="grey",alpha=0.5)+
   geom_path(data=filter(s,highlight=="YES"),aes(X,Y,group=newID,color=angle))+
@@ -292,5 +295,30 @@ ggplot(s)+
   facet_wrap(vars(annotation))+
   coord_fixed(ratio = 1)
 
-  ggsave(file.path(save_path, "postures_grouped_overlay_OP50.png"),height=3,width=6)
+  ggsave(file.path(save_path, "postures_grouped_overlay_OP50_p1vsp2p3.png"),height=3,width=6)
+
+  
+s <- cluster_centers_reduced_grouped %>%
+  #append newID2, so that postures in the overview have the same ID as in heatmap
+  left_join(conversion_newID_and_newID2, by=c("newID","annotation")) %>%
+  filter(annotation == "OP50") %>%
+  #manually select 2 posture to be highlighted
+  mutate(highlight=ifelse(newID2 %in% c(94,23,109),"YES","NO")) %>%
+  group_by(posture_grouped,index) %>%
+  mutate(posture_grouped_w_number=paste0(posture_grouped, ", ", n(), " postures"))
+  
+#p1 vs p2 vs p3  
+ggplot(s)+
+  geom_path(data=s,aes(X,Y,group=newID),color="grey",alpha=0.5)+
+  geom_path(data=filter(s,highlight=="YES"),aes(X,Y,group=newID,color=angle))+
+  geom_point(data=filter(s,highlight=="YES"),aes(X,Y,group=newID,fill=angle,color=angle))+
+  geom_point(data=filter(s,highlight=="YES" & index==2), aes(X,Y),color="orange",size=3,shape=17) +
+  scale_fill_viridis(option="plasma",limits=c(-1,1),na.value="grey")+
+  scale_color_viridis(option="plasma",limits=c(-1,1),na.value="grey")+
+  # theme_classic()+
+  theme_void()+
+  facet_wrap(vars(annotation,posture_grouped_w_number))+
+  coord_fixed(ratio = 1)
+
+ggsave(file.path(save_path, "postures_grouped_overlay_OP50_p1vsp2vsp3.png"),height=10,width=10)
 ```
