@@ -318,9 +318,9 @@ second_hour_pvalue <- filter(data_temp,hours_rounded == selected_hours[2]) %>%
 
 write.csv2(rbind(first_hour_pvalue,second_hour_pvalue),file=file.path(save_path_temp,paste0("tracks_mean_velocity.txt",paste(selected_annotations, collapse="_"),"_",paste(selected_hours, collapse="_"),".txt")))
 
-ggplot(data_temp,aes(y=factor(hours_rounded, levels = selected_hours),x=mean_velocity,fill=annotation))+
-    geom_violin(color=NA,alpha=0.5)+
-    geom_boxplot(width=0.1,size=0.5,position=position_dodge(0.9),outlier.shape = NA)+
+ggplot(data_temp,aes(x=factor(hours_rounded, levels = rev(selected_hours)),y=mean_velocity,fill=annotation))+
+    geom_violin(color=NA,alpha=0.5,width=1.75,position=position_dodge(1))+
+    geom_boxplot(width=0.1,size=1,position=position_dodge(1))+
     # scale_x_log10(limits=c(NA,0.3))+
     theme_bw()+
     theme(strip.background = element_rect(colour = "white", fill = "white"),
@@ -333,6 +333,8 @@ ggplot(data_temp,aes(y=factor(hours_rounded, levels = selected_hours),x=mean_vel
         axis.ticks = element_line(colour = "black", size = 1.2))+
   scale_fill_manual(values = pal)+
   scale_color_manual(values = pal)
-ggsave(file.path(save_path_temp,paste0("tracks_mean_velocity",paste(selected_annotations, collapse="_"),"_",paste(selected_hours, collapse="_"),".png")),height=4,width=7,dpi=600)
+
+
+ggsave(file.path(save_path_temp,paste0("tracks_mean_velocity",paste(selected_annotations, collapse="_"),"_",paste(selected_hours, collapse="_"),".png")),height=4,width=5,dpi=600)
 
 ############################################
