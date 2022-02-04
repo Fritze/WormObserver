@@ -53,7 +53,7 @@ to_ENSEMBL_name <- function(input){
 ```{r echo=TRUE, message=FALSE, warning=FALSE}
 
 location_files_to_load <- "/Users/fpreuss/Documents/PhD/Data/headseq/csvs/"
-data <- readRDS(location_files_to_load,"RDS",full.names = TRUE) %>%
+data <- readRDS(list.files(location_files_to_load,"RDS",full.names = TRUE)) %>%
   mutate(exp_condition=gsub("(.+\\_.+)\\_.+","\\1",name))
 
 
@@ -367,7 +367,10 @@ goResults <- gost(query = genesOfInterest,
 #transform to data frame
 go_results <- goResults$result
 #sort by pvalue
-go_results <- go_results[order(go_results$p_value),]
+go_results <- go_results[order(go_results$p_value),] %>%
+  mutate(parents=as.character(parents))
+
+write.csv(go_results,file=file.path(here(),paste0("enriched_go_terms_","diff_in_both_",tp1,"_vs_",tp2,".txt")),row.names = FALSE)
 
 #plot barplot with enriched GOterms
 # only BP == biological process
@@ -391,7 +394,9 @@ ggsave(file.path(here(),paste0("enriched_goterms_",tp_one,"_vs_",tp_two,"_and_",
 # goterm_to_look_for <- "GO:0055114" #obsolete oxidation-reduction process
 #second term
 # goterm_to_look_for <- "GO:0016491" #oxidoreductase activity
-#third term (CC)
+#third term
+goterm_to_look_for <- "KEGG:04146"
+#fourth term (CC)
 # goterm_to_look_for <- "GO:0005777" #peroxisome
 
 
@@ -430,11 +435,11 @@ pheatmap(log2(M+1),
          annotation_col = coldata, 
          show_rownames = TRUE,
          # show_colnames = FALSE,
-         fontsize_row = 8,
+         fontsize_row = 6,
          scale = 'row', 
          cutree_cols = 2, 
          cutree_rows = 2,
-         cellheight=6,
+         cellheight=9,
          main=paste0(term_name, " (", goterm_to_look_for,")"),
          filename=file.path(here(),paste0("heatmap_specific_for_",tp2,"_vs_",tp1,"_",specific_for,"_",goterm_to_look_for[1],".png")))
 
