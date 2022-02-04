@@ -116,11 +116,9 @@ go_results_all_filtered <- rbind(go_results_all_filtered_three,
 #the proportion of genes in the input list that are annotated to the function
 # --> the number of genes in the input query that are annotated to the corresponding term /
 #     number of genes that were included in the query
-ggplot(data = go_results_all_filtered, aes(x = tp, y = term_name, 
-                        color = `p_value`, size = precision)) + 
+ggplot(data = go_results_all_filtered, aes(x = tp, y = term_name, size = precision)) + 
   geom_point() +
   scale_radius(range=c(5, 15))+
-  scale_color_viridis(option = "mako") +
   theme_bw() + 
   ylab("") + 
   xlab("") + 
