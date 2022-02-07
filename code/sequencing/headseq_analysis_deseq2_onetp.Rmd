@@ -379,7 +379,6 @@ M <- M %>%
 
 # log transform the counts for visualization scaling by row helps visualizing
 # relative change of expression of a gene in multiple conditions
-
 pheatmap(log2(M+1),
          color=brewer.pal(11,"PiYG"),
          annotation_col = coldata, 
@@ -393,6 +392,34 @@ pheatmap(log2(M+1),
          main=paste0(term_name, " (", goterm_to_look_for,")"),
          filename=file.path(here(),paste0("heatmap_",A_tp1,"_vs_",B_tp1,"_",goterm_to_look_for[1],".png")))
 
+
+# over all timepoints
+counts <- normalizedCounts[rownames(normalizedCounts) %in% geneset_1, ] %>%
+    as.data.frame() %>%
+    tibble::rownames_to_column("gene") %>%
+    gather(key="name",value=counts_norm,-"gene") %>%
+    mutate(exp=gsub("(.+)\\_.+\\_.+","\\1",name)) %>%
+    mutate(condition=gsub(".+\\_(.+)\\_.+","\\1",name)) %>%
+    mutate(tp=gsub("FP.+\\_.+\\_(.+)h*","\\1",name)) %>%
+    mutate(gene_wb=gene) %>%
+    mutate(gene=to_ENSEMBL_name(gene_wb)) %>%
+    group_by(condition,tp,gene) %>%
+    summarise(counts_norm_mean = mean(counts_norm))
+
+
+ggplot(counts, aes(x=tp,y=counts_norm_mean, fill=condition,))+
+    # geom_boxplot(aes(fill=condition),outlier.size = .75)+
+    # geom_violin()+
+    geom_path(aes(group=gene))+
+    geom_point(size=4,color="black",shape=21)+
+    theme_bw()+
+    scale_fill_manual(values = pal)+
+    ggtitle(term_name)+
+    facet_wrap(vars(condition))
+ggsave(file.path(here(), paste0("counts_",A_tp1,"_vs_",B_tp1,"_",goterm_to_look_for[1],"all_timepoints.png")))
+
+
+# dots for one timepoint
 plot_counts_ggplot(geneset_1,c(tp1))
 ggsave(file.path(here(), paste0("counts_",A_tp1,"_vs_",B_tp1,"_",goterm_to_look_for[1],".png")))
 ```
