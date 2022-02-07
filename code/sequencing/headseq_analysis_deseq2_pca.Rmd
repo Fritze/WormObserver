@@ -113,7 +113,7 @@ pca %>%
   mutate(condition=ifelse(condition == "A", "with_food","no_food")) %>%
   ggplot(., aes(PC1,PC2))+
     geom_path(aes(group=exp_condition),alpha=0.25)+
-    geom_point(aes(shape=tp, fill=condition),size=3)+
+    geom_point(aes(shape=tp, fill=condition),size=6,alpha=0.75)+
     # ylim(limits=c(-30,40))+
     # xlim(limits=c(-50,60))+
     scale_fill_manual(values=pal[2:1])+
@@ -122,7 +122,7 @@ pca %>%
     # geom_label_repel(fill = "white", xlim = c(-Inf, Inf), ylim = c(-Inf, Inf))+
     theme_bw()
 
-# ggsave(file.path(here(),paste0("headseq_PCA_",number_of_variable_genes,"_most_variable_genes",".png")))
+ggsave(file.path(here(),paste0("headseq_PCA_",number_of_variable_genes,"_most_variable_genes",".png")),height=5, width=8)
 
 
 # 
@@ -135,7 +135,7 @@ pca %>%
 # pca$x %>%
 #   as.data.frame() %>%
 #   tibble::rownames_to_column("name") %>%
-#   mutate(tp=gsub(".*\\_(.*)h","\\1",name)) %>%
+#   mutate(tp=gsub(".*\\_(.*)h","\\1",name)) %>% 
 #   mutate(condition=gsub(".*\\_(.*)\\_.*","\\1",name)) %>%
 #   mutate(exp=gsub("(.*)\\_.*\\_.*","\\1",name)) %>%
 #   mutate(exp_condition=gsub("(.+)\\_.*","\\1",name)) %>%
