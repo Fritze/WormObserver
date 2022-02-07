@@ -34,6 +34,28 @@ plot_posture_examples <- function(data_to_plot,X,Y){
     # scale_color_viridis(option = "plasma",limits=c(-1,1))+
     theme(plot.title = element_text(face = "bold"))
 }
+
+#plots
+occurence_plot <- function(postures_zscore, selected_annotations){
+  
+data_for_plotting <- postures_zscore %>%
+  filter(annotation %in% selected_annotations) %>%
+  mutate(annotation=factor(annotation, levels=selected_annotations))
+  
+ggplot(data_for_plotting, aes(y=z_posture_grouped_per_dataset,x=hours_rounded,color=annotation))+
+  geom_point(alpha=0.5,shape=21)+
+  geom_line(data=data_for_plotting, aes(y=z_posture_grouped_per_annotation, x=hours_rounded))+
+  scale_y_continuous(limits = c(-3,3))+
+  scale_x_continuous(breaks = seq(1,12))+
+  # geom_smooth()+
+  theme_bw()+
+  theme(
+    strip.background = element_rect(fill="white"))+
+  facet_wrap(vars(posture_grouped,annotation),nrow=how_many_clusters,scales="free")+
+  scale_fill_manual(values = pal)+
+  scale_color_manual(values = pal)
+}
+
 ```
 
 
@@ -152,27 +174,16 @@ postures_zscore <- postures_stats  %>%
 ```{r, include=FALSE}
 
 
-selected_annotations <- c("Agar","OP50","OP50_w_Az")
-pal <- wes_palette("Darjeeling1")[c(1,5,2)]
+selected_annotations <- c("Agar","OP50","OP50_w_Az","daf2_OP50","OP50_RTdauers")
+pal <- wes_palette("Darjeeling1")[c(1,5,2,3,4)]
+
+occurence_plot(postures_zscore, selected_annotations)
+ggsave(file.path(save_path,"posture_groups_relative_occurences_norm.png"),height=6,width=10)
+
+
 data_for_plotting <- postures_zscore %>%
   filter(annotation %in% selected_annotations) %>%
   mutate(annotation=factor(annotation, levels=selected_annotations))
-
-ggplot(data_for_plotting, aes(y=z_posture_grouped_per_dataset,x=hours_rounded,color=annotation))+
-  geom_point(alpha=0.5,shape=21)+
-  geom_line(data=data_for_plotting, aes(y=z_posture_grouped_per_annotation, x=hours_rounded))+
-  scale_y_continuous(limits = c(-3,3))+
-  scale_x_continuous(breaks = seq(1,12))+
-  # geom_smooth()+
-  theme_bw()+
-  theme(
-    strip.background = element_rect(fill="white"))+
-  facet_wrap(vars(posture_grouped,annotation),nrow=how_many_clusters,scales="free")+
-  scale_fill_manual(values = pal)+
-  scale_color_manual(values = pal)
-
-  ggsave(file.path(save_path,"posture_groups_relative_occurences_norm.png"),height=6,width=5)
-
 for (i in unique(data_for_plotting$posture_grouped)){
   ggplot(filter(data_for_plotting, posture_grouped == i), aes(y=z_posture_grouped_per_dataset,x=hours_rounded,color=annotation))+
     stat_smooth(geom='smooth',method="loess", alpha=0.25, se=TRUE)+
@@ -183,11 +194,11 @@ for (i in unique(data_for_plotting$posture_grouped)){
     theme_bw()+
     theme(
       strip.background = element_rect(fill="white"))+
-    facet_wrap(vars(annotation,posture_grouped),nrow=how_many_clusters)+
+    facet_wrap(vars(annotation,posture_grouped),nrow=5)+
     scale_fill_manual(values = pal)+
     scale_color_manual(values = pal)
   
-  ggsave(file.path(save_path,paste0("posture_groups_relative_occurences_norm_smoothed_posture_grouped_",i,".png")),height=5,width=3)
+  ggsave(file.path(save_path,paste0("posture_groups_relative_occurences_norm_smoothed_posture_grouped_",i,".png")),height=10,width=3.5)
 
 }
   
@@ -205,105 +216,58 @@ ggplot(data_for_plotting, aes(y=perc_per_posture_grouped_per_dataset,x=hours_rou
   scale_fill_manual(values = pal)+
   scale_color_manual(values = pal)
 
-  ggsave(file.path(save_path,"posture_groups_relative_occurences.png"),height=6,width=5)
+  ggsave(file.path(save_path,"posture_groups_relative_occurences.png"),height=6,width=10)
 
 ```  
   
 # #plotting first derivatives of relative occurence of (sub-)posture groups
 ```{r, include=FALSE}
-#only for z-score normalized data
-selected_annotations <-c("Agar","OP50","OP50_w_Az")
-pal <- wes_palette("Darjeeling1")[c(1,5,2)]
-data_for_plotting <- postures_zscore %>%
-  filter(annotation %in% selected_annotations) %>%
-  mutate(annotation=factor(annotation, levels=selected_annotations)) %>%
-  group_by(dataset_ID,posture_grouped) %>%
-  mutate(first_d = z_posture_grouped_per_annotation - lag(z_posture_grouped_per_annotation)) %>%
-  select(dataset_ID, annotation,hours_rounded,posture_grouped,first_d) %>%
-  ungroup() %>%
-  filter(posture_grouped == 1)
-
-
-ggplot(data_for_plotting, aes(y=first_d,x=hours_rounded,color=annotation,fill=annotation))+
-  # geom_line(color="black")+
-  geom_smooth()+
-  scale_x_continuous(breaks = seq(1,12))+
-  theme_bw()+
-  theme(
-    strip.background = element_rect(fill="white"))+
-  facet_wrap(vars(posture_grouped,annotation),nrow=1,scales="free_x")+
-  scale_fill_manual(values = pal)+
-  scale_color_manual(values = pal)
-
-  ggsave(file.path(save_path,"firstd_posture_groups_relative_occurences_norm.png"),height=3,width=6)
-
-
-```
-
-#plotting average curvature per posture groups
-
-```{r, include=FALSE}
-
-pal <- wes_palette("Moonrise1")[c(2,3)]
-
-#p1 vs p2 and p3
-cluster_centers_reduced_grouped %>%
-  mutate(posture_meta = ifelse(posture_grouped %in% c("group_1", "group_3"),"curved","dauer")) %>%
-  ggplot(., aes(x=angle,fill=posture_meta))+
-    geom_density(alpha=0.5,lwd=1)+
-    scale_x_continuous(limits=c(-1,1))+
-    theme_classic()+
-    scale_fill_manual(values = pal)+
-    scale_color_manual(values = pal)
-
-
-ggsave(file.path(save_path, "postures_grouped_angle_density_p1vsp2p3.png"),height=3,width=6)
-
+# #only for z-score normalized data
+# selected_annotations <-c("Agar","OP50","OP50_w_Az")
+# pal <- wes_palette("Darjeeling1")[c(1,5,2)]
+# data_for_plotting <- postures_zscore %>%
+#   filter(annotation %in% selected_annotations) %>%
+#   mutate(annotation=factor(annotation, levels=selected_annotations)) %>%
+#   group_by(dataset_ID,posture_grouped) %>%
+#   mutate(first_d = z_posture_grouped_per_annotation - lag(z_posture_grouped_per_annotation)) %>%
+#   select(dataset_ID, annotation,hours_rounded,posture_grouped,first_d) %>%
+#   ungroup() %>%
+#   filter(posture_grouped == 1)
+# 
+# 
+# ggplot(data_for_plotting, aes(y=first_d,x=hours_rounded,color=annotation,fill=annotation))+
+#   # geom_line(color="black")+
+#   geom_smooth()+
+#   scale_x_continuous(breaks = seq(1,12))+
+#   theme_bw()+
+#   theme(
+#     strip.background = element_rect(fill="white"))+
+#   facet_wrap(vars(posture_grouped,annotation),nrow=1,scales="free_x")+
+#   scale_fill_manual(values = pal)+
+#   scale_color_manual(values = pal)
+# 
+#   ggsave(file.path(save_path,"firstd_posture_groups_relative_occurences_norm.png"),height=3,width=6)
 
 
 ```
+
 
 #plotting average posture
 ```{r, include=FALSE}
 
-#select one dataset (i.e. OP50)
+# in the paper we use a different annotation
+# for OP50 condition
+# p1 == posture_group 3
+# p2 == posture_group 2
+# p3 == posture_group 1
+
+
 s <- cluster_centers_reduced_grouped %>%
   #append newID2, so that postures in the overview have the same ID as in heatmap
   left_join(conversion_newID_and_newID2, by=c("newID","annotation")) %>%
   filter(annotation == "OP50") %>%
-  mutate(posture_meta = ifelse(posture_grouped %in% c("group_1", "group_3"),"curved","dauer")) %>%
-  group_by(index,annotation, posture_grouped) %>%
-  #shift all postures of "group_2 to the left
-  mutate(X=ifelse(posture_meta == "dauer",-X-0.25,X)) %>%
-  #manually select 2 posture to be highlighted
-  mutate(highlight=ifelse(newID2 %in% c(102,23),"YES","NO"))
-
-#p1 vs p2+p3
-ggplot(s)+
-  geom_path(data=s,aes(X,Y,group=newID),color="grey",alpha=0.5)+
-  geom_path(data=filter(s,highlight=="YES"),aes(X,Y,group=newID,color=angle))+
-  geom_point(data=filter(s,highlight=="YES"),aes(X,Y,group=newID,fill=angle,color=angle))+
-  geom_point(data=filter(s,highlight=="YES" & index==2), aes(X,Y),color="orange",size=3,shape=17) +
-  # scale_color_gradient2(low = "deepskyblue", mid = "lavender",
-  #                       high = "deeppink",midpoint=0,limits=c(-1,1),na.value="grey") +
-  # scale_fill_gradient2(low = "deepskyblue", mid = "lavender",
-  #                      high = "deeppink",midpoint=0,limits=c(-1,1),na.value="grey") +
-  scale_fill_viridis(option="plasma",limits=c(-1,1),na.value="grey")+
-  scale_color_viridis(option="plasma",limits=c(-1,1),na.value="grey")+
-  # theme_classic()+
-  theme_void()+
-  facet_wrap(vars(annotation))+
-  coord_fixed(ratio = 1)
-
-  ggsave(file.path(save_path, "postures_grouped_overlay_OP50_p1vsp2p3.png"),height=3,width=6)
-
-  
-s <- cluster_centers_reduced_grouped %>%
-  #append newID2, so that postures in the overview have the same ID as in heatmap
-  left_join(conversion_newID_and_newID2, by=c("newID","annotation")) %>%
-  filter(annotation == "OP50") %>%
-  #manually select 2 posture to be highlighted
-  mutate(highlight=ifelse(newID2 %in% c(94,23,109),"YES","NO")) %>%
+  #manually select 3 posture to be highlighted
+  mutate(highlight=ifelse(newID2 %in% c(97,89,21),"YES","NO")) %>%
   group_by(posture_grouped,index) %>%
   mutate(posture_grouped_w_number=paste0(posture_grouped, ", ", n(), " postures"))
   
@@ -321,4 +285,28 @@ ggplot(s)+
   coord_fixed(ratio = 1)
 
 ggsave(file.path(save_path, "postures_grouped_overlay_OP50_p1vsp2vsp3.png"),height=10,width=10)
+```
+
+
+
+#plotting average curvature per posture groups
+```{r, include=FALSE}
+
+pal <- wes_palette("Moonrise1")[c(2,3)]
+
+#p1 vs p2 and p3
+cluster_centers_reduced_grouped %>%
+  mutate(posture_meta = ifelse(posture_grouped %in% c("group_1", "group_2"),"curved","dauer")) %>%
+  ggplot(., aes(x=angle,fill=posture_meta))+
+    geom_density(alpha=0.5,lwd=1)+
+    scale_x_continuous(limits=c(-1,1))+
+    theme_classic()+
+    scale_fill_manual(values = pal)+
+    scale_color_manual(values = pal)
+
+
+ggsave(file.path(save_path, "postures_grouped_angle_density_p3vsp1p2.png"),height=3,width=6)
+
+
+
 ```
