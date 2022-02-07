@@ -135,7 +135,7 @@ dds <- DESeq(dds)
 ```{r echo=TRUE, message=FALSE, warning=FALSE}
 
 #---------
-tp1 <- "9h"
+tp1 <- "6h"
 #---------
 
 A_tp1 <- paste0("A_",tp1) 
@@ -313,7 +313,7 @@ ggsave(file.path(here(),paste0("enriched_goterms_",A_tp1,"_vs_",B_tp1,".png")),h
 
 #6h vs 6h
 #first term
-# goterm_to_look_for <- "GO:0007218" #neuropeptide signaling pathway
+goterm_to_look_for <- "GO:0007218" #neuropeptide signaling pathway
 #second
 # goterm_to_look_for <- "KEGG:01212" #fatty acid metabolism
 #third
@@ -385,11 +385,11 @@ pheatmap(log2(M+1),
          annotation_col = coldata, 
          show_rownames = TRUE,
          # show_colnames = FALSE,
-         fontsize_row = 8,
+         fontsize_row = 6,
          scale = 'row', 
          cutree_cols = 2, 
          cutree_rows = 2,
-         cellheight=6,
+         cellheight=11,
          main=paste0(term_name, " (", goterm_to_look_for,")"),
          filename=file.path(here(),paste0("heatmap_",A_tp1,"_vs_",B_tp1,"_",goterm_to_look_for[1],".png")))
 
