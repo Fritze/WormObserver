@@ -20,6 +20,7 @@ plot_basis <- function(data_to_plot){
     theme_classic()+
     ylab("velocity (mm/s)") + xlab("angular velocity (degree/s)")+
     scale_y_log10()+
+    annotation_logticks(base = 10,sides = "lr")+
     scale_x_continuous(limits=c(0,180))+
     theme(legend.direction="horizontal",
           legend.position = "top",
@@ -52,7 +53,7 @@ plot_scatterdensity <- function(data_to_plot){
 #define base path  
 base_path <- commandArgs(trailingOnly = TRUE)[1]
 #define save path
-save_path <- file.path(dirname(base_path), "plots", "motion")
+save_path <- file.path(dirname(dirname(base_path)), "plots", "motion")
 dir.create(save_path,recursive = TRUE)
 
 
