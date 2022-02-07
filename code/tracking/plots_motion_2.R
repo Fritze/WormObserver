@@ -248,7 +248,7 @@ data_to_plot <- data_temp %>%
 
 
 ggplot(data_to_plot, aes(x=hours_rounded, y=mean_perc,color=annotation))+
-  geom_pointrange(aes(ymin=minsd, ymax=maxsd),position = position_dodge(1),size=1.5)+
+  geom_pointrange(aes(ymin=minsd, ymax=maxsd),position = position_dodge(0.5),size=1.5)+
   scale_y_continuous(limits=c(0,1.1),breaks=c(0,0.25,0.5,0.75,1))+
   theme_bw()+
   labs(x="time (hours)", "relative fraction")+
