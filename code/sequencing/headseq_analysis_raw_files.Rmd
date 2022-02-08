@@ -87,7 +87,7 @@ head_experiments <- grep("FP.+\\_.\\_.h",unique(data$name),value = TRUE)
 expressed_genes_head <- data %>%
   filter(name %in% head_experiments) %>%
   filter(count > 10) %>%
-  rename("gene_wb"=gene) %>%
+  dplyr::rename("gene_wb"=gene) %>%
   select(gene_wb) %>%
   unique()
 
