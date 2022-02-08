@@ -125,7 +125,7 @@ ggplot(data = go_results_all_filtered, aes(x = tp, y = term_name, size = precisi
   ggtitle("GO enrichment analysis")+
   theme(axis.text.x = element_text(angle = 45, vjust = 0.65,hjust=0.75))
 
-ggsave(file.path(here(), paste0("A_vs_B_go_enrichment_doplot_over_all_tps",".png")))
+ggsave(file.path(here(), paste0("A_vs_B_go_enrichment_doplot_over_all_tps",".png")),width=8,height=10)
 
 
 ```
