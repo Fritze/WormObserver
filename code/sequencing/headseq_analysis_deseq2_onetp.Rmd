@@ -33,8 +33,63 @@ library(ashr)
 #functions
 ```{r echo=TRUE}
 
+
+plot_volcano <- function(what_to_highlight, v){
+  
+    df <- de_results_df
+    dff <- de_results_filtered
+    
+  if(what_to_highlight == "gene"){
+    ex_genes_highlighted <- dff %>%
+      filter(grepl(v, gene)) %>%
+      # filter(-log10(padj) > 5) %>%
+      pull(gene_wb)
+    
+    ex_genes_labeled <- ex_genes_highlighted
+    
+  }else if(what_to_highlight == "padj"){
+    ex_genes_highlighted <- dff %>%
+      filter(padj < v) %>%
+      pull(gene_wb)
+      
+    ex_genes_labeled <- dff %>%
+      filter(padj < v) %>%
+      filter(padj < 10^-3) %>%
+      pull(gene_wb)
+  }
+
+  df_highlighted <- df %>%
+    mutate(highlight=ifelse(gene_wb %in% ex_genes_highlighted, gene, NA)) %>%
+    mutate(to_be_labeled=ifelse(gene_wb %in% ex_genes_labeled, gene, NA)) %>%
+    mutate(labeled=to_ENSEMBL_name(to_be_labeled)) %>%
+    mutate(labeled=ifelse(is.na(labeled), to_be_labeled,labeled)) %>%
+    select(!to_be_labeled)
+  
+  
+  
+  ggplot(df_highlighted,aes(log2FoldChange,-log10(padj),label = labeled))+
+    geom_point(alpha=0.25,fill="lightblue",shape=21)+
+    geom_point(data=df_highlighted %>% filter(gene_wb %in% ex_genes_highlighted),aes(log2FoldChange,-log10(padj)),fill="orange",shape=21)+
+    geom_text_repel(
+      size=3,
+      nudge_x = .15,
+      box.padding = 0.05,
+      nudge_y = 1,
+      segment.curvature = -0.1,
+      segment.ncp = 3,
+      segment.angle = 20
+    )+
+    geom_hline(yintercept=-log10(0.05),alpha=0.5,linetype="dashed")+
+    geom_vline(xintercept=1,alpha=0.5,linetype="dashed")+
+    geom_vline(xintercept=-1,alpha=0.5,linetype="dashed")+
+    theme_bw()
+  
+  ggsave(file.path(here(),paste0("volcano_",A_tp1,"_vs_",B_tp1,"_",what_to_highlight,"_",v,".png")),width = 10,height = 10)
+
+}
+
 plot_counts_ggplot <- function(geneset,selected_tps){
-  counts <- normalizedCounts[rownames(normalizedCounts) %in% geneset, ] %>%
+  counts <<- normalizedCounts[rownames(normalizedCounts) %in% geneset, ] %>%
     as.data.frame() %>%
     tibble::rownames_to_column("gene") %>%
     gather(key="name",value=counts_norm,-"gene") %>%
@@ -43,16 +98,17 @@ plot_counts_ggplot <- function(geneset,selected_tps){
     mutate(tp=gsub("FP.+\\_.+\\_(.+)h*","\\1",name)) %>%
     filter(tp %in% selected_tps) %>%
     mutate(gene_wb=gene) %>%
-    mutate(gene=to_ENSEMBL_name(gene_wb))
+    mutate(gene=to_ENSEMBL_name(gene_wb))%>%
+    ungroup() %>%
+    mutate(counts_norm=ifelse(counts_norm < 1, 1,counts_norm))
   
-  ggplot(counts, aes(y=gene,x=counts_norm, fill=condition))+
-    # geom_boxplot(aes(fill=condition),outlier.size = .75)+
-    geom_point(position=position_dodge(width = .5),size=2,color="black",shape=21)+
+  ggplot(counts, aes(y=gene,x=log10(counts_norm),fill=condition))+
+    geom_boxplot(position=position_dodge(width=0.75),alpha=0,width=0.25)+
+    geom_point(position=position_dodge(width=0.75),shape=21,color="black")+
     theme_bw()+
     scale_fill_manual(values = pal)+
     ggtitle(selected_tps)
 }
-
 
 pal <- wes_palette("Darjeeling1")[c(5,1)]
 
@@ -190,59 +246,6 @@ write_csv(de_results_filtered, paste0("diff_",A_tp1,"_vs_",B_tp1,".txt"))
 ```{r echo=TRUE, message=FALSE, warning=FALSE}
 
 
-plot_volcano <- function(what_to_highlight, v){
-  
-    df <- de_results_df
-    dff <- de_results_filtered
-    
-  if(what_to_highlight == "gene"){
-    ex_genes_highlighted <- dff %>%
-      filter(grepl(v, gene)) %>%
-      # filter(-log10(padj) > 5) %>%
-      pull(gene_wb)
-    
-    ex_genes_labeled <- ex_genes_highlighted
-    
-  }else if(what_to_highlight == "padj"){
-    ex_genes_highlighted <- dff %>%
-      filter(padj < v) %>%
-      pull(gene_wb)
-      
-    ex_genes_labeled <- dff %>%
-      filter(padj < v) %>%
-      filter(padj < 10^-3) %>%
-      pull(gene_wb)
-  }
-
-  df_highlighted <- df %>%
-    mutate(highlight=ifelse(gene_wb %in% ex_genes_highlighted, gene, NA)) %>%
-    mutate(to_be_labeled=ifelse(gene_wb %in% ex_genes_labeled, gene, NA)) %>%
-    mutate(labeled=to_ENSEMBL_name(to_be_labeled)) %>%
-    mutate(labeled=ifelse(is.na(labeled), to_be_labeled,labeled)) %>%
-    select(!to_be_labeled)
-  
-  
-  
-  ggplot(df_highlighted,aes(log2FoldChange,-log10(padj),label = labeled))+
-    geom_point(alpha=0.25,fill="lightblue",shape=21)+
-    geom_point(data=df_highlighted %>% filter(gene_wb %in% ex_genes_highlighted),aes(log2FoldChange,-log10(padj)),fill="orange",shape=21)+
-    geom_text_repel(
-      size=3,
-      nudge_x = .15,
-      box.padding = 0.05,
-      nudge_y = 1,
-      segment.curvature = -0.1,
-      segment.ncp = 3,
-      segment.angle = 20
-    )+
-    geom_hline(yintercept=-log10(0.05),alpha=0.5,linetype="dashed")+
-    geom_vline(xintercept=1,alpha=0.5,linetype="dashed")+
-    geom_vline(xintercept=-1,alpha=0.5,linetype="dashed")+
-    theme_bw()
-  
-  ggsave(file.path(here(),paste0("volcano_",A_tp1,"_vs_",B_tp1,"_",what_to_highlight,"_",v,".png")),width = 10,height = 10)
-
-}
 
 
 plot_volcano("padj",0.05)
@@ -464,7 +467,7 @@ pheatmap(log2(M+1),
 
 
 plot_counts_ggplot(geneset_2,c(tp1))
-ggsave(file.path(here(), paste0("counts_",A_tp1,"_vs_",B_tp1,"_",pattern,".png")))
+ggsave(file.path(here(), paste0("counts_",A_tp1,"_vs_",B_tp1,"_",pattern,".png")),height=4, width=5)
 
 
 ```
