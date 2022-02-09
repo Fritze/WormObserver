@@ -427,7 +427,7 @@ ggsave(file.path(here(), paste0("counts_",A_tp1,"_vs_",B_tp1,"_",goterm_to_look_
 # plot heatmap for a manually defined geneset
 ```{r echo=TRUE, message=FALSE, warning=FALSE}
 
-pattern <- ".*npr*"
+pattern <- "^ins\\-*"
 geneset_2 <- de_results_filtered[grep(pattern,de_results_filtered$gene),"gene_wb"]
 
 
@@ -458,7 +458,7 @@ pheatmap(log2(M+1),
          scale = 'row', 
          cutree_cols = 2, 
          cutree_rows = 2,
-         cellheight=6,
+         cellheight=11,
          main=pattern,
          filename=file.path(here(),paste0("heatmap_",A_tp1,"_vs_",B_tp1,"_",pattern,".png")))
 
