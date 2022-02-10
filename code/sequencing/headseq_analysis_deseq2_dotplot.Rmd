@@ -88,7 +88,7 @@ go_results_all <- tps %>%
   filter(!term_name == "Transfac") %>%
   mutate(parents=as.character(parents))
 
-write.csv(go_results_all,file=file.path(here(),"enriched_go_terms.txt"),row.names = FALSE)
+write.csv2(go_results_all,file=file.path(here(),"enriched_go_terms.txt"),row.names = FALSE)
 
 #only top 3 terms for each tp
 #3h
