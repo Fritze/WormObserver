@@ -203,9 +203,9 @@ de_results_filtered_merged_in_both <- de_results_A_filtered %>%
   dplyr::rename(gene_wb=gene_wb_A) %>%
   select(!gene_wb_B)
 
-write_csv(de_results_filtered_merged_for_A, paste0("diff_specific_for_A_",tp1,"_vs_",tp2,".txt"))
-write_csv(de_results_filtered_merged_for_B, paste0("diff_specific_for_B_",tp1,"_vs_",tp2,".txt"))
-write_csv(de_results_filtered_merged_in_both, paste0("diff_in_both_",tp1,"_vs_",tp2,".txt"))
+write_csv(de_results_filtered_merged_for_A, file.path(here(),paste0("diff_specific_for_A_",tp1,"_vs_",tp2,".txt")))
+write_csv(de_results_filtered_merged_for_B, file.path(here(),paste0("diff_specific_for_B_",tp1,"_vs_",tp2,".txt")))
+write_csv(de_results_filtered_merged_in_both, file.path(here(),paste0("diff_in_both_",tp1,"_vs_",tp2,".txt")))
 
 ```
 
@@ -370,7 +370,7 @@ go_results <- goResults$result
 go_results <- go_results[order(go_results$p_value),] %>%
   mutate(parents=as.character(parents))
 
-write.csv(go_results,file=file.path(here(),paste0("enriched_go_terms_","diff_in_both_",tp1,"_vs_",tp2,".txt")),row.names = FALSE)
+write.csv2(go_results,file=file.path(here(),paste0("enriched_go_terms_","diff_in_both_",tp1,"_vs_",tp2,".txt")),row.names = FALSE)
 
 #plot barplot with enriched GOterms
 # only BP == biological process
