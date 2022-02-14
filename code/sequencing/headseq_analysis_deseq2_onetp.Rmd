@@ -505,7 +505,7 @@ counts <- normalizedCounts[rownames(normalizedCounts) %in% selected_gene, ] %>%
 ggplot(data=counts,aes(x=tp,y=counts_norm))+
   geom_pointrange(data=counts, aes(x=tp,y=mean_counts_norm,ymin=mean_counts_norm-sd_mean_counts_norm, ymax=mean_counts_norm+sd_mean_counts_norm,group=condition_tp), width=.1,size=1,position=position_dodge(0.3),shape=3)+
   geom_point(aes(fill=condition),position=position_dodge(0.3),size=5,color="black",shape=21,alpha=0.75)+
-  scale_y_continuous(limits=c(0,NA))+
+  scale_y_continuous(limits=c(0,max(counts$counts_norm)*1.2))+
   theme_bw()+
   scale_fill_manual(values = pal)+
   ggtitle(to_ENSEMBL_name(selected_gene))
