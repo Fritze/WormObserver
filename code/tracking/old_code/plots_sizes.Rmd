@@ -101,13 +101,13 @@ plots_sizes <- function(selected_annotations, selected_timepoints,parameter,plot
     wilcox_test(midline ~ hours_rounded,detailed = TRUE) %>%
     add_significance()
   
-  write.table(extract_numbers, file.path(save_path_temp_parameter,paste0("stats_",paste(selected_annotations, collapse="_"),"_",min(selected_timepoints),"-",max(selected_timepoints), ".txt")))
+  write.table(extract_numbers, file.path(save_path_temp_plottype,paste0("stats_",paste(selected_annotations, collapse="_"),"_",min(selected_timepoints),"-",max(selected_timepoints), ".txt")))
               
   ggplot(data_to_plot,aes_string(x ="hours_rounded" ,y =parameter,fill="annotation")) +
     geom_point(size=0.75,alpha=0.25,shape=21,position=position_jitterdodge(0.25))+
     geom_boxplot(outlier.shape = NA,alpha=0.5)+
     theme_classic()+
-    # expand_limits(y=0)+
+    scale_y_continuous(limits=c(250,500),breaks=c(250,300,350,400,450,500))+
     labs(x="time (hours)")+
     theme(strip.background = element_rect(colour = "white", fill = "white"),
       strip.text.x = element_text(size=15,colour = "black", face = "bold"),
@@ -202,10 +202,17 @@ for (parameter in parameters){
 }
 
 selected_annotations <- c("OP50_long_2")
-selected_timepoints <- c(1,12,18)
+selected_timepoints <- c(12,18)
 for (parameter in parameters){
   pal <- wes_palette("Darjeeling1")[c(5)]
-  plots_sizes(selected_annotations, selected_timepoints, parameter,5,3)
+  plots_sizes(selected_annotations, selected_timepoints, parameter,4,2)
+}
+
+selected_annotations <- c("Agar_long_1")
+selected_timepoints <- c(12,18)
+for (parameter in parameters){
+  pal <- wes_palette("Darjeeling1")[c(1)]
+  plots_sizes(selected_annotations, selected_timepoints, parameter,4,2)
 }
 
 ```
