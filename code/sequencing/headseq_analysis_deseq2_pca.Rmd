@@ -92,6 +92,7 @@ dds <- DESeqDataSetFromMatrix(countData = for_deseq_clean,
                               design = ~  condition_tp)
 dds <- DESeq(dds)
 
+# saveRDS(dds, "data.RDS")
 ```
 
 #PCA on normalized counts
@@ -122,6 +123,7 @@ pca %>%
     # geom_label_repel(fill = "white", xlim = c(-Inf, Inf), ylim = c(-Inf, Inf))+
     theme_bw()
 
+# saveRDS(pca, "pca_data.RDS")
 ggsave(file.path(here(),paste0("headseq_PCA_",number_of_variable_genes,"_most_variable_genes",".png")),height=5, width=8)
 
 
