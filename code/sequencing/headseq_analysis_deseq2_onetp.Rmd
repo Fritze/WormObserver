@@ -191,7 +191,7 @@ dds <- DESeq(dds)
 ```{r echo=TRUE, message=FALSE, warning=FALSE}
 
 #---------
-tp1 <- "6h"
+tp1 <- "9h"
 #---------
 
 A_tp1 <- paste0("A_",tp1) 
@@ -294,13 +294,17 @@ go_results <- go_results[order(go_results$p_value),]
 go_to_plot <- go_results %>%
   #filter out transfac missannotation
   filter(!term_name == "Transfac") %>%
-  top_n(-5,p_value)
+  top_n(-5,p_value) %>%
+  distinct(term_name, .keep_all= TRUE)
 
 ggplot(go_to_plot,aes(-log10(p_value),factor(term_name, levels = rev(term_name))))+
   geom_bar(stat = "identity",color="black",fill="darkgrey")+
   theme_bw()
 
 ggsave(file.path(here(),paste0("enriched_goterms_",A_tp1,"_vs_",B_tp1,".png")),height = 6,width=12)
+
+
+
 
 ```
 
@@ -425,6 +429,8 @@ ggsave(file.path(here(), paste0("counts_",A_tp1,"_vs_",B_tp1,"_",goterm_to_look_
 # dots for one timepoint
 plot_counts_ggplot(geneset_1,c(tp1))
 ggsave(file.path(here(), paste0("counts_",A_tp1,"_vs_",B_tp1,"_",goterm_to_look_for[1],".png")))
+
+
 ```
 
 # plot heatmap for a manually defined geneset
