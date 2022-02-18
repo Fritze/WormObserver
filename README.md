@@ -1,4 +1,4 @@
-# The WormObserver
+
 
 For any question, please drop me a line at:
 Friedrich.Preusser[at]mdc-berlin.de
