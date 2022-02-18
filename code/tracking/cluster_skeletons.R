@@ -249,43 +249,55 @@ if (length(files_to_process_cleaned > 0)){
     
   
   
-    #cat(paste0("\n\ncalculating elbow plot for ",file,"\n\n"))
+    # cat(paste0("\n\ncalculating elbow plot for ",file,"\n\n"))
+    # 
+    # #here we perform the "elbow plot" for visualizing the explained varience by different numbers of k clusters
+    # #function to compute total within-cluster sum of square
+    # wss <- function(k) {
+    #   k <- kmeans(angle_data_cluster, centers=k,nstart = 5,iter.max = 1000,algorithm = "Lloyd")
+    #   perc <- k$betweenss / k$totss
+    #   return(perc)
+    # }
+    # 
+    # #Compute and plot wss for k = 1 to k = 200
+    # k_values <- seq(25,300,25)
+    # 
+    # #extract wss for  clusters
+    # wss_values <- NULL
+    # for (k in k_values){
+    #   
+    #   wss_values_temp <- data.frame(expvar=wss(k)) %>%
+    #     mutate(k_value=k)
+    #   
+    #   wss_values <- rbind(wss_values, wss_values_temp)
+    #   
+    #   #do the plot
+    #   ggplot(data=wss_values,aes(x=k_value, y=expvar))+
+    #     geom_point()+
+    #     geom_line()+
+    #     # geom_vline(x=centers)+
+    #     scale_y_continuous(limits=c(0,1)) +
+    #     scale_x_continuous(breaks = seq(min(wss_values$k_value), max(wss_values$k_value),25))+
+    #     theme_classic()
+    #   
+    #   ggsave(file.path(save_path,paste0(k,"_elbow_plot",".png")),height=10,width=10)
+    #   
+    # 
+    #   
+    # }
     
-    #here we perform the "elbow plot" for visualizing the explained varience by different numbers of k clusters
-    # function to compute total within-cluster sum of square
-    #wss <- function(k) {
-    #  k <- kmeans(angle_data_cluster, centers=k,nstart = 5,iter.max = 1000,algorithm = "Lloyd")
-    #  perc <- k$betweenss / k$totss
-    #  return(perc)
-    #}
-    
-    # Compute and plot wss for k = 1 to k = 200
-    #k_values <- seq(50,400,50)
-    
-    # extract wss for  clusters
-    #wss_values <- data.frame(expvar = map_dbl(k_values, wss)) %>%
-    #  mutate(k=k_values)
-    
-    #do the plot
-    #ggplot(data=wss_values,aes(x=k, y=expvar))+
-    #  geom_point()+
-    #  geom_line()+
-    #  geom_vline(x=centers)
-    #  scale_x_continuous(breaks = seq(min(k_values), max(k_values)))+
-    #  theme_classic()
-    
-    #ggsave(file.path(save_path,paste0(paste0(paste0(files_to_process_annotations,collapse = "_"),"_elbow_plot",".png"))),height=49,width=10)  
-    
+  
+
     cat(paste0("\n\nclustering ",file,"\n\n"))
-    
+
     #calculate clusters
     #choose right number of centers!
     centers <- 200
-    
-    
+
+
     cluster <- kmeans(angle_data_cluster,centers=centers,nstart = 5,iter.max = 1000,algorithm = "Lloyd")
-    
-    
+
+
     cluster_centers <- melt(cluster$centers) %>%
       rename("clusterID" = Var1, "index" = Var2, "angle" = value) %>%
       arrange(clusterID) %>%
@@ -298,9 +310,9 @@ if (length(files_to_process_cleaned > 0)){
       group_modify(~ turn_worm(.x)) %>%
       select(-new_angle) %>%
       ungroup()
-    
-    
-    cluster_centers_reduced <- cluster_centers %>%  
+
+
+    cluster_centers_reduced <- cluster_centers %>%
       #create mirrored posture
       mutate(angle_mirror = -angle) %>%
       #for every posture (i.e. clusterID)
@@ -324,23 +336,23 @@ if (length(files_to_process_cleaned > 0)){
       #so that all postures are numbered straight with no gaps
       mutate(newID = as.integer(as.factor(newID))) %>%
       select(-c(angle_mirror,difference))
-    
+
     annotations <- c(unique(skeleton_data_filtered$annotation))
     files_to_process_annotations <- paste(annotations,collapse="_")
-    
-    
+
+
     #this gives out an overview image of all postures (with mirrored corresponding ones)
     plot_posture_examples(cluster_centers_reduced, "X","Y") +
       geom_point(data=filter(cluster_centers_reduced,index == 2), aes(X,Y),color="orange",size=3,shape=17) +
       facet_wrap(vars(newID,newID_sub),ncol=4) +
       theme(strip.text.x = element_text(size = 20,face="bold"))
     ggsave(file.path(save_path,paste0(paste0(paste0(files_to_process_annotations,collapse = "_"),"_posture_angle_centers_mirrorExamples",".png"))),height=49,width=10)
-    
+
     #a dataframe with the clusterID (old as put out by kmeans) and the skeleton ID (from rownames of angle_data_cluster dataframe)
     skeletonIDs_with_postures <- data.frame(clusterID = as.character(cluster$cluster), ID = rownames(angle_data_cluster),stringsAsFactors = FALSE)
-    
-    
-    
+
+
+
     skeleton_data_clustered <- cluster_centers_reduced %>%
       group_by(clusterID,newID) %>%
       summarise() %>%
@@ -353,9 +365,9 @@ if (length(files_to_process_cleaned > 0)){
       left_join(skeleton_data_filtered,by="ID") %>%
       ungroup() %>%
       mutate(minutes = time_elapsed + ((tp-1)*timepoint_length+(tp-1)*timestep_length))
-    
-    
-    
+
+
+
     cat(paste0("saving ",file,"\n"))
     cluster_centers_reduced_filepath <- file.path(save_path,paste0(paste(files_to_process_annotations,collapse = "_"),"_cluster_centers_reduced.RDS"))
     saveRDS(cluster_centers_reduced, file=cluster_centers_reduced_filepath)
