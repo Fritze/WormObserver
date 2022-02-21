@@ -101,7 +101,7 @@ server <- function(input, output) {
     
     ### functions ###
     
-    pal <- wes_palette("Darjeeling1")[c(5,1)]
+    pal <- wes_palette("Darjeeling1")[c(1,5)]
     
     dotplot <- function(data_dotPlot){
         ggplot(data = data_dotPlot, aes(x = tp, y = term_name, size = precision)) + 
