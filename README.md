@@ -2,6 +2,7 @@
 
 For any question, please drop me a line at:
 Friedrich.Preusser[at]mdc-berlin.de
+For instructions on how to build and use the WormObserver please check out the [Wiki](https://github.com/Fritze/WormObserver/wiki).
 # WormObserver: Open-source worm tracking
 <img src="https://github.com/Fritze/WormObserver/blob/master/images_readme/overview_complete.png" alt="Overview Scheme" width="1024"/>
 
