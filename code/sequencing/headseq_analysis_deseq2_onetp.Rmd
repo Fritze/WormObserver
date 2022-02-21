@@ -88,7 +88,7 @@ plot_volcano <- function(what_to_highlight, v){
 
 }
 
-plot_counts_ggplot <- function(geneset,selected_tps){
+plot_counts <- function(geneset,selected_tps){
   counts <<- normalizedCounts[rownames(normalizedCounts) %in% geneset, ] %>%
     as.data.frame() %>%
     tibble::rownames_to_column("gene") %>%
@@ -105,6 +105,7 @@ plot_counts_ggplot <- function(geneset,selected_tps){
   ggplot(counts, aes(y=gene,x=log10(counts_norm),fill=condition))+
     geom_boxplot(position=position_dodge(width=0.75),alpha=0,width=0.25)+
     geom_point(position=position_dodge(width=0.75),shape=21,color="black")+
+    annotation_logticks(sides="b")+
     theme_bw()+
     scale_fill_manual(values = pal)+
     ggtitle(selected_tps)
@@ -191,7 +192,7 @@ dds <- DESeq(dds)
 ```{r echo=TRUE, message=FALSE, warning=FALSE}
 
 #---------
-tp1 <- "9h"
+tp1 <- "6h"
 #---------
 
 A_tp1 <- paste0("A_",tp1) 
@@ -427,7 +428,7 @@ ggsave(file.path(here(), paste0("counts_",A_tp1,"_vs_",B_tp1,"_",goterm_to_look_
 
 
 # dots for one timepoint
-plot_counts_ggplot(geneset_1,c(tp1))
+plot_counts(geneset_1,c(tp1))
 ggsave(file.path(here(), paste0("counts_",A_tp1,"_vs_",B_tp1,"_",goterm_to_look_for[1],".png")))
 
 
@@ -436,7 +437,7 @@ ggsave(file.path(here(), paste0("counts_",A_tp1,"_vs_",B_tp1,"_",goterm_to_look_
 # plot heatmap for a manually defined geneset
 ```{r echo=TRUE, message=FALSE, warning=FALSE}
 
-pattern <- "^ins\\-*"
+pattern <- "^npr\\-*"
 geneset_2 <- de_results_filtered[grep(pattern,de_results_filtered$gene),"gene_wb"]
 
 
@@ -472,7 +473,7 @@ pheatmap(log2(M+1),
          filename=file.path(here(),paste0("heatmap_",A_tp1,"_vs_",B_tp1,"_",pattern,".png")))
 
 
-plot_counts_ggplot(geneset_2,c(tp1))
+plot_counts(geneset_2,c(tp1))
 ggsave(file.path(here(), paste0("counts_",A_tp1,"_vs_",B_tp1,"_",pattern,".png")),height=4, width=5)
 
 
