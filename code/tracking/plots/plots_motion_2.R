@@ -189,7 +189,7 @@ dir.create(save_path_temp)
 
 selected_annotations <- c("Agar","OP50_w_Az","OP50", "HB101")
 selected_mode <- c("roaming")
-pal <- wes_palette("Darjeeling1")[c(1,2,5,5)]
+pal <- c(wes_palette("Darjeeling1")[c(1)],"#ABABAB",wes_palette("Darjeeling1")[c(5,4)])
 data_bs %>%
   filter(annotation %in% selected_annotations) %>%
   arrange(match(annotation, selected_annotations)) %>%
@@ -207,7 +207,7 @@ ggsave(file.path(save_path_temp,paste0("modes_relative_per_mode_seperate_sd.png"
 
 selected_annotations <- c("Agar","OP50_w_Az","OP50", "HB101")
 selected_mode <- c("roaming")
-pal <- wes_palette("Darjeeling1")[c(1,2,5,4)]
+pal <- c(wes_palette("Darjeeling1")[c(1)],"#ABABAB",wes_palette("Darjeeling1")[c(5,4)])
 selected_tps <- c(1,3,6,9,12)
 
 data_temp <- data_bs %>%
