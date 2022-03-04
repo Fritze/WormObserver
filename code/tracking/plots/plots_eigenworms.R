@@ -309,3 +309,45 @@ plot_eigenworms /
 ggsave(file.path(save_path_temp,paste0(annotation,"_","eigenworms_with_contributions.png")),height=10,width=20)
 
 
+cat("\n\nnow plotting PCA plots.\n\n")
+
+save_path_temp <- file.path(save_path,"PC_correlations")
+dir.create(save_path_temp)
+
+plot_size = 5
+
+#plot all PC_values against each other
+# PCs <- c("PC1","PC2","PC3","PC4","PC5","PC6")
+#only first three PCs
+PCs <- c("PC1","PC2","PC3")
+
+
+for (j in PCs){
+  for (k in PCs){
+    
+    #define plot
+    density_plot <- PC_values %>%
+      ggplot(., aes_string(x=j, y=k))+
+      scale_x_continuous(breaks=c(-1.5,-1,-0.5,0,0.5,1,1.5))+
+      scale_y_continuous(breaks=c(-1.5,-1,-0.5,0,0.5,1,1.5))+
+      stat_density_2d(aes(fill = ..ndensity..), geom = "raster", contour = FALSE)+
+      theme_classic()+
+      coord_equal()
+    
+    #rocket
+    density_plot +
+      scale_fill_viridis(option="rocket")
+    ggsave(file.path(save_path_temp, paste0(annotation, "_", j, "_vs_", k, "_rocket.png")),width=plot_size, height=plot_size)
+    
+    #turbo
+    density_plot +
+      scale_fill_viridis(option="turbo")
+    ggsave(file.path(save_path_temp, paste0(annotation, "_", j, "_vs_", k, "_turbo.png")),width=plot_size, height=plot_size)
+    
+    #viridis
+    density_plot +
+      scale_fill_viridis(option="viridis")
+    ggsave(file.path(save_path_temp, paste0(annotation, "_", j, "_vs_", k, "_viridis.png")),width=plot_size, height=plot_size)
+    
+  }
+}
