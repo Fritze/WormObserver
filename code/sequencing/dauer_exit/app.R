@@ -29,15 +29,12 @@ ui <- fluidPage(
                                      plotOutput("pcaPlot")),
                             tabPanel("First switch.",
                                      fluidRow(
-                                              h4("GO-enrichment"),
-                                              align="center"
-                                       ),
-                                     fluidRow(
+                                       h4("Functional gene enrichment"),
+                                       h5("Corresponding p-value is indicated next to each dot."),
                                        column(6,
                                          plotOutput("dotPlot_first",
-                                                    click="go_selected_first"),
-                                         align="center"
-                                        )
+                                                    click="go_selected_first")
+                                        ),align="center"
                                     ),
                                     fluidRow(
                                       h4("See heatmap below."),
@@ -48,17 +45,14 @@ ui <- fluidPage(
                             ),
                             tabPanel("Second switch.",
                                      fluidRow(
-                                       h4("GO-enrichment"),
-                                       align="center"
-                                     ),
-                                     fluidRow(
+                                       h4("Functional gene enrichment"),
                                        radioButtons("timepoint", "\n\nPlease select a time point.",
                                                     c("3h"="3h", "6h"="6h","9h"="9h"),
                                                     selected="6h"
-                                       ),
-                                       align="center"
+                                       ), align="center"
                                       ),
                                      fluidRow(
+                                       h5("Corresponding p-value is indicated next to each dot."),
                                        plotOutput("dotPlot_second",
                                                     click = "go_selected_second"),
                                        align="center"

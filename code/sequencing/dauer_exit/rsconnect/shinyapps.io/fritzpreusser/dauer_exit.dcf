@@ -5,7 +5,7 @@ account: fritzpreusser
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 5659258
-bundleId: 5667067
+bundleId: 5694698
 url: https://fritzpreusser.shinyapps.io/dauer_exit/
-when: 1646928987.63768
-lastSyncTime: 1646928987.6377
+when: 1647511052.03348
+lastSyncTime: 1647511052.03349
