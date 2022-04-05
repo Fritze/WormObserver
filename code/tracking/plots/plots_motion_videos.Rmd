@@ -1,6 +1,6 @@
 # Use this script after running the "skeletonization.R" and "filter_skeletons.R" scripts
 # Needed: "annotation_filtered_skeletonized.RDS"
-#output will be images to produce videos for comparing tracks (incl. skeletons) across timepoints
+# output will be images to produce videos for comparing tracks (incl. skeletons) across timepoints
 
 
 #functions
