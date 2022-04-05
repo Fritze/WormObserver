@@ -29,15 +29,12 @@ ui <- fluidPage(
                                      plotOutput("pcaPlot")),
                             tabPanel("First switch.",
                                      fluidRow(
-                                              h4("GO-enrichment"),
-                                              align="center"
-                                       ),
-                                     fluidRow(
+                                       h4("Functional gene enrichment"),
+                                       h5("Corresponding p-value is indicated next to each dot."),
                                        column(6,
                                          plotOutput("dotPlot_first",
-                                                    click="go_selected_first"),
-                                         align="center"
-                                        )
+                                                    click="go_selected_first")
+                                        ),align="center"
                                     ),
                                     fluidRow(
                                       h4("See heatmap below."),
@@ -48,17 +45,14 @@ ui <- fluidPage(
                             ),
                             tabPanel("Second switch.",
                                      fluidRow(
-                                       h4("GO-enrichment"),
-                                       align="center"
-                                     ),
-                                     fluidRow(
+                                       h4("Functional gene enrichment"),
                                        radioButtons("timepoint", "\n\nPlease select a time point.",
                                                     c("3h"="3h", "6h"="6h","9h"="9h"),
                                                     selected="6h"
-                                       ),
-                                       align="center"
+                                       ), align="center"
                                       ),
                                      fluidRow(
+                                       h5("Corresponding p-value is indicated next to each dot."),
                                        plotOutput("dotPlot_second",
                                                     click = "go_selected_second"),
                                        align="center"
@@ -66,7 +60,7 @@ ui <- fluidPage(
                                      fluidRow(
                                         h4("Scroll down for heatmap."),
                                         plotOutput("heatmap_second"),
-                                        align="center"
+                                        align="center",
                                      )
                             ),
                             tabPanel("Plot single genes.",
@@ -104,18 +98,24 @@ server <- function(input, output) {
     pal <- wes_palette("Darjeeling1")[c(1,5)]
     
     dotplot <- function(data_dotPlot){
-        ggplot(data = data_dotPlot, aes(x = tp, y = term_name, size = precision)) + 
-            geom_point()+
-            scale_radius(range=c(4, 10))+
-            scale_color_viridis(option="turbo")+
-            theme_bw() + 
-            ylab("") + 
-            xlab("") + 
-            theme(axis.text.y = element_text(size=10,face="bold"),
-                  axis.text.x = element_text(size=20,face="bold"),
-                  plot.title = element_text(size = 15, face = "bold"),
-                  legend.position="top",
-                  legend.direction = "horizontal")
+        ggplot(data = data_dotPlot, aes(x = tp, y = term_name, size = precision,label = signif(p_value, digits = 2))) + 
+          geom_point()+
+          geom_label_repel(fill = "white",
+                           size = 5,
+                           xlim = c(-Inf, Inf), 
+                           ylim = c(-Inf, Inf),
+                           nudge_x = .25,
+                           nudge_y = .25)+
+          # scale_radius(range=c(4, 10))+
+          scale_color_viridis(option="turbo")+
+          theme_bw() + 
+          ylab("") + 
+          xlab("") + 
+          theme(axis.text.y = element_text(size=10,face="bold"),
+            axis.text.x = element_text(size=20,face="bold"),
+            plot.title = element_text(size = 15, face = "bold"),
+            legend.position="top",
+            legend.direction = "horizontal")
     }
     
     
@@ -196,7 +196,8 @@ server <- function(input, output) {
       pheatmap(log2(M+1),
                color=brewer.pal(11,"PiYG"),
                show_rownames = TRUE,
-               aannotation_col  = coldata,
+               annotation_col  = coldata,
+               # annotation_colors = c(wes_palette("GrandBudapest1")[4],wes_palette("GrandBudapest2")[4]),
                show_colnames = FALSE,
                fontsize_row = 8,
                scale = 'row', 
@@ -285,7 +286,7 @@ server <- function(input, output) {
 
         heatmap(gos,inp,term,c(paste0("A_",inp),paste0("B_",inp)),"second")
 
-    },  height = 1250 )
+    },  height = 1500 )
     
     output$heatmap_first<- renderPlot({
       

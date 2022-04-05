@@ -1,0 +1,177 @@
+# Use this script after running the "skeletonization.R" and "filter_skeletons.R" scripts
+# Needed: "annotation_filtered_skeletonized.RDS"
+# output will be images to produce videos for comparing tracks (incl. skeletons) across timepoints
+
+
+#functions
+```{r message=FALSE, include=FALSE}
+
+library(tidyverse)
+
+angle1 <- function(x1, y1, x2, y2) {
+  values <- list(x1, y1, x2, y2)
+  if(anyNA(values)) {
+    "NA"
+  } else {
+    x <- c(x1, y1)
+    y <- c(x2, y2)
+    dot.prod <- x%*%y
+    norm.x <- norm(x,type="2")
+    norm.y <- norm(y,type="2")
+    theta <- acos(dot.prod / (norm.x * norm.y))
+    as.numeric(theta)
+  }
+}
+
+# used to calculate distance change for estimating speed
+distance <- function(x1, y1, x2, y2) {
+  values <- list(x1, y1, x2, y2)
+  if(anyNA(values)) {
+    "NA"
+  } else {
+    length <- sqrt((x1-x2)^2+(y1-y2)^2)
+    as.numeric(length)
+  }
+}
+```
+#load the skeletonized data
+```{r message=FALSE, include=FALSE}
+
+#where are the offset files
+dataraw_file_path<- "/Users/fpreuss/Desktop/paper/data/raw/"
+
+#where are the skeletonized filtered files
+target_folder <- "/Users/fpreuss/Desktop/paper/data/skeletonized/filtered/"
+
+#list of .rds files in data folder
+files_to_process <- list.files(target_folder, "skeletonized_filtered.rds", full.names = TRUE, ignore.case = TRUE)
+selected_annotation <-  c("OP50\\_")
+files_to_process <- grep(selected_annotation,files_to_process,value = TRUE)
+
+
+#function for fetching time offsets
+read_offset <- function(x,y){
+  file_path <- file.path(dataraw_file_path, paste0(x,"_timeoffsets.txt"))
+  cat(paste0("\n\nFetching offsets from ", file_path))
+  temp <- read_csv(file_path,show_col_types = FALSE)
+  return(temp)
+}
+
+#fetch offsets
+offsets <- read_offset("OP50")
+
+skeleton_data_filtered <- files_to_process %>%
+  map_df(.,function(x) readRDS(x)) %>%
+  left_join(offsets,by="dataset_ID") %>%
+  #accounting for offsets
+  mutate(minutes = time_elapsed + ((tp-1)*timepoint_length+(tp-1)*timestep_length)) %>%
+  mutate(hours_rounded = round(minutes/60)) %>%
+  #filter out first 30 mins
+  filter(hours_rounded > 0) %>%
+  mutate(ID = paste0(dataset_ID, "_",tp,"_",TrackID,"_",frame)) %>%
+  filter(hours_rounded %in% c(3,9))
+
+
+```
+
+
+
+#select experiment type, dataset and timepoints to process
+#we also set a minimum track length ("minimal_track_length" variable) and select a fixed number of random tracks (defined by "numbers_of_displayed_tracls" variable)
+```{r message=FALSE, include=FALSE}
+save_path <- "/Users/fpreuss/Desktop/paper/plots/motion_videos"
+dir.create(save_path)
+
+#what is the conversion factor ? how many µm equals one pixel
+conversion_factor <- 6.25
+
+#only tracks longer than 15 sec (if 2fps)
+minimal_track_length <- 30
+#How many tracks are shown?
+numbers_of_displayed_tracks <- 25
+
+#calculate track angle and velocity for the selected data
+data_filtered <- skeleton_data_filtered %>%
+  mutate(track=paste(dataset_ID, tp, TrackID,sep = "_")) %>%
+  #summarise by frame and keep location
+  group_by(dataset_ID, tp, TrackID,ID,frame,track,hours_rounded,location_x,location_y) %>%
+  nest() %>%
+  #the track should not have any missing frames
+  group_by(dataset_ID, tp, TrackID) %>%
+  mutate(length_track = n()) %>%
+  mutate(length_track2 = last(frame)-first(frame)+1) %>%
+  filter(length_track == length_track2) %>%
+  # filter out tracks that are too short
+  filter(length_track > minimal_track_length) %>%
+  select(-c(length_track2)) %>%
+  # calculate velocity, angular velocity and center the track position
+  mutate(x_lag=lag(location_x,n=1) - location_x, y_lag = lag(location_y, n=1) - location_y) %>%
+  mutate(x_lead=lead(location_x, n=1) - location_x, y_lead=lead(location_y, n=1) - location_y) %>%
+  # calculate the angle and convert to degrees
+  mutate(angle_track = suppressWarnings(180 - (as.numeric(mapply(angle1,x_lag,y_lag,x_lead,y_lead)))*180/pi)) %>%
+  # measure distance between current point and 1 second before
+  mutate(local_distance=suppressWarnings(as.numeric(mapply(distance,lag(location_x,n=2),lag(location_y,n=2),location_x,location_y)))) %>%
+  #this will result in velocity based on local distance (µm/s)
+  mutate(velocity = local_distance*conversion_factor/2) %>%
+  mutate(first_location_x = first(location_x),first_location_y = first(location_y)) %>%
+  mutate(location_x_centered = location_x-first_location_x, location_y_centered = location_y-first_location_y) %>%
+  unnest(cols=c(data)) %>%
+  ungroup() %>%
+  mutate(frame_centered = frame-min(frame))
+
+#select random tracks
+selected_tracks <- data_filtered %>%
+  group_by(dataset_ID, tp, TrackID,hours_rounded,track) %>%
+  summarise() %>%
+  group_by(hours_rounded) %>%
+  sample_n(numbers_of_displayed_tracks) %>%
+  pull()
+  
+data_for_plotting <- data_filtered %>%
+  #first filter out only the tracks that have been randomly selected (after filtering)
+  filter(track %in% selected_tracks)
+ 
+```
+
+
+```{r message=FALSE, include=FALSE}
+#plot the sampled tracks at their centered location
+ggplot(data_for_plotting)+
+    geom_path(aes(x=location_x_centered, y=location_y_centered,group=track,color=track))+
+    theme(aspect.ratio = 1024/1024)+
+    scale_x_continuous(limits= c(-1023,1023))+
+    scale_y_continuous(limits= c(-1023,1023))+
+    theme_void()+
+    theme(legend.position = "none")+
+    facet_wrap(vars(hours_rounded))
+ggsave(file.path(save_path,paste0("test",".png")),height = 10,width= 20,units = "cm",bg="white",dpi=150)
+
+
+```
+
+
+
+#plot all frames with skeletons in their centered location
+```{r message=FALSE, include=FALSE}
+frames <- sort(unique(data_for_plotting$frame_centered))
+for (selected_frame in frames){
+  ggplot(data_for_plotting)+
+    theme(aspect.ratio = 1024/1024)+
+    scale_x_continuous(limits= c(-1024/2,1024/2))+
+    scale_y_continuous(limits= c(-1024/2,1024/2))+
+    #path
+    geom_path(aes(x=location_x_centered, y=location_y_centered,group=track),color="grey",alpha=.25)+
+    #skeleton
+    geom_point(data=filter(data_for_plotting,frame==selected_frame),aes(location_x_centered+X,location_y_centered+Y,color=angle),size=0.5,alpha=1)+
+    #head
+    geom_point(data=filter(data_for_plotting,frame==selected_frame & is_head== "YES"),aes(location_x_centered+X,location_y_centered+Y),color="orange",size=1.5,shape=17,alpha=1)+
+    scale_color_gradient2(low = "deepskyblue", mid = "lavender",
+                          high = "deeppink",midpoint=0,limits =c(-1,1),na.value="grey")+
+    theme_classic()+
+    facet_wrap(vars(hours_rounded))+
+    theme(legend.position = "none")
+  
+  ggsave(file.path(save_path,paste0("test_frame_",selected_frame,".png")),height = 15,width= 30,units = "cm",bg="white",dpi=150)
+}
+  
+```
