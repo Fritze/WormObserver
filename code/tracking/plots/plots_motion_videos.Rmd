@@ -69,7 +69,7 @@ skeleton_data_filtered <- files_to_process %>%
   #filter out first 30 mins
   filter(hours_rounded > 0) %>%
   mutate(ID = paste0(dataset_ID, "_",tp,"_",TrackID,"_",frame)) %>%
-  filter(hours_rounded %in% c(3,9))
+  filter(hours_rounded %in% c(5,11))
 
 
 ```
@@ -85,10 +85,10 @@ dir.create(save_path)
 #what is the conversion factor ? how many µm equals one pixel
 conversion_factor <- 6.25
 
-#only tracks longer than 15 sec (if 2fps)
-minimal_track_length <- 30
+#only tracks longer than 10 sec (if 2fps)
+minimal_track_length <- 20
 #How many tracks are shown?
-numbers_of_displayed_tracks <- 25
+numbers_of_displayed_tracks <- 35
 
 #calculate track angle and velocity for the selected data
 data_filtered <- skeleton_data_filtered %>%
@@ -116,8 +116,8 @@ data_filtered <- skeleton_data_filtered %>%
   mutate(first_location_x = first(location_x),first_location_y = first(location_y)) %>%
   mutate(location_x_centered = location_x-first_location_x, location_y_centered = location_y-first_location_y) %>%
   unnest(cols=c(data)) %>%
-  ungroup() %>%
-  mutate(frame_centered = frame-min(frame))
+  mutate(frame_centered = frame-min(frame)) %>%
+  ungroup()
 
 #select random tracks
 selected_tracks <- data_filtered %>%
@@ -153,25 +153,32 @@ ggsave(file.path(save_path,paste0("test",".png")),height = 10,width= 20,units = 
 
 #plot all frames with skeletons in their centered location
 ```{r message=FALSE, include=FALSE}
+library(ggrepel)
 frames <- sort(unique(data_for_plotting$frame_centered))
+# selected_frame=1
 for (selected_frame in frames){
-  ggplot(data_for_plotting)+
-    theme(aspect.ratio = 1024/1024)+
-    scale_x_continuous(limits= c(-1024/2,1024/2))+
-    scale_y_continuous(limits= c(-1024/2,1024/2))+
+  data_for_plotting_temp <- data_for_plotting %>%
+    filter(frame_centered == selected_frame)
+  ggplot(data_for_plotting_temp)+
+    scale_x_continuous(limits= c(-800,800))+
+    scale_y_continuous(limits= c(-800,800))+
     #path
-    geom_path(aes(x=location_x_centered, y=location_y_centered,group=track),color="grey",alpha=.25)+
+    geom_path(data=data_for_plotting,aes(x=location_x_centered, y=location_y_centered,group=track),color="grey",alpha=.25)+
     #skeleton
-    geom_point(data=filter(data_for_plotting,frame==selected_frame),aes(location_x_centered+X,location_y_centered+Y,color=angle),size=0.5,alpha=1)+
+    geom_point(data=filter(data_for_plotting_temp),aes(location_x_centered+X,location_y_centered+Y,color=angle),size=0.25,alpha=1)+
     #head
-    geom_point(data=filter(data_for_plotting,frame==selected_frame & is_head== "YES"),aes(location_x_centered+X,location_y_centered+Y),color="orange",size=1.5,shape=17,alpha=1)+
+    geom_point(data=filter(data_for_plotting_temp,is_head=="YES"),aes(location_x_centered+X,location_y_centered+Y),color="orange",size=1.25,shape=17,alpha=1)+
+    # geom_label_repel(data=filter(data_for_plotting_temp, is_head== "YES"),aes(x=location_x_centered, y=location_y_centered,label = track,group=track),
+                  # box.padding   = 0.35, 
+                  # point.padding = 0.5,
+                  # segment.color = 'grey50') +
     scale_color_gradient2(low = "deepskyblue", mid = "lavender",
-                          high = "deeppink",midpoint=0,limits =c(-1,1),na.value="grey")+
+                          high = "deeppink",midpoint=0,limits =c(-1,1),na.value="white")+
     theme_classic()+
     facet_wrap(vars(hours_rounded))+
     theme(legend.position = "none")
   
   ggsave(file.path(save_path,paste0("test_frame_",selected_frame,".png")),height = 15,width= 30,units = "cm",bg="white",dpi=150)
 }
-  
+
 ```
