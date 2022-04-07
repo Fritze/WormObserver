@@ -4,7 +4,7 @@
 # Additionally you have to specify the conversion factor (the number of micrometers that correspond to one pixel at your given magnification, i.e. 6.25).
 # Please also specify the first and last timepoint that should be skeletonized. 
 # To run the script type: Rscript skeletonization.R "the location of your raw data folder" "conversion factor" "first timepoint" "last timepoint"
-# e.g. Rscript skeletonization.R /media/fpreuss/raid5/timelapses/analysis/paper/raw 6.25 1 90
+# e.g. Rscript skeletonization.R /media/fpreuss/raid5/timelapses/analysis/paper/data/raw 6.25 1 90
 
 library("tidyverse")
 library("data.table")
