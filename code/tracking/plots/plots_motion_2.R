@@ -125,7 +125,7 @@ data <- map_dfr(files_to_process,readRDS) %>%
   # mutate(hours_rounded = ceiling(hours)) %>%
   mutate(hours_rounded = round(hours)) %>%
   #filter out first 30 mins
-  filter(hours > 0) %>%
+  filter(hours_rounded > 0) %>%
   mutate(annotation = gsub("\\s", "_",annotation))%>% 
   na.omit() %>%
   # scale velocity to mm/s
