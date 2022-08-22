@@ -51,8 +51,7 @@ plot_scatterdensity <- function(data_to_plot){
 #######################################################
 
 #define base path  
-# base_path <- commandArgs(trailingOnly = TRUE)[1]
-base_path <- "/Users/fpreuss/Desktop/paper/data/motion/"
+base_path <- commandArgs(trailingOnly = TRUE)[1]
 #define save path
 save_path <- file.path(dirname(dirname(base_path)), "plots", "motion")
 dir.create(save_path,recursive = TRUE)
