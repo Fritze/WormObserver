@@ -51,7 +51,8 @@ plot_scatterdensity <- function(data_to_plot){
 #######################################################
 
 #define base path  
-base_path <- commandArgs(trailingOnly = TRUE)[1]
+# base_path <- commandArgs(trailingOnly = TRUE)[1]
+base_path <- "/Users/fpreuss/Desktop/paper/data/motion/"
 #define save path
 save_path <- file.path(dirname(dirname(base_path)), "plots", "motion")
 dir.create(save_path,recursive = TRUE)
@@ -78,7 +79,7 @@ data <- map_dfr(files_to_process,readRDS) %>%
   # mutate(hours_rounded = ceiling(hours)) %>%
   mutate(hours_rounded = round(hours)) %>%
   #filter out first 30 mins
-  filter(hours > 0) %>%
+  filter(hours_rounded > 0) %>%
   mutate(annotation = gsub("\\s", "_",annotation))%>% 
   na.omit() %>%
   # scale velocity to mm/s
@@ -89,10 +90,22 @@ data <- map_dfr(files_to_process,readRDS) %>%
   mutate(number_of_tracks_in_this_hour = n_distinct(dataset_ID,tp,TrackID)) %>%
   ungroup()
 
-mean(data$number_of_tracks_in_this_hour)
+#plot track durations for all datasets
+selected_annotations <- c("HB101", "Agar","daf2_OP50", "OP50", "OP50_w_Az" )
+data %>%
+  filter(annotation %in% selected_annotations) %>%
+  group_by(annotation, hours_rounded) %>%
+  mutate(mean_duration = mean(Duration_of_track/2)) %>%
+  ggplot(., aes(Duration_of_track/2))+
+    geom_histogram(binwidth=25)+
+    geom_vline(aes(xintercept = mean_duration),color="red",linetype="dotted",size=2)+
+    facet_wrap(vars(annotation,hours_rounded),ncol = 12)+
+    xlab("track duration (s)")+
+    theme_bw()
+    ggsave(file.path(save_path,paste0("overview_duration_of_tracks.png")),height=15,width=35)
 
 
-# unique(imported_data$annotation)
+# unique(data$annotation)
 
 #########################################
 
