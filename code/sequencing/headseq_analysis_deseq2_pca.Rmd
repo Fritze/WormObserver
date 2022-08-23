@@ -92,6 +92,7 @@ dds <- DESeqDataSetFromMatrix(countData = for_deseq_clean,
                               design = ~  condition_tp)
 dds <- DESeq(dds)
 
+#this is the dataset with normalized counts, will be used in the shiny app
 # saveRDS(dds, "data.RDS")
 ```
 

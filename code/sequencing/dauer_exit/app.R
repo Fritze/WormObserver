@@ -27,9 +27,18 @@ ui <- fluidPage(
                             tabPanel("Overview.",
                                      add_busy_spinner(spin = "fading-circle"),
                                      plotOutput("pcaPlot")),
-                            tabPanel("First switch.",
+                            tabPanel("Gene enrichment (timepoints + conditions).",
                                      fluidRow(
-                                       h4("Functional gene enrichment"),
+                                       h4("Functional gene enrichment across timepoints and conditions."),
+                                       radioButtons("timepoint_comp", "\n\nPlease select a comparison.",
+                                                    c("0h vs 3h (decreased pheromone conc., differential genes in both conditions)" = "enriched_go_terms_diff_in_both_0h_vs_3h",
+                                                      "0h vs 6h (decreased pheromone conc., differential genes in both conditions)" = "enriched_go_terms_diff_in_both_0h_vs_6h",
+                                                      "6h vs 9h (food uptake, only differential genes specific for \"with bacteria\")" = "enriched_go_terms_specific_for_A_6h_vs_9h"),
+                                                    selected="enriched_go_terms_diff_in_both_0h_vs_3h",
+                                                    width="500px"
+                                       ), align="left"
+                                     ),
+                                     fluidRow(
                                        h5("Corresponding p-value is indicated next to each dot."),
                                        column(6,
                                          plotOutput("dotPlot_first",
@@ -39,14 +48,14 @@ ui <- fluidPage(
                                     fluidRow(
                                       h4("See heatmap below."),
                                       plotOutput("heatmap_first",
-                                                 width="100%"),
+                                                 width="500px"),
                                       align="center"
                                     )
                             ),
-                            tabPanel("Second switch.",
+                            tabPanel("Gene enrichment (only conditions).",
                                      fluidRow(
-                                       h4("Functional gene enrichment"),
-                                       radioButtons("timepoint", "\n\nPlease select a time point.",
+                                       h4("Functional gene enrichment\ncomparing \"with food\" and \"no bacteria\" conditions within one timepoint"),
+                                       radioButtons("condition_comp_tp", "\n\nPlease select a time point.",
                                                     c("3h"="3h", "6h"="6h","9h"="9h"),
                                                     selected="6h"
                                        ), align="center"
@@ -60,7 +69,7 @@ ui <- fluidPage(
                                      fluidRow(
                                         h4("Scroll down for heatmap."),
                                         plotOutput("heatmap_second"),
-                                        align="center",
+                                        align="center"
                                      )
                             ),
                             tabPanel("Plot single genes.",
@@ -168,7 +177,7 @@ server <- function(input, output) {
       if(which_h=="first"){
         coldata <- cols %>%
           as.data.frame() %>%
-          mutate(condition=gsub(".\\_(.h)","\\1",.)) %>%
+          mutate(timepoint=gsub(".\\_(.h)","\\1",.)) %>%
           select(!.)
       } else {
       #extract condition and timepoint as new variable "condition_tp"
@@ -246,12 +255,18 @@ server <- function(input, output) {
     })
     
     output$dotPlot_first <- renderPlot({
-        data_dotPlot_first <- read_csv2("enriched_go_terms_diff_in_both_0h_vs_3h.txt") %>%
-            mutate(tp="3h") %>%
+        inp <-input$timepoint_comp
+        inp_clean <- gsub("\\_", " ",gsub("enriched_go_terms_(.+)","\\1", inp))
+        file_to_load <- paste0(inp, ".txt")
+        data_dotPlot_first <- read_csv2(file_to_load) %>%
+            mutate(tp=inp_clean) %>%
             top_n(-5,p_value) %>%
-            mutate(term_name=paste0(term_name, "\n(", term_id, ")"))
+            mutate(term_name=paste0(term_name, "\n(", term_id, ")")) %>%
+            #quick workaround for parsing very long GOterm names
+            mutate(term_name = paste(substring(term_name, 0,60), "\n", substring(term_name, 61,nchar(term_name))))
+                   
         dotplot(data_dotPlot_first)
-        }, width=500)
+        }, width=600)
     
     output$plot_counts_first <- renderPlot({
       gene_selected <- input$gene_selected
@@ -260,7 +275,7 @@ server <- function(input, output) {
     
     
     output$dotPlot_second<- renderPlot({
-        inp <- input$timepoint
+        inp <- input$condition_comp_tp
         data_dotPlot_second <- read_csv2("enriched_go_terms_A_vs_B.txt") %>%
             filter(tp == inp) %>%
             top_n(-5,p_value) %>%
@@ -269,12 +284,45 @@ server <- function(input, output) {
         dotplot(data_dotPlot_second)
         }, width= 500)
     
+    output$heatmap_first<- renderPlot({
+      
+      validate(
+        need(input$go_selected_first, "Please click on a GO-term circle to display genes in heatmap.")
+      )
+      inp <-input$timepoint_comp
+      file_to_load <- paste0(inp, ".txt")
+      inp_clean <- gsub("\\_", " ",gsub("enriched_go_terms_(.+)","\\1", inp))
+      
+      gos <- read_csv2(file_to_load) %>%
+        mutate(tp=inp_clean) %>%
+        top_n(-5,p_value) %>%
+        mutate(term_name=paste0(term_name, "\n(", term_id, ")")) %>%
+        #quick workaround for parsing very long GOterm names
+        mutate(term_name = paste(substring(term_name, 0,60), "\n", substring(term_name, 61,nchar(term_name))))
+      
+      
+      
+      term <- nearPoints(gos,input$go_selected_first,threshold = 75,maxpoints = 1)$term_name
+      
+      if(inp == "enriched_go_terms_diff_in_both_0h_vs_3h"){
+        list_of_datasets <- c("A_0h","B_0h","A_3h","B_3h")
+      } else if(inp == "enriched_go_terms_diff_in_both_0h_vs_6h"){
+        list_of_datasets <- c("A_0h","B_0h","A_6h","B_6h")
+      } else if(inp == "enriched_go_terms_specific_for_A_6h_vs_9h"){
+        list_of_datasets <- c("A_6h","A_9h")
+      }
+      
+      heatmap(gos,inp,term,list_of_datasets,"first")
+      
+      
+    },  height = 1250 )
+    
     output$heatmap_second<- renderPlot({
       
         validate(
           need(input$go_selected_second, "Please click on a GO-term circle to display genes in heatmap.")
         )
-        inp <- input$timepoint
+        inp <- input$condition_comp_tp
         gos <- read_csv2("enriched_go_terms_A_vs_B.txt") %>%
           filter(tp == inp) %>%
           top_n(-5,p_value) %>%
@@ -288,25 +336,7 @@ server <- function(input, output) {
 
     },  height = 1500 )
     
-    output$heatmap_first<- renderPlot({
-      
-      validate(
-        need(input$go_selected_first, "Please click on a GO-term circle to display genes in heatmap.")
-      )
-      gos <- read_csv2("enriched_go_terms_diff_in_both_0h_vs_3h.txt") %>%
-        mutate(tp="3h") %>%
-        top_n(-5,p_value) %>%
-        mutate(term_name=paste0(term_name, "\n(", term_id, ")"))
-      
-      
-      
-      term <- nearPoints(gos,input$go_selected_first,threshold = 75,maxpoints = 1)$term_name
-      
-      heatmap(gos,"3h",term,c("A_0h","B_0h","A_3h","B_3h"),"first")
-      
-      
-      
-    },  height = 1250 )
+    
     
     
 }
