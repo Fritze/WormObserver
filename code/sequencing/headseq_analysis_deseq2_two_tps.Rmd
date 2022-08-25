@@ -57,7 +57,7 @@ data <- readRDS(list.files(location_files_to_load,"RDS",full.names = TRUE)) %>%
   mutate(exp_condition=gsub("(.+\\_.+)\\_.+","\\1",name))
 
 
-expressed_genes_head <- read_csv("/Users/fpreuss/Documents/PhD/Data/headseq/expressed_genes_head_all_exps.txt") %>% pull()
+expressed_genes_head <- read_csv("/Users/fpreuss/Documents/PhD/Data/headseq/csvs/expressed_genes_head_all_exps.txt") %>% pull()
 ```
 
 
@@ -116,8 +116,8 @@ dds <- DESeq(dds)
 ```{r echo=TRUE, message=FALSE, warning=FALSE}
 
 #---------
-tp1 <- "0h"
-tp2 <- "3h"
+tp1 <- "6h"
+tp2 <- "9h"
 #---------
 
 A_tp1 <- paste0("A_",tp1) 
