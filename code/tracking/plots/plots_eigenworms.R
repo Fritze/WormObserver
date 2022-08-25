@@ -52,8 +52,7 @@ distance <- function(x1, y1, x2, y2) {
 
 
 #define base path  
-# base_path <- commandArgs(trailingOnly = TRUE)[1]
-base_path <- "/media/fpreuss/raid5/timelapses/analysis/paper/data/skeletonized/filtered"
+base_path <- commandArgs(trailingOnly = TRUE)[1]
 #define save path
 save_path <- file.path(dirname(dirname(dirname(base_path))), "plots", "skeletons")
 dir.create(save_path,recursive = TRUE)
@@ -61,15 +60,13 @@ dir.create(save_path,recursive = TRUE)
 dataraw_file_path <- file.path(dirname(dirname(dirname(base_path))), "data","raw")
 
 #define dataset to plot
-# selected_annotation <-commandArgs(trailingOnly = TRUE)[2]
-selected_annotation <- "OP50"
+selected_annotation <-commandArgs(trailingOnly = TRUE)[2]
+
 
 
 
 #define conversion factor
-# conversion_factor <- as.numeric(commandArgs(trailingOnly = TRUE)[3])
-conversion_factor <- 6.25
-
+conversion_factor <- as.numeric(commandArgs(trailingOnly = TRUE)[3])
 
 #parameters for selecting only dispersing worms
 velocity_limit <- 0.01
