@@ -146,9 +146,10 @@ server <- function(input, output) {
         mutate(mean_counts_norm = mean(counts_norm)) %>%
         mutate(sd_mean_counts_norm = sd(counts_norm))
       
-      ggplot(data=counts,aes(x=tp,y=counts_norm))+
-        geom_pointrange(data=counts, aes(x=tp,y=mean_counts_norm,ymin=mean_counts_norm-sd_mean_counts_norm, ymax=mean_counts_norm+sd_mean_counts_norm,group=condition_tp), width=.1,size=1,position=position_dodge(0.3),shape=3)+
-        geom_point(aes(fill=condition),position=position_dodge(0.3),size=5,color="black",shape=21,alpha=0.75)+
+      ggplot(data=counts)+
+        # geom_errorbar(data=counts, aes(x=tp,y=mean_counts_norm,ymin=mean_counts_norm-sd_mean_counts_norm, ymax=mean_counts_norm+sd_mean_counts_norm,group=condition_tp), width=.1,size=1,position=position_dodge(0.3),shape=3)+
+        geom_pointrange(aes(x=tp,y=mean_counts_norm,ymin=mean_counts_norm-sd_mean_counts_norm, ymax=mean_counts_norm+sd_mean_counts_norm,group=condition_tp), width=.1,size=1,position=position_dodge(0.3),shape=3)+
+        geom_point(aes(x=tp,y=counts_norm,fill=condition,group=condition_tp),position=position_dodge(0.3),size=5,color="black",shape=21,alpha=0.75)+
         scale_y_continuous(limits=c(0,max(counts$counts_norm)*1.2))+
         theme_bw()+
         scale_fill_manual(values = pal)+
@@ -158,7 +159,7 @@ server <- function(input, output) {
               axis.text.x = element_text(size=20,face="bold"),
               axis.title.x = element_text(size=20,face="bold"),
               axis.title.y = element_text(size=20,face="bold"))
-      
+
       
     }
       
