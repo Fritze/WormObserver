@@ -52,8 +52,9 @@ distance <- function(x1, y1, x2, y2) {
 
 
 #define base path  
-# base_path <- commandArgs(trailingOnly = TRUE)[1]
+#base_path <- commandArgs(trailingOnly = TRUE)[1]
 base_path <- "/media/fpreuss/raid5/timelapses/analysis/paper/data/skeletonized/filtered"
+
 #define save path
 save_path <- file.path(dirname(dirname(dirname(base_path))), "plots", "skeletons")
 dir.create(save_path,recursive = TRUE)
@@ -61,15 +62,14 @@ dir.create(save_path,recursive = TRUE)
 dataraw_file_path <- file.path(dirname(dirname(dirname(base_path))), "data","raw")
 
 #define dataset to plot
-# selected_annotation <-commandArgs(trailingOnly = TRUE)[2]
+#selected_annotation <-commandArgs(trailingOnly = TRUE)[2]
 selected_annotation <- "OP50"
 
 
 
 #define conversion factor
-# conversion_factor <- as.numeric(commandArgs(trailingOnly = TRUE)[3])
+#conversion_factor <- as.numeric(commandArgs(trailingOnly = TRUE)[3])
 conversion_factor <- 6.25
-
 
 #parameters for selecting only dispersing worms
 velocity_limit <- 0.01
@@ -340,7 +340,7 @@ shuffle_head_tail <- function(x) {
 }
 
 skeleton_reorder <- function(data){
-  if(!is.na(a[a["index"] == 26,"is_head"])){
+  if(!is.na(data[data["index"] == 26,"is_head"])){
     data$index <- 1:26
     data
   } else {
@@ -452,7 +452,7 @@ plot_size = 5
 six_eigenworms <- melt(pca_shuffled$rotation[,1:6]) %>%
   rename(index = 1, eigenworm = 2, angle = 3)
 
-plot_eigenworms <- six_eigenworms %>%
+plot_eigenworms_shuffled <- six_eigenworms %>%
   ggplot(., aes(index,angle)) +
   geom_point(size=2)+
   geom_path(size=2,lineend="round")+
@@ -494,8 +494,8 @@ plot_contr_shuffled <- ggplot(pca_con_shuffled,aes(eigenworm,var_contr_cumsum*10
         axis.line = element_line(colour = 'black', size = 1.5))
 
 
-plot_eigenworms /
-  plot_contr +
+plot_eigenworms_shuffled /
+  plot_contr_shuffled +
   plot_layout(heights = unit(c(5,15), c('cm', 'cm')))
 ggsave(file.path(save_path_temp,paste0(annotation,"_","eigenworms_with_contributions_shuffled.png")),height=10,width=20)
 
